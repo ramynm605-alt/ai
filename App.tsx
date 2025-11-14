@@ -1,0 +1,545 @@
+
+
+import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef } from 'react';
+import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState } from './types';
+import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz } from './services/geminiService';
+import { ArrowRight, BookOpen, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload } from './components/icons';
+import MindMap from './components/MindMap';
+import NodeView from './components/NodeView';
+import QuizView from './components/QuizView';
+import QuizReview from './components/QuizReview';
+import WeaknessTracker from './components/WeaknessTracker';
+import PracticeZone from './components/PracticeZone';
+import Spinner from './components/Spinner';
+
+const CURRENT_APP_VERSION = 1;
+
+const initialState: AppState = {
+  theme: 'balanced',
+  status: AppStatus.IDLE,
+  sourceContent: '',
+  preferences: {
+    style: 'balanced',
+    addExplanatoryNodes: false,
+    customInstructions: '',
+  },
+  mindMap: [],
+  preAssessment: null,
+  activeQuiz: null,
+  activeNodeId: null,
+  nodeContents: {},
+  userProgress: {},
+  weaknesses: [],
+  finalExam: null,
+  quizResults: null,
+  correctiveSummary: '',
+  error: null,
+};
+
+function appReducer(state: AppState, action: any): AppState {
+  switch (action.type) {
+    case 'SET_THEME':
+      return { ...state, theme: action.payload };
+    case 'START_GENERATION':
+      return { ...initialState, theme: state.theme, status: AppStatus.LOADING, sourceContent: action.payload.sourceContent, preferences: action.payload.preferences };
+    case 'PLAN_GENERATED':
+      return { ...state, status: AppStatus.PRE_ASSESSMENT, mindMap: action.payload.mindMap, preAssessment: action.payload.preAssessment };
+    case 'START_LEARNING':
+      return { ...state, status: AppStatus.LEARNING, preAssessment: null, activeNodeId: null, activeQuiz: null, quizResults: null };
+    case 'SELECT_NODE':
+      return { ...state, status: AppStatus.LOADING, activeNodeId: action.payload };
+    case 'NODE_CONTENT_LOADED':
+      return { ...state, status: AppStatus.VIEWING_NODE, nodeContents: { ...state.nodeContents, [state.activeNodeId!]: action.payload } };
+    case 'START_QUIZ':
+      return { ...state, status: AppStatus.LOADING, activeNodeId: action.payload };
+    case 'QUIZ_LOADED':
+        return { ...state, status: AppStatus.TAKING_QUIZ, activeQuiz: action.payload };
+    case 'SUBMIT_QUIZ':
+        return { ...state, status: AppStatus.GRADING_QUIZ };
+    case 'QUIZ_ANALYSIS_LOADED': {
+        const { results } = action.payload;
+        
+        const totalScore = results.reduce((sum: number, r: QuizResult) => sum + r.score, 0);
+        const maxScore = results.reduce((sum: number, r: QuizResult) => sum + r.question.points, 0);
+        const passed = maxScore > 0 && (totalScore / maxScore) >= 0.7;
+
+        const newWeaknesses = [...state.weaknesses];
+        results.forEach((r: QuizResult) => {
+            if (!r.isCorrect) {
+                 const questionText = r.question.question;
+                 if (!newWeaknesses.some(w => w.question === questionText)) {
+                     const correctAnswerText = 
+                        r.question.type === 'multiple-choice' ? r.question.options[r.question.correctAnswerIndex] 
+                        : r.question.type === 'short-answer' ? r.question.correctAnswer 
+                        : 'See matching details'; // Simplified for matching
+                     
+                     newWeaknesses.push({ 
+                         question: questionText, 
+                         incorrectAnswer: JSON.stringify(r.userAnswer), 
+                         correctAnswer: correctAnswerText 
+                     });
+                 }
+            }
+        });
+        
+        const newProgress: AppState['userProgress'] = { ...state.userProgress, [state.activeNodeId!]: passed ? 'completed' : 'failed' };
+        
+        let newMindMap = [...state.mindMap];
+        if (passed) {
+            newMindMap = newMindMap.map(node => {
+                if (node.parentId === state.activeNodeId) {
+                    return { ...node, locked: false };
+                }
+                return node;
+            });
+        }
+
+        const allNodesCompleted = newMindMap.every(node => newProgress[node.id] === 'completed');
+        
+        return { 
+            ...state, 
+            status: AppStatus.QUIZ_REVIEW, 
+            userProgress: newProgress, 
+            weaknesses: newWeaknesses,
+            mindMap: newMindMap,
+            quizResults: results,
+            ...(allNodesCompleted && { allNodesCompletedStatus: AppStatus.ALL_NODES_COMPLETED })
+        };
+    }
+    case 'START_FINAL_EXAM':
+        return { ...state, status: AppStatus.LOADING };
+    case 'FINAL_EXAM_LOADED':
+        return { ...state, status: AppStatus.FINAL_EXAM, finalExam: action.payload, activeQuiz: action.payload, activeNodeId: 'final_exam' };
+    case 'COMPLETE_FINAL_EXAM': // This is now just for submitting the exam
+        return { ...state, status: AppStatus.GRADING_QUIZ };
+    case 'SUMMARY_LOADED':
+        return { ...state, status: AppStatus.SUMMARY, finalExam: null, correctiveSummary: action.payload.summary };
+    case 'LOAD_STATE':
+        return {
+            ...initialState,
+            ...action.payload,
+            theme: state.theme,
+            status: AppStatus.LEARNING,
+            error: null,
+        };
+    case 'RESET':
+      return { ...initialState, theme: state.theme };
+    case 'ERROR':
+      return { ...state, status: AppStatus.ERROR, error: action.payload };
+    default:
+      return state;
+  }
+}
+
+const TabButton: React.FC<{ active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }> = ({ active, onClick, icon, children }) => (
+    <button onClick={onClick} className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${active ? 'bg-primary text-primary-foreground' : 'text-secondary-foreground hover:bg-accent'}`}>
+        {icon}
+        {children}
+    </button>
+);
+
+
+export default function App() {
+  const [state, dispatch] = useReducer(appReducer, initialState);
+  const [currentView, setCurrentView] = useState<'learning' | 'weaknesses' | 'practice'>('learning');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', state.theme);
+    localStorage.setItem('smart-learner-theme', state.theme);
+  }, [state.theme]);
+
+  // Load theme from local storage on initial load
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('smart-learner-theme');
+    if (savedTheme && (savedTheme === 'light' || savedTheme === 'balanced' || savedTheme === 'dark')) {
+      dispatch({ type: 'SET_THEME', payload: savedTheme });
+    }
+  }, []);
+
+  const handleStart = async (sourceContent: string, preferences: LearningPreferences) => {
+    dispatch({ type: 'START_GENERATION', payload: { sourceContent, preferences } });
+    try {
+      const { mindMap, preAssessment } = await generateLearningPlan(sourceContent, preferences);
+      const unlockedMindMap = mindMap.map(node => ({ ...node, locked: !!node.parentId }));
+      dispatch({ type: 'PLAN_GENERATED', payload: { mindMap: unlockedMindMap, preAssessment } });
+    } catch (err) {
+      console.error(err);
+      dispatch({ type: 'ERROR', payload: 'خطا در ایجاد طرح درس. لطفاً دوباره تلاش کنید.' });
+    }
+  };
+
+  const handleSelectNode = useCallback(async (nodeId: string) => {
+    dispatch({ type: 'SELECT_NODE', payload: nodeId });
+    try {
+        if (state.nodeContents[nodeId]) {
+            dispatch({ type: 'NODE_CONTENT_LOADED', payload: state.nodeContents[nodeId] });
+            return;
+        }
+        const content = await generateNodeContent(state.mindMap.find(n => n.id === nodeId)!.title, state.sourceContent, state.preferences.style);
+        dispatch({ type: 'NODE_CONTENT_LOADED', payload: content });
+    } catch (err) {
+        console.error(err);
+        dispatch({ type: 'ERROR', payload: 'خطا در بارگذاری محتوای درس.' });
+    }
+  }, [state.mindMap, state.sourceContent, state.preferences.style, state.nodeContents]);
+
+  const handleStartQuiz = useCallback(async (nodeId: string) => {
+    dispatch({ type: 'START_QUIZ', payload: nodeId });
+    try {
+        const quiz = await generateQuiz(state.mindMap.find(n => n.id === nodeId)!.title, state.sourceContent);
+        dispatch({ type: 'QUIZ_LOADED', payload: quiz });
+    } catch (err) {
+        console.error(err);
+        dispatch({ type: 'ERROR', payload: 'خطا در ایجاد آزمون.' });
+    }
+  }, [state.mindMap, state.sourceContent]);
+  
+  const handleSubmitQuiz = useCallback(async (answers: Record<string, UserAnswer>) => {
+    dispatch({ type: 'SUBMIT_QUIZ' });
+    try {
+        const gradedResults = await gradeAndAnalyzeQuiz(state.activeQuiz!.questions, answers, state.sourceContent);
+        
+        const resultsWithFullData = gradedResults.map(res => {
+            const question = state.activeQuiz!.questions.find(q => q.id === res.questionId)!;
+            return {
+                ...res,
+                question,
+                userAnswer: answers[question.id],
+            };
+        });
+        
+        dispatch({ type: 'QUIZ_ANALYSIS_LOADED', payload: { results: resultsWithFullData } });
+
+    } catch (err) {
+        console.error(err);
+        dispatch({ type: 'ERROR', payload: 'خطا در تصحیح آزمون.' });
+    }
+  }, [state.activeQuiz, state.sourceContent]);
+
+
+  const handleStartFinalExam = async () => {
+    dispatch({ type: 'START_FINAL_EXAM' });
+    try {
+        const weaknessTopics = state.weaknesses.map(w => state.mindMap.find(n => n.title.includes(w.question.substring(0,20)))?.title).filter(Boolean).join(', ');
+        const exam = await generateFinalExam(state.sourceContent, weaknessTopics);
+        dispatch({ type: 'FINAL_EXAM_LOADED', payload: exam });
+    } catch (err) {
+        dispatch({ type: 'ERROR', payload: 'خطا در ایجاد آزمون نهایی.' });
+    }
+  };
+
+  const handleCompleteFinalExam = async (answers: Record<string, UserAnswer>) => {
+    dispatch({ type: 'COMPLETE_FINAL_EXAM' });
+    try {
+        const incorrectAnswersForSummary = Object.entries(answers).map(([qid, uAns]) => {
+          const q = state.finalExam!.questions.find(q => q.id === qid)!;
+          let isCorrect = false;
+          if (q.type === 'multiple-choice') isCorrect = uAns === q.correctAnswerIndex;
+          return { q, uAns, isCorrect };
+        })
+        .filter(item => !item.isCorrect)
+        .map(item => ({ question: item.q.question, correctAnswer: item.q.type === 'multiple-choice' ? item.q.options[item.q.correctAnswerIndex] : 'Complex Answer' }));
+
+        const summary = await generateCorrectiveSummary(state.sourceContent, incorrectAnswersForSummary);
+        dispatch({ type: 'SUMMARY_LOADED', payload: { summary } });
+    } catch (err) {
+        dispatch({ type: 'ERROR', payload: 'خطا در ایجاد خلاصه اصلاحی.' });
+    }
+  };
+
+  const handleBackToPlan = () => {
+    dispatch({ type: 'START_LEARNING' });
+  };
+  
+  const handleSaveProgress = () => {
+    const savableState: SavableState = {
+        version: CURRENT_APP_VERSION,
+        sourceContent: state.sourceContent,
+        preferences: state.preferences,
+        mindMap: state.mindMap,
+        nodeContents: state.nodeContents,
+        userProgress: state.userProgress,
+        weaknesses: state.weaknesses,
+    };
+    const blob = new Blob([JSON.stringify(savableState, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `smart-learner-progress-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const migrateState = (loadedData: any): Partial<AppState> => {
+      const version = loadedData.version || 0;
+      if (version < CURRENT_APP_VERSION) {
+          // In the future, migration logic for older versions would go here.
+          // For now, we just ensure the shape is compatible.
+      }
+      // Ensure all required fields exist, falling back to initial state defaults.
+      const migratedState = { ...initialState, ...loadedData };
+      return migratedState;
+  };
+
+  const handleLoadProgress = (file: File) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          try {
+              const loadedData = JSON.parse(event.target?.result as string);
+              const migratedData = migrateState(loadedData);
+              dispatch({ type: 'LOAD_STATE', payload: migratedData });
+          } catch (e) {
+              console.error("Failed to load or parse file", e);
+              dispatch({ type: 'ERROR', payload: 'فایل ذخیره شده معتبر نیست یا خراب شده است.' });
+          }
+      };
+      reader.readAsText(file);
+  };
+
+  const orderedNodes = useMemo(() => {
+    if (!state.mindMap || state.mindMap.length === 0) return [];
+    
+    // FIX: Add explicit type `MindMapNodeWithChildren` to ensure correct type inference during tree traversal, resolving 'unknown' type errors.
+    type MindMapNodeWithChildren = MindMapNode & { children: MindMapNodeWithChildren[] };
+
+    const nodesById = new Map<string, MindMapNodeWithChildren>(state.mindMap.map(node => [node.id, { ...node, children: [] }]));
+    const roots: MindMapNodeWithChildren[] = [];
+
+    state.mindMap.forEach(node => {
+        const currentNode = nodesById.get(node.id)!;
+        if (node.parentId && nodesById.has(node.parentId)) {
+            nodesById.get(node.parentId)!.children.push(currentNode);
+        } else {
+            roots.push(currentNode);
+        }
+    });
+
+    const ordered: MindMapNode[] = [];
+    const queue: MindMapNodeWithChildren[] = [...roots];
+    while (queue.length > 0) {
+        const node = queue.shift()!;
+        const originalNode = state.mindMap.find(n => n.id === node.id);
+        if (originalNode) {
+            ordered.push(originalNode);
+        }
+        if (node.children) {
+            queue.push(...node.children);
+        }
+    }
+    return ordered;
+  }, [state.mindMap]);
+
+  
+  const renderContent = () => {
+    switch (state.status) {
+      case AppStatus.IDLE:
+        return <HomePage onStart={handleStart} onLoad={handleLoadProgress} />;
+      case AppStatus.LOADING:
+        return <div className="flex flex-col items-center justify-center h-full"><Spinner /><p className="mt-4 text-muted-foreground">در حال پردازش... لطفاً منتظر بمانید.</p></div>;
+      case AppStatus.GRADING_QUIZ:
+        return <div className="flex flex-col items-center justify-center h-full"><Spinner /><p className="mt-4 text-muted-foreground">در حال تصحیح آزمون... هوش مصنوعی در حال تحلیل پاسخ‌های شماست.</p></div>;
+      case AppStatus.PRE_ASSESSMENT:
+        return <QuizView title="پیش‌آزمون هوشمند" quiz={state.preAssessment!} onSubmit={() => dispatch({ type: 'START_LEARNING' })} />;
+      case AppStatus.LEARNING:
+      case AppStatus.ALL_NODES_COMPLETED:
+        const allNodesCompleted = state.mindMap.length > 0 && state.mindMap.every(node => state.userProgress[node.id] === 'completed');
+        return (
+            <div className="p-4 sm:p-6 md:p-8 flex flex-col h-full">
+                <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+                    <h1 className="text-2xl font-bold text-foreground">نقشه راه یادگیری شما</h1>
+                    <div className="flex items-center gap-2 p-1 bg-secondary rounded-lg">
+                        <TabButton active={currentView === 'learning'} onClick={() => setCurrentView('learning')} icon={<BrainCircuit />}>نقشه ذهنی</TabButton>
+                        <TabButton active={currentView === 'weaknesses'} onClick={() => setCurrentView('weaknesses')} icon={<XCircle />}>نقاط ضعف</TabButton>
+                        <TabButton active={currentView === 'practice'} onClick={() => setCurrentView('practice')} icon={<ClipboardList />}>تمرین</TabButton>
+                    </div>
+                </div>
+                {allNodesCompleted && (
+                    <div className="p-4 mb-6 text-center text-success-foreground bg-success/20 border-r-4 border-success rounded-md">
+                        <h3 className="font-bold">تبریک!</h3>
+                        <p>شما تمام بخش‌های این طرح درس را با موفقیت به پایان رساندید. اکنون برای آزمون نهایی آماده شوید.</p>
+                        <button onClick={handleStartFinalExam} className="px-6 py-2 mt-3 font-semibold text-white transition-transform duration-200 bg-success rounded-md hover:bg-success/90 active:scale-95">
+                            شروع آزمون نهایی
+                        </button>
+                    </div>
+                )}
+                <div className="flex-grow overflow-auto">
+                    {currentView === 'learning' && <MindMap nodes={state.mindMap} progress={state.userProgress} onSelectNode={handleSelectNode} onTakeQuiz={handleStartQuiz} />}
+                    {currentView === 'weaknesses' && <WeaknessTracker weaknesses={state.weaknesses} />}
+                    {currentView === 'practice' && <PracticeZone />}
+                </div>
+            </div>
+        );
+      case AppStatus.VIEWING_NODE: {
+        const activeNode = state.mindMap.find(n => n.id === state.activeNodeId);
+        const currentIndex = orderedNodes.findIndex(n => n.id === state.activeNodeId);
+        const prevNode = currentIndex > 0 ? orderedNodes[currentIndex - 1] : null;
+        const nextNode = currentIndex < orderedNodes.length - 1 ? orderedNodes[currentIndex + 1] : null;
+        
+        return <NodeView 
+                    node={activeNode!} 
+                    content={state.nodeContents[state.activeNodeId!]} 
+                    onBack={handleBackToPlan} 
+                    onStartQuiz={() => handleStartQuiz(state.activeNodeId!)}
+                    onNavigate={handleSelectNode}
+                    prevNode={prevNode}
+                    nextNode={nextNode}
+                />;
+      }
+      case AppStatus.TAKING_QUIZ:
+        const quizNode = state.mindMap.find(n => n.id === state.activeNodeId);
+        return <QuizView title={`آزمون: ${quizNode?.title}`} quiz={state.activeQuiz!} onSubmit={handleSubmitQuiz} />;
+      case AppStatus.QUIZ_REVIEW:
+        return <QuizReview results={state.quizResults!} onFinish={handleBackToPlan} />;
+      case AppStatus.FINAL_EXAM:
+          return <QuizView title="آزمون نهایی" quiz={state.finalExam!} onSubmit={handleCompleteFinalExam} />;
+      case AppStatus.SUMMARY:
+        return (
+            <div className="p-8 mx-auto max-w-4xl">
+                <h1 className="mb-4 text-3xl font-bold text-foreground">خلاصه اصلاحی شما</h1>
+                <p className="mb-6 text-muted-foreground">این یک جزوه شخصی‌سازی شده بر اساس سوالاتی است که در آزمون نهایی به اشتباه پاسخ دادید. برای مرور و تقویت یادگیری خود از آن استفاده کنید.</p>
+                <div className="p-6 prose bg-card border rounded-lg max-w-none text-card-foreground" dangerouslySetInnerHTML={{ __html: state.correctiveSummary }} />
+                <button onClick={() => dispatch({ type: 'RESET' })} className="px-6 py-2 mt-8 font-semibold transition-transform duration-200 rounded-md text-primary-foreground bg-primary hover:bg-primary-hover active:scale-95">
+                    شروع یک موضوع جدید
+                </button>
+            </div>
+        );
+      case AppStatus.ERROR:
+        return (
+            <div className="flex flex-col items-center justify-center h-full text-center text-destructive">
+                <XCircle className="w-16 h-16" />
+                <h2 className="mt-4 text-2xl font-bold">خطا رخ داد</h2>
+                <p className="mt-2">{state.error}</p>
+                <button onClick={() => dispatch({ type: 'RESET' })} className="px-6 py-2 mt-6 font-semibold transition-transform duration-200 rounded-md text-destructive-foreground bg-destructive hover:bg-destructive/90 active:scale-95">
+                    بازگشت به صفحه اصلی
+                </button>
+            </div>
+        );
+      default:
+        return null;
+    }
+  }
+
+  const hasProgress = state.status !== AppStatus.IDLE && state.status !== AppStatus.LOADING;
+
+  return (
+    <div className="w-full min-h-screen transition-colors duration-300 bg-background text-foreground">
+        <header className="flex items-center justify-between p-4 border-b shadow-sm bg-card border-border">
+             <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full text-primary-foreground bg-primary">
+                    <BookOpen className="w-6 h-6" />
+                </div>
+                <h1 className="text-xl font-bold text-primary">یادگیرنده هوشمند</h1>
+            </div>
+            <div className="flex items-center gap-4">
+                <div className="flex items-center p-1 space-x-1 rounded-lg bg-secondary">
+                    <button onClick={() => dispatch({ type: 'SET_THEME', payload: 'light' })} className={`p-1.5 rounded-md ${state.theme === 'light' ? 'bg-card shadow-sm' : 'hover:bg-card/50'}`} aria-label="Light theme"><Sun className="w-5 h-5" /></button>
+                    <button onClick={() => dispatch({ type: 'SET_THEME', payload: 'balanced' })} className={`p-1.5 rounded-md ${state.theme === 'balanced' ? 'bg-card shadow-sm' : 'hover:bg-card/50'}`} aria-label="Balanced theme"><div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary to-gray-700"></div></button>
+                    <button onClick={() => dispatch({ type: 'SET_THEME', payload: 'dark' })} className={`p-1.5 rounded-md ${state.theme === 'dark' ? 'bg-card shadow-sm' : 'hover:bg-card/50'}`} aria-label="Dark theme"><Moon className="w-5 h-5" /></button>
+                </div>
+                {hasProgress && (
+                    <>
+                        <button onClick={handleSaveProgress} className="flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors rounded-md sm:px-4 text-secondary-foreground bg-secondary hover:bg-accent" title="ذخیره پیشرفت">
+                            <Save className="w-4 h-4" />
+                            <span className="hidden sm:inline">ذخیره</span>
+                        </button>
+                        <button onClick={() => dispatch({type: 'RESET'})} className="flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors rounded-md sm:px-4 text-secondary-foreground bg-secondary hover:bg-accent" title="شروع مجدد">
+                            <Home className="w-4 h-4" />
+                            <span className="hidden sm:inline">شروع مجدد</span>
+                        </button>
+                    </>
+                )}
+            </div>
+        </header>
+        <main className="h-[calc(100vh-65px)] overflow-auto">
+            {renderContent()}
+        </main>
+    </div>
+  );
+}
+
+const HomePage: React.FC<{ onStart: (content: string, preferences: LearningPreferences) => void; onLoad: (file: File) => void; }> = ({ onStart, onLoad }) => {
+    const [sourceContent, setSourceContent] = useState('');
+    const [preferences, setPreferences] = useState<LearningPreferences>({
+        style: 'balanced',
+        addExplanatoryNodes: false,
+        customInstructions: '',
+    });
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (sourceContent.trim().length < 50) {
+            alert("لطفاً محتوای کافی برای تحلیل وارد کنید (حداقل ۵۰ کاراکتر).");
+            return;
+        }
+        onStart(sourceContent, preferences);
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            onLoad(file);
+        }
+    };
+
+    return (
+        <div className="flex items-center justify-center min-h-full p-4 bg-gradient-to-br sm:p-6 md:p-8 from-primary/10 via-background to-secondary/20">
+            <div className="w-full max-w-3xl p-6 space-y-8 border rounded-xl shadow-lg md:p-8 bg-card">
+                <div className="text-center">
+                    <h2 className="text-3xl font-bold text-card-foreground">موضوع یادگیری خود را وارد کنید</h2>
+                    <p className="mt-2 text-muted-foreground">متن، مقاله یا هر محتوای دیگری که می‌خواهید یاد بگیرید را اینجا کپی کنید یا یک فایل پیشرفت را بارگذاری نمایید.</p>
+                </div>
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <textarea
+                        value={sourceContent}
+                        onChange={(e) => setSourceContent(e.target.value)}
+                        className="w-full px-3 py-2 transition-colors duration-200 border rounded-md shadow-sm h-60 bg-background text-foreground border-border focus:ring-ring focus:border-primary"
+                        placeholder="مثال: فصل اول کتاب تاریخ خود را اینجا قرار دهید..."
+                    />
+                    
+                    <div className="p-4 border rounded-md bg-secondary/50 border-border">
+                      <h3 className="mb-4 font-semibold text-secondary-foreground">شخصی‌سازی یادگیری</h3>
+                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                        <div>
+                          <label className="block mb-2 text-sm font-medium text-secondary-foreground">سبک توضیحات</label>
+                           <select value={preferences.style} onChange={e => setPreferences({...preferences, style: e.target.value as any})} className="w-full p-2 border rounded-md bg-background border-border focus:ring-ring focus:border-primary">
+                               <option value="faithful">وفادار به متن</option>
+                               <option value="balanced">متعادل</option>
+                               <option value="creative">خلاقانه و گسترده</option>
+                           </select>
+                        </div>
+                         <div>
+                          <label className="block mb-2 text-sm font-medium text-secondary-foreground">دستورالعمل‌های سفارشی (اختیاری)</label>
+                          <input type="text" value={preferences.customInstructions} onChange={e => setPreferences({...preferences, customInstructions: e.target.value})} className="w-full p-2 border rounded-md bg-background border-border focus:ring-ring focus:border-primary" placeholder="مثال: روی جنبه تاریخی تمرکز کن"/>
+                        </div>
+                      </div>
+                      <div className="flex items-center mt-4 space-x-2 space-x-reverse">
+                        <input
+                            type="checkbox"
+                            id="addExplanatoryNodes"
+                            checked={preferences.addExplanatoryNodes}
+                            onChange={e => setPreferences({...preferences, addExplanatoryNodes: e.target.checked})}
+                            className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                        />
+                        <label htmlFor="addExplanatoryNodes" className="text-sm font-medium text-secondary-foreground">افزودن گره‌های توضیحی برای مفاهیم پیش‌نیاز</label>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-4 sm:flex-row">
+                        <button type="submit" className="flex items-center justify-center w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md text-primary-foreground bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring active:scale-95 disabled:bg-primary/70" disabled={!sourceContent.trim()}>
+                            <span>ایجاد طرح یادگیری</span>
+                            <ArrowRight className="w-5 h-5" />
+                        </button>
+                        <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".json" className="hidden" />
+                        <button type="button" onClick={() => fileInputRef.current?.click()} className="flex items-center justify-center w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent active:scale-95">
+                             <Upload className="w-5 h-5" />
+                            <span>بارگذاری</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};

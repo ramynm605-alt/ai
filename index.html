@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>یادگیرنده هوشمند</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Vazirmatn', sans-serif;
+      }
+      
+      /* Theme Variables */
+      :root { /* Balanced Theme */
+        --background: 249 250 251; /* gray-50 */
+        --foreground: 17 24 39; /* gray-900 */
+        --card: 255 255 255; /* white */
+        --card-foreground: 17 24 39; /* gray-900 */
+        --popover: 255 255 255; /* white */
+        --popover-foreground: 17 24 39; /* gray-900 */
+        --primary: 79 70 229; /* indigo-600 */
+        --primary-foreground: 238 242 255; /* indigo-50 */
+        --primary-hover: 67 56 202; /* indigo-700 */
+        --secondary: 243 244 246; /* gray-100 */
+        --secondary-foreground: 55 65 81; /* gray-700 */
+        --muted: 156 163 175; /* gray-400 */
+        --muted-foreground: 107 114 128; /* gray-500 */
+        --accent: 243 244 246; /* gray-100 */
+        --accent-foreground: 17 24 39; /* gray-900 */
+        --destructive: 220 38 38; /* red-600 */
+        --destructive-foreground: 254 242 242; /* red-50 */
+        --success: 22 163 74; /* green-600 */
+        --success-foreground: 240 253 244; /* green-50 */
+        --border: 229 231 235; /* gray-200 */
+        --input: 229 231 235; /* gray-200 */
+        --ring: 79 70 229; /* indigo-600 */
+      }
+      [data-theme="dark"] {
+        --background: 17 24 39; /* gray-900 */
+        --foreground: 229 231 235; /* gray-200 */
+        --card: 31 41 55; /* gray-800 */
+        --card-foreground: 229 231 235; /* gray-200 */
+        --popover: 31 41 55; /* gray-800 */
+        --popover-foreground: 229 231 235; /* gray-200 */
+        --primary: 129 140 248; /* indigo-400 */
+        --primary-foreground: 17 24 39; /* gray-900 */
+        --primary-hover: 99 102 241; /* indigo-500 */
+        --secondary: 55 65 81; /* gray-700 */
+        --secondary-foreground: 249 250 251; /* gray-50 */
+        --muted: 75 85 99; /* gray-600 */
+        --muted-foreground: 156 163 175; /* gray-400 */
+        --accent: 55 65 81; /* gray-700 */
+        --accent-foreground: 249 250 251; /* gray-50 */
+        --destructive: 185 28 28; /* red-700 */
+        --destructive-foreground: 249 250 251; /* gray-50 */
+        --success: 52 211 153; /* green-400 */
+        --success-foreground: 17 24 39; /* gray-900 */
+        --border: 55 65 81; /* gray-700 */
+        --input: 55 65 81; /* gray-700 */
+        --ring: 129 140 248; /* indigo-400 */
+      }
+      [data-theme="light"] {
+        --background: 255 255 255; /* white */
+        --foreground: 31 41 55; /* gray-800 */
+        --card: 249 250 251; /* gray-50 */
+        --card-foreground: 31 41 55; /* gray-800 */
+        --popover: 255 255 255; /* white */
+        --popover-foreground: 31 41 55; /* gray-800 */
+        --primary: 59 130 246; /* blue-500 */
+        --primary-foreground: 255 255 255; /* white */
+        --primary-hover: 37 99 235; /* blue-600 */
+        --secondary: 243 244 246; /* gray-100 */
+        --secondary-foreground: 31 41 55; /* gray-800 */
+        --muted: 229 231 235; /* gray-200 */
+        --muted-foreground: 107 114 128; /* gray-500 */
+        --accent: 243 244 246; /* gray-100 */
+        --accent-foreground: 31 41 55; /* gray-800 */
+        --destructive: 239 68 68; /* red-500 */
+        --destructive-foreground: 255 255 255; /* white */
+        --success: 22 163 74; /* green-600 */
+        --success-foreground: 255 255 255; /* white */
+        --border: 229 231 235; /* gray-200 */
+        --input: 229 231 235; /* gray-200 */
+        --ring: 59 130 246; /* blue-500 */
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1",
+    "marked": "https://aistudiocdn.com/marked@^17.0.0"
+  }
+}
+</script>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            border: 'rgb(var(--border) / <alpha-value>)',
+            input: 'rgb(var(--input) / <alpha-value>)',
+            ring: 'rgb(var(--ring) / <alpha-value>)',
+            background: 'rgb(var(--background) / <alpha-value>)',
+            foreground: 'rgb(var(--foreground) / <alpha-value>)',
+            primary: {
+              DEFAULT: 'rgb(var(--primary) / <alpha-value>)',
+              foreground: 'rgb(var(--primary-foreground) / <alpha-value>)',
+              hover: 'rgb(var(--primary-hover) / <alpha-value>)',
+            },
+            secondary: {
+              DEFAULT: 'rgb(var(--secondary) / <alpha-value>)',
+              foreground: 'rgb(var(--secondary-foreground) / <alpha-value>)',
+            },
+            destructive: {
+              DEFAULT: 'rgb(var(--destructive) / <alpha-value>)',
+              foreground: 'rgb(var(--destructive-foreground) / <alpha-value>)',
+            },
+            success: {
+              DEFAULT: 'rgb(var(--success) / <alpha-value>)',
+              foreground: 'rgb(var(--success-foreground) / <alpha-value>)',
+            },
+            muted: {
+              DEFAULT: 'rgb(var(--muted) / <alpha-value>)',
+              foreground: 'rgb(var(--muted-foreground) / <alpha-value>)',
+            },
+            accent: {
+              DEFAULT: 'rgb(var(--accent) / <alpha-value>)',
+              foreground: 'rgb(var(--accent-foreground) / <alpha-value>)',
+            },
+            popover: {
+              DEFAULT: 'rgb(var(--popover) / <alpha-value>)',
+              foreground: 'rgb(var(--popover-foreground) / <alpha-value>)',
+            },
+            card: {
+              DEFAULT: 'rgb(var(--card) / <alpha-value>)',
+              foreground: 'rgb(var(--card-foreground) / <alpha-value>)',
+            },
+          },
+        },
+      },
+    };
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

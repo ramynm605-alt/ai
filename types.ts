@@ -1,0 +1,123 @@
+
+
+export interface MindMapNode {
+    id: string;
+    title: string;
+    parentId: string | null;
+    locked: boolean;
+    difficulty: number;
+    isExplanatory: boolean;
+    children?: MindMapNode[];
+  }
+
+  export type QuestionType = 'multiple-choice' | 'short-answer' | 'matching';
+
+  export interface BaseQuestion {
+    id: string;
+    question: string;
+    difficulty: 'آسان' | 'متوسط' | 'سخت';
+    points: number;
+    type: QuestionType;
+  }
+  
+  export interface MultipleChoiceQuestion extends BaseQuestion {
+    type: 'multiple-choice';
+    options: string[];
+    correctAnswerIndex: number;
+  }
+  
+  export interface ShortAnswerQuestion extends BaseQuestion {
+    type: 'short-answer';
+    correctAnswer: string; // Example correct answer for display
+  }
+  
+  export interface MatchingItem {
+      id: string;
+      text: string;
+  }
+
+  export interface MatchingQuestion extends BaseQuestion {
+    type: 'matching';
+    stems: MatchingItem[]; // Column A
+    options: MatchingItem[]; // Column B
+    correctPairs: { stemId: string; optionId: string }[];
+  }
+  
+  export type QuizQuestion = MultipleChoiceQuestion | ShortAnswerQuestion | MatchingQuestion;
+
+  export interface Quiz {
+    questions: QuizQuestion[];
+  }
+  
+  export interface Weakness {
+    question: string;
+    incorrectAnswer: string;
+    correctAnswer: string;
+  }
+  
+  export interface LearningPreferences {
+    style: 'faithful' | 'balanced' | 'creative';
+    addExplanatoryNodes: boolean;
+    customInstructions: string;
+  }
+
+  export interface NodeContent {
+    introduction: string;
+    theory: string;
+    example: string;
+    connection: string;
+    conclusion: string;
+  }
+
+  export enum AppStatus {
+    IDLE = 'IDLE',
+    LOADING = 'LOADING',
+    PRE_ASSESSMENT = 'PRE_ASSESSMENT',
+    LEARNING = 'LEARNING',
+    VIEWING_NODE = 'VIEWING_NODE',
+    TAKING_QUIZ = 'TAKING_QUIZ',
+    GRADING_QUIZ = 'GRADING_QUIZ',
+    QUIZ_REVIEW = 'QUIZ_REVIEW',
+    ALL_NODES_COMPLETED = 'ALL_NODES_COMPLETED',
+    FINAL_EXAM = 'FINAL_EXAM',
+    SUMMARY = 'SUMMARY',
+    ERROR = 'ERROR',
+  }
+
+  export type UserAnswer = string | number | Record<string, string>;
+
+  export interface QuizResult {
+    question: QuizQuestion;
+    userAnswer: UserAnswer;
+    isCorrect: boolean;
+    score: number;
+    analysis: string;
+  }
+  
+  export interface AppState {
+    theme: 'light' | 'balanced' | 'dark';
+    status: AppStatus;
+    sourceContent: string;
+    preferences: LearningPreferences;
+    mindMap: MindMapNode[];
+    preAssessment: Quiz | null;
+    activeQuiz: Quiz | null;
+    activeNodeId: string | null;
+    nodeContents: { [key: string]: NodeContent };
+    userProgress: { [key: string]: 'completed' | 'failed' | 'in_progress' };
+    weaknesses: Weakness[];
+    finalExam: Quiz | null;
+    quizResults: QuizResult[] | null;
+    correctiveSummary: string;
+    error: string | null;
+  }
+
+  export interface SavableState {
+    version: number;
+    sourceContent: string;
+    preferences: LearningPreferences;
+    mindMap: MindMapNode[];
+    nodeContents: { [key: string]: NodeContent };
+    userProgress: { [key: string]: 'completed' | 'failed' | 'in_progress' };
+    weaknesses: Weakness[];
+  }
