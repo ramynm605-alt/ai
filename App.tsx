@@ -3,7 +3,7 @@
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef } from 'react';
 import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz } from './services/geminiService';
-import { ArrowRight, BookOpen, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload } from './components/icons';
+import { ArrowRight, BookOpen, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText } from './components/icons';
 import MindMap from './components/MindMap';
 import NodeView from './components/NodeView';
 import QuizView from './components/QuizView';
@@ -14,6 +14,8 @@ import Spinner from './components/Spinner';
 import StartupScreen from './components/StartupScreen';
 
 const CURRENT_APP_VERSION = 1;
+declare var pdfjsLib: any;
+
 
 const initialState: AppState = {
   theme: 'balanced',
@@ -475,7 +477,10 @@ const HomePage: React.FC<{ onStart: (content: string, preferences: LearningPrefe
         addExplanatoryNodes: false,
         customInstructions: '',
     });
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isParsingPdf, setIsParsingPdf] = useState(false);
+    const jsonInputRef = useRef<HTMLInputElement>(null);
+    const pdfInputRef = useRef<HTMLInputElement>(null);
+
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -486,11 +491,50 @@ const HomePage: React.FC<{ onStart: (content: string, preferences: LearningPrefe
         onStart(sourceContent, preferences);
     };
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleJsonFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
             onLoad(file);
         }
+    };
+
+    const handlePdfFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsParsingPdf(true);
+        setSourceContent('');
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                if (!event.target?.result) throw new Error("File could not be read.");
+
+                const typedarray = new Uint8Array(event.target.result as ArrayBuffer);
+                const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                let fullText = '';
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map((item: any) => item.str).join(' ');
+                    fullText += pageText + '\n\n'; // Add space between pages
+                }
+                setSourceContent(fullText);
+            } catch (error) {
+                console.error("Error parsing PDF:", error);
+                alert("خطا در پردازش فایل PDF. لطفاً از یک فایل معتبر استفاده کنید.");
+            } finally {
+                setIsParsingPdf(false);
+            }
+        };
+        reader.onerror = () => {
+            console.error("Error reading file.");
+            alert("خطا در خواندن فایل.");
+            setIsParsingPdf(false);
+        }
+        reader.readAsArrayBuffer(file);
+
+        if (e.target) e.target.value = '';
     };
 
     return (
@@ -498,14 +542,15 @@ const HomePage: React.FC<{ onStart: (content: string, preferences: LearningPrefe
             <div className="w-full max-w-3xl p-6 space-y-8 border rounded-xl shadow-lg md:p-8 bg-card">
                 <div className="text-center">
                     <h2 className="text-3xl font-bold text-card-foreground">موضوع یادگیری خود را وارد کنید</h2>
-                    <p className="mt-2 text-muted-foreground">متن، مقاله یا هر محتوای دیگری که می‌خواهید یاد بگیرید را اینجا کپی کنید یا یک فایل پیشرفت را بارگذاری نمایید.</p>
+                    <p className="mt-2 text-muted-foreground">متن خود را کپی کنید، یک PDF بارگذاری کنید، یا یک فایل پیشرفت را باز کنید.</p>
                 </div>
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <textarea
                         value={sourceContent}
                         onChange={(e) => setSourceContent(e.target.value)}
-                        className="w-full px-3 py-2 transition-colors duration-200 border rounded-md shadow-sm h-60 bg-background text-foreground border-border focus:ring-ring focus:border-primary"
-                        placeholder="مثال: فصل اول کتاب تاریخ خود را اینجا قرار دهید..."
+                        className="w-full px-3 py-2 transition-colors duration-200 border rounded-md shadow-sm h-60 bg-background text-foreground border-border focus:ring-ring focus:border-primary disabled:bg-muted/50"
+                        placeholder="مثال: فصل اول کتاب تاریخ خود را اینجا قرار دهید یا یک فایل PDF بارگذاری کنید..."
+                        disabled={isParsingPdf}
                     />
                     
                     <div className="p-4 border rounded-md bg-secondary/50 border-border">
@@ -537,15 +582,21 @@ const HomePage: React.FC<{ onStart: (content: string, preferences: LearningPrefe
                     </div>
 
                     <div className="flex flex-col gap-4 sm:flex-row">
-                        <button type="submit" className="flex items-center justify-center w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md text-primary-foreground bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring active:scale-95 disabled:bg-primary/70" disabled={!sourceContent.trim()}>
+                        <button type="submit" className="flex items-center justify-center flex-grow w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md text-primary-foreground bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring active:scale-95 disabled:bg-primary/70" disabled={!sourceContent.trim() || isParsingPdf}>
                             <span>ایجاد طرح یادگیری</span>
                             <ArrowRight className="w-5 h-5" />
                         </button>
-                        <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".json" className="hidden" />
-                        <button type="button" onClick={() => fileInputRef.current?.click()} className="flex items-center justify-center w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent active:scale-95">
-                             <Upload className="w-5 h-5" />
-                            <span>بارگذاری</span>
-                        </button>
+                        <div className="flex gap-4">
+                            <input type="file" ref={pdfInputRef} onChange={handlePdfFileChange} accept=".pdf" className="hidden" />
+                            <button type="button" onClick={() => pdfInputRef.current?.click()} disabled={isParsingPdf} className="flex items-center justify-center w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent active:scale-95 disabled:opacity-70">
+                                {isParsingPdf ? <><Spinner /><span>در حال پردازش...</span></> : <><FileText className="w-5 h-5" /><span>بارگذاری PDF</span></>}
+                            </button>
+                            <input type="file" ref={jsonInputRef} onChange={handleJsonFileChange} accept=".json" className="hidden" />
+                            <button type="button" onClick={() => jsonInputRef.current?.click()} className="flex items-center justify-center w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent active:scale-95">
+                                 <Upload className="w-5 h-5" />
+                                <span>بارگذاری پیشرفت</span>
+                            </button>
+                        </div>
                     </div>
                 </form>
             </div>

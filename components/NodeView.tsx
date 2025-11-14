@@ -14,10 +14,10 @@ interface NodeViewProps {
     nextNode: MindMapNode | null;
 }
 
-const Section: React.FC<{ title: string, children: React.ReactNode }> = ({ title, children }) => (
+const Section: React.FC<{ title: string; content: string }> = ({ title, content }) => (
     <div className="mb-6">
         <h3 className="pb-2 mb-3 text-xl font-semibold border-b-2 text-primary border-primary/30">{title}</h3>
-        <p className="leading-relaxed text-card-foreground/90">{children}</p>
+        <div className="node-content-section leading-relaxed text-card-foreground/90" dangerouslySetInnerHTML={{ __html: content }} />
     </div>
 );
 
@@ -30,11 +30,11 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
             </button>
             <div className="p-6 border rounded-lg shadow-lg sm:p-8 bg-card border-border">
                 <h2 className="mb-8 text-3xl font-bold text-center text-card-foreground">{node.title}</h2>
-                <Section title="مقدمه">{content.introduction}</Section>
-                <Section title="تئوری">{content.theory}</Section>
-                <Section title="مثال">{content.example}</Section>
-                <Section title="ارتباط با سایر مفاهیم">{content.connection}</Section>
-                <Section title="نتیجه‌گیری">{content.conclusion}</Section>
+                <Section title="مقدمه" content={content.introduction} />
+                <Section title="تئوری" content={content.theory} />
+                <Section title="مثال" content={content.example} />
+                <Section title="ارتباط با سایر مفاهیم" content={content.connection} />
+                <Section title="نتیجه‌گیری" content={content.conclusion} />
                 <div className="flex flex-col items-center gap-4 pt-6 mt-8 border-t sm:flex-row sm:justify-between border-border">
                     <button 
                         onClick={() => prevNode && onNavigate(prevNode.id)} 

@@ -134,6 +134,8 @@ export async function generateNodeContent(nodeTitle: string, fullContent: string
 
         const prompt = `مفهوم "${nodeTitle}" را بر اساس متن کامل ارائه شده، توضیح بده. ساختار توضیحات باید شامل پنج بخش باشد: مقدمه، تئوری، مثال، ارتباط (با مفاهیم دیگر) و نتیجه‌گیری. سبک توضیحات باید '${style}' باشد. ${styleInstruction[style]}.
 
+        مهم: در هر بخش، کلمات و عبارات کلیدی را با استفاده از Markdown به صورت **پررنگ** مشخص کن و مهم‌ترین جمله (فقط یک جمله) را با استفاده از Markdown به صورت *ایتالیک* مشخص کن.
+
         متن کامل برای مرجع:
         ---
         ${fullContent}
@@ -149,7 +151,18 @@ export async function generateNodeContent(nodeTitle: string, fullContent: string
             }
         });
 
-        return JSON.parse(response.text);
+        const parsedJson = JSON.parse(response.text);
+
+        // Convert markdown to HTML for each section
+        const htmlContent: NodeContent = {
+            introduction: marked.parse(parsedJson.introduction) as string,
+            theory: marked.parse(parsedJson.theory) as string,
+            example: marked.parse(parsedJson.example) as string,
+            connection: marked.parse(parsedJson.connection) as string,
+            conclusion: marked.parse(parsedJson.conclusion) as string,
+        };
+
+        return htmlContent;
     });
 }
 
