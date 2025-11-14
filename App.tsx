@@ -424,7 +424,7 @@ export default function App() {
   const hasProgress = state.status !== AppStatus.IDLE && state.status !== AppStatus.LOADING;
 
   return (
-    <div className="w-full min-h-screen transition-colors duration-300 bg-background text-foreground">
+    <div className="flex flex-col w-full min-h-screen transition-colors duration-300 bg-background text-foreground">
         <header className="flex items-center justify-between p-4 border-b shadow-sm bg-card border-border">
              <div className="flex items-center gap-3">
                 <div className="p-2 rounded-full text-primary-foreground bg-primary">
@@ -452,9 +452,12 @@ export default function App() {
                 )}
             </div>
         </header>
-        <main className="h-[calc(100vh-65px)] overflow-auto">
+        <main className="flex-grow overflow-auto">
             {renderContent()}
         </main>
+        <footer className="p-4 text-sm text-center border-t text-muted-foreground bg-card border-border">
+            © {new Date().getFullYear()} پایه های چهار پایه. تمام حقوق محفوظ است.
+        </footer>
     </div>
   );
 }

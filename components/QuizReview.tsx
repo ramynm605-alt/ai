@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import { QuizResult, QuizQuestion, MultipleChoiceQuestion, ShortAnswerQuestion, MatchingQuestion } from '../types';
 import { CheckCircle, XCircle } from './icons';
@@ -18,7 +19,7 @@ const getAnswerText = (question: QuizQuestion, answer: any): string => {
      if (question.type === 'matching') {
         return "مشاهده جزئیات تطبیق";
     }
-    return "N/A";
+    return "نامشخص";
 };
 
 
