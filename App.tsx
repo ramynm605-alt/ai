@@ -11,6 +11,7 @@ import QuizReview from './components/QuizReview';
 import WeaknessTracker from './components/WeaknessTracker';
 import PracticeZone from './components/PracticeZone';
 import Spinner from './components/Spinner';
+import StartupScreen from './components/StartupScreen';
 
 const CURRENT_APP_VERSION = 1;
 
@@ -142,6 +143,7 @@ const TabButton: React.FC<{ active: boolean; onClick: () => void; icon: React.Re
 export default function App() {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [currentView, setCurrentView] = useState<'learning' | 'weaknesses' | 'practice'>('learning');
+  const [showStartupScreen, setShowStartupScreen] = useState(true);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', state.theme);
@@ -422,6 +424,10 @@ export default function App() {
   }
 
   const hasProgress = state.status !== AppStatus.IDLE && state.status !== AppStatus.LOADING;
+
+  if (showStartupScreen) {
+    return <StartupScreen onAnimationEnd={() => setShowStartupScreen(false)} />;
+  }
 
   return (
     <div className="flex flex-col w-full min-h-screen transition-colors duration-300 bg-background text-foreground">
