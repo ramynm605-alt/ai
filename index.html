@@ -243,6 +243,26 @@
         align-items: center;
         gap: 6px;
       }
+
+      /* Homepage Dashboard Styles */
+      .dashboard-card {
+          transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+      }
+      .dashboard-card:hover {
+          transform: translateY(-5px);
+          box-shadow: 0 10px 25px -5px rgb(var(--primary) / 0.1), 0 8px 10px -6px rgb(var(--primary) / 0.1);
+          border-color: rgb(var(--primary) / 0.6);
+      }
+
+      .delete-session-btn {
+          opacity: 0;
+          transition: opacity 0.3s ease, transform 0.3s ease;
+          transform: scale(0.9);
+      }
+      .dashboard-card:hover .delete-session-btn {
+          opacity: 1;
+          transform: scale(1);
+      }
     </style>
   <script type="importmap">
 {

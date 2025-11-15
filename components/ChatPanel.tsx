@@ -1,29 +1,35 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChatMessage } from '../types';
-import { XCircle, Maximize, Minimize, ArrowRight, BrainCircuit } from './icons';
+import { ChatMessage, CoachStyle } from '../types';
+import { XCircle, Maximize, Minimize, ArrowRight, BrainCircuit, Settings } from './icons';
 
 interface ChatPanelProps {
     history: ChatMessage[];
     isFullScreen: boolean;
     initialMessage: string;
+    coachStyle: CoachStyle;
     onSend: (message: string) => void;
     onClose: () => void;
     onToggleFullScreen: () => void;
     onInitialMessageConsumed: () => void;
+    onSetCoachStyle: (style: CoachStyle) => void;
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({
     history,
     isFullScreen,
     initialMessage,
+    coachStyle,
     onSend,
     onClose,
     onToggleFullScreen,
     onInitialMessageConsumed,
+    onSetCoachStyle,
 }) => {
     const [input, setInput] = useState('');
     const [isTyping, setIsTyping] = useState(false);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const settingsRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -41,6 +47,18 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             onInitialMessageConsumed();
         }
     }, [initialMessage, onInitialMessageConsumed]);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (isSettingsOpen && settingsRef.current && !settingsRef.current.contains(event.target as Node)) {
+                setIsSettingsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isSettingsOpen]);
 
     const handleSend = () => {
         if (input.trim()) {
@@ -61,17 +79,27 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         ? 'inset-0 w-full h-full rounded-none' 
         : 'bottom-6 right-6 w-[400px] h-[550px] max-w-[90vw] max-h-[80vh] rounded-2xl'
     }`;
+    
+    const coachStyleOptions: { key: CoachStyle; label: string; description: string }[] = [
+        { key: 'balanced', label: 'متعادل', description: 'پاسخ‌های دوستانه و آموزشی.' },
+        { key: 'concise', label: 'مختصر', description: 'پاسخ‌های کوتاه و مستقیم.' },
+        { key: 'detailed', label: 'با جزئیات', description: 'توضیحات کامل با مثال‌های متعدد.' },
+        { key: 'formal', label: 'رسمی', description: 'لحن علمی و آکادمیک.' },
+    ];
 
 
     return (
         <div className={panelClasses}>
             {/* Header */}
-            <div className="flex items-center justify-between p-3 border-b border-border shrink-0">
+            <div className="relative flex items-center justify-between p-3 border-b border-border shrink-0">
                 <div className="flex items-center gap-2">
                     <BrainCircuit className="w-6 h-6 text-primary" />
                     <h3 className="font-bold text-card-foreground">مربی هوشمند</h3>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                    <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className="p-1 rounded-full text-muted-foreground hover:bg-accent">
+                        <Settings className="w-5 h-5" />
+                    </button>
                     <button onClick={onToggleFullScreen} className="p-1 rounded-full text-muted-foreground hover:bg-accent">
                         {isFullScreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
                     </button>
@@ -80,6 +108,30 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
                     </button>
                 </div>
             </div>
+
+             {/* Settings Panel */}
+            {isSettingsOpen && (
+                <div ref={settingsRef} className="absolute top-14 right-3 z-10 w-64 p-3 border rounded-lg shadow-xl bg-popover text-popover-foreground">
+                    <p className="mb-3 text-sm font-semibold">سبک پاسخ مربی</p>
+                    <div className="space-y-2">
+                        {coachStyleOptions.map(option => (
+                            <button
+                                key={option.key}
+                                onClick={() => {
+                                    onSetCoachStyle(option.key);
+                                    setIsSettingsOpen(false);
+                                }}
+                                className={`w-full text-right p-2 rounded-md text-sm transition-colors ${
+                                    coachStyle === option.key ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'
+                                }`}
+                            >
+                                <p className="font-medium">{option.label}</p>
+                                <p className={`text-xs ${coachStyle === option.key ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>{option.description}</p>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Messages */}
             <div className="flex-grow p-4 overflow-y-auto">

@@ -1,5 +1,7 @@
 
 
+export type CoachStyle = 'balanced' | 'concise' | 'detailed' | 'formal';
+
 export interface ChatMessage {
   role: 'user' | 'model';
   message: string;
@@ -124,6 +126,7 @@ export interface MindMapNode {
     isChatOpen: boolean;
     isChatFullScreen: boolean;
     chatHistory: ChatMessage[];
+    coachStyle: CoachStyle;
   }
 
   export interface SavableState {
@@ -137,4 +140,7 @@ export interface MindMapNode {
     nodeContents: { [key: string]: NodeContent };
     userProgress: { [key: string]: 'completed' | 'failed' | 'in_progress' };
     weaknesses: Weakness[];
+    chatHistory: ChatMessage[];
+    coachStyle: CoachStyle;
+    lastModified: number;
   }

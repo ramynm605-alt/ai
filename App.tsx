@@ -1,7 +1,7 @@
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef } from 'react';
-import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage } from './types';
+import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, CoachStyle } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse } from './services/geminiService';
-import { ArrowRight, BookOpen, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize } from './components/icons';
+import { ArrowRight, BookOpen, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize, History, Trash2 } from './components/icons';
 import MindMap from './components/MindMap';
 import NodeView from './components/NodeView';
 import QuizView from './components/QuizView';
@@ -14,6 +14,7 @@ import PreAssessmentReview from './components/PreAssessmentReview';
 import ChatPanel from './components/ChatPanel';
 
 const CURRENT_APP_VERSION = 3;
+const STORAGE_KEY = 'smart-learner-session';
 declare var pdfjsLib: any;
 
 
@@ -47,6 +48,7 @@ const initialState: AppState = {
   isChatOpen: false,
   isChatFullScreen: false,
   chatHistory: [],
+  coachStyle: 'balanced',
 };
 
 function appReducer(state: AppState, action: any): AppState {
@@ -132,22 +134,28 @@ function appReducer(state: AppState, action: any): AppState {
         return { ...state, status: AppStatus.GRADING_QUIZ };
     case 'SUMMARY_LOADED':
         return { ...state, status: AppStatus.SUMMARY, finalExam: null, correctiveSummary: action.payload.summary };
-    case 'LOAD_STATE':
+    case 'LOAD_STATE': {
         const loadedState = action.payload;
-        const status = loadedState.preAssessmentAnalysis ? AppStatus.LEARNING : AppStatus.IDLE;
+        const status = loadedState.status || AppStatus.LEARNING;
         return {
             ...initialState,
             ...loadedState,
-            sourceImages: loadedState.sourceImages || [],
-            sourcePageContents: loadedState.sourcePageContents || null,
             theme: state.theme,
             status: status,
             loadingMessage: null,
             error: null,
-            chatHistory: loadedState.chatHistory || [{ role: 'model', message: 'سلام! من مربی هوشمند شما هستم. از سرگیری یادگیری شما خوشحالم.' }]
+            coachStyle: loadedState.coachStyle || 'balanced',
+            chatHistory: loadedState.chatHistory && loadedState.chatHistory.length > 0
+                ? [...loadedState.chatHistory, { role: 'model', message: 'خوش برگشتید! از کجا ادامه بدهیم؟' }]
+                : [{ role: 'model', message: 'سلام! از سرگیری یادگیری شما خوشحالم.' }]
         };
+    }
     case 'RESET':
+      localStorage.removeItem(STORAGE_KEY);
       return { ...initialState, theme: state.theme };
+    case 'DELETE_SAVED_SESSION':
+      localStorage.removeItem(STORAGE_KEY);
+      return state;
     case 'ERROR':
       return { ...state, status: AppStatus.ERROR, error: action.payload, loadingMessage: null };
     // Chat Actions
@@ -157,8 +165,10 @@ function appReducer(state: AppState, action: any): AppState {
         return { ...state, isChatOpen: false, isChatFullScreen: false };
     case 'TOGGLE_CHAT_FULLSCREEN':
         return { ...state, isChatFullScreen: !state.isChatFullScreen };
-    case 'ADD_CHAT_MESSAGE':
-        return { ...state, chatHistory: [...state.chatHistory, action.payload] };
+    case 'UPDATE_CHAT_HISTORY':
+        return { ...state, chatHistory: action.payload };
+    case 'SET_COACH_STYLE':
+        return { ...state, coachStyle: action.payload };
     default:
       return state;
   }
@@ -177,19 +187,64 @@ export default function App() {
   const [currentView, setCurrentView] = useState<'learning' | 'weaknesses' | 'practice'>('learning');
   const [showStartupScreen, setShowStartupScreen] = useState(true);
   const [chatInitialMessage, setChatInitialMessage] = useState('');
+  const [savedSession, setSavedSession] = useState<SavableState | null>(null);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', state.theme);
     localStorage.setItem('smart-learner-theme', state.theme);
   }, [state.theme]);
 
-  // Load theme from local storage on initial load
+  // Load theme & session from local storage on initial load
   useEffect(() => {
     const savedTheme = localStorage.getItem('smart-learner-theme');
     if (savedTheme && (savedTheme === 'light' || savedTheme === 'balanced' || savedTheme === 'dark')) {
       dispatch({ type: 'SET_THEME', payload: savedTheme });
     }
+    
+    try {
+        const savedData = localStorage.getItem(STORAGE_KEY);
+        if (savedData) {
+            const parsedData = JSON.parse(savedData);
+            if (parsedData.version === CURRENT_APP_VERSION && parsedData.mindMap) {
+                setSavedSession(parsedData);
+            } else {
+                localStorage.removeItem(STORAGE_KEY);
+            }
+        }
+    } catch (e) {
+        console.error("Failed to load saved session:", e);
+        localStorage.removeItem(STORAGE_KEY);
+    }
   }, []);
+  
+  // Auto-save progress to local storage when state changes
+  useEffect(() => {
+      const isSavableStatus = ![AppStatus.IDLE, AppStatus.LOADING, AppStatus.ERROR, AppStatus.GRADING_QUIZ, AppStatus.GRADING_PRE_ASSESSMENT].includes(state.status);
+
+      if (isSavableStatus && state.mindMap.length > 0) {
+          const savableState: SavableState = {
+              version: CURRENT_APP_VERSION,
+              sourceContent: state.sourceContent,
+              sourcePageContents: state.sourcePageContents,
+              sourceImages: state.sourceImages,
+              preferences: state.preferences,
+              mindMap: state.mindMap,
+              preAssessmentAnalysis: state.preAssessmentAnalysis,
+              nodeContents: state.nodeContents,
+              userProgress: state.userProgress,
+              weaknesses: state.weaknesses,
+              chatHistory: state.chatHistory,
+              coachStyle: state.coachStyle,
+              lastModified: Date.now(),
+          };
+          try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(savableState));
+              setSavedSession(savableState); 
+          } catch (e) {
+              console.error("Failed to save session:", e);
+          }
+      }
+  }, [state]);
 
   const handleStart = async (sourceContent: string, sourcePageContents: string[] | null, sourceImages: {mimeType: string, data: string}[], preferences: LearningPreferences) => {
     dispatch({ type: 'START_GENERATION', payload: { sourceContent, sourcePageContents, sourceImages, preferences } });
@@ -311,6 +366,9 @@ export default function App() {
         nodeContents: state.nodeContents,
         userProgress: state.userProgress,
         weaknesses: state.weaknesses,
+        chatHistory: state.chatHistory,
+        coachStyle: state.coachStyle,
+        lastModified: Date.now(),
     };
     const blob = new Blob([JSON.stringify(savableState, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -327,14 +385,12 @@ export default function App() {
       const version = loadedData.version || 0;
       if (version < CURRENT_APP_VERSION) {
           // In the future, migration logic for older versions would go here.
-          // For now, we just ensure the shape is compatible.
       }
-      // Ensure all required fields exist, falling back to initial state defaults.
-      const migratedState = { ...initialState, ...loadedData };
+      const migratedState = { ...initialState, ...loadedData, chatHistory: loadedData.chatHistory || [], coachStyle: loadedData.coachStyle || 'balanced' };
       return migratedState;
   };
 
-  const handleLoadProgress = (file: File) => {
+  const handleLoadProgressFromFile = (file: File) => {
       const reader = new FileReader();
       reader.onload = (event) => {
           try {
@@ -348,38 +404,47 @@ export default function App() {
       };
       reader.readAsText(file);
   };
+  
+    const handleContinueSession = () => {
+        if (savedSession) {
+            dispatch({ type: 'LOAD_STATE', payload: savedSession });
+        }
+    };
 
-  const handleSendChatMessage = async (message: string) => {
-    const userMessage: ChatMessage = { role: 'user', message };
-    dispatch({ type: 'ADD_CHAT_MESSAGE', payload: userMessage });
-    
-    // Add a temporary loading message for the model
-    const loadingMessage: ChatMessage = { role: 'model', message: '...' };
-    dispatch({ type: 'ADD_CHAT_MESSAGE', payload: loadingMessage });
+    const handleDeleteSession = () => {
+        if (window.confirm('آیا از حذف جلسه ذخیره شده خود مطمئن هستید؟ این عمل قابل بازگشت نیست.')) {
+            dispatch({ type: 'DELETE_SAVED_SESSION' });
+            setSavedSession(null);
+        }
+    };
 
-    try {
-        const activeNodeTitle = state.activeNodeId ? state.mindMap.find(n => n.id === state.activeNodeId)?.title || null : null;
-        const response = await generateChatResponse([...state.chatHistory, userMessage], message, activeNodeTitle, state.sourceContent);
-        const modelMessage: ChatMessage = { role: 'model', message: response };
+    const handleSendChatMessage = async (message: string) => {
+        const userMessage: ChatMessage = { role: 'user', message };
+        const loadingMessage: ChatMessage = { role: 'model', message: '...' };
 
-        // Replace the loading message with the actual response
-        dispatch({ type: 'ADD_CHAT_MESSAGE', payload: modelMessage });
-        const historyWithoutLoading = [...state.chatHistory, userMessage, modelMessage];
-        dispatch({type: 'ADD_CHAT_MESSAGE', payload: { ...state, chatHistory: historyWithoutLoading }});
+        const currentHistory = [...state.chatHistory, userMessage];
+        dispatch({ type: 'UPDATE_CHAT_HISTORY', payload: [...currentHistory, loadingMessage] });
 
+        try {
+            const activeNodeTitle = state.activeNodeId ? state.mindMap.find(n => n.id === state.activeNodeId)?.title || null : null;
+            const response = await generateChatResponse(currentHistory, message, activeNodeTitle, state.sourceContent, state.coachStyle);
+            const modelMessage: ChatMessage = { role: 'model', message: response };
 
-    } catch (err) {
-        console.error("Chat error:", err);
-        const errorMessage: ChatMessage = { role: 'model', message: 'متاسفانه در حال حاضر قادر به پاسخگویی نیستم. لطفاً دوباره تلاش کنید.' };
-        dispatch({ type: 'ADD_CHAT_MESSAGE', payload: errorMessage });
-        const historyWithoutLoading = [...state.chatHistory, userMessage, errorMessage];
-        dispatch({type: 'ADD_CHAT_MESSAGE', payload: { ...state, chatHistory: historyWithoutLoading }});
-    }
-  };
+            dispatch({ type: 'UPDATE_CHAT_HISTORY', payload: [...currentHistory, modelMessage] });
+        } catch (err) {
+            console.error("Chat error:", err);
+            const errorMessage: ChatMessage = { role: 'model', message: 'متاسفانه در حال حاضر قادر به پاسخگویی نیستم. لطفاً دوباره تلاش کنید.' };
+            dispatch({ type: 'UPDATE_CHAT_HISTORY', payload: [...currentHistory, errorMessage] });
+        }
+    };
   
     const handleExplainRequest = (text: string) => {
         setChatInitialMessage(`لطفاً این بخش را بیشتر توضیح بده: "${text}"`);
         dispatch({ type: 'OPEN_CHAT' });
+    };
+
+    const handleSetCoachStyle = (style: CoachStyle) => {
+        dispatch({ type: 'SET_COACH_STYLE', payload: style });
     };
 
   const orderedNodes = useMemo(() => {
@@ -428,7 +493,13 @@ export default function App() {
     
     switch (state.status) {
       case AppStatus.IDLE:
-        return <HomePage onStart={handleStart} onLoad={handleLoadProgress} />;
+        return <HomePage 
+            onStart={handleStart} 
+            onLoadFile={handleLoadProgressFromFile} 
+            savedSession={savedSession}
+            onContinue={handleContinueSession}
+            onDelete={handleDeleteSession}
+        />;
       case AppStatus.LOADING:
         return <LoadingScreen message={state.loadingMessage || 'در حال پردازش...'} subMessage="این فرآیند ممکن است کمی طول بکشد." />;
       case AppStatus.GRADING_PRE_ASSESSMENT:
@@ -575,6 +646,8 @@ export default function App() {
                         onToggleFullScreen={() => dispatch({ type: 'TOGGLE_CHAT_FULLSCREEN' })}
                         initialMessage={chatInitialMessage}
                         onInitialMessageConsumed={() => setChatInitialMessage('')}
+                        coachStyle={state.coachStyle}
+                        onSetCoachStyle={handleSetCoachStyle}
                     />
                 )}
             </>
@@ -586,7 +659,13 @@ export default function App() {
   );
 }
 
-const HomePage: React.FC<{ onStart: (content: string, pageContents: string[] | null, images: {mimeType: string, data: string}[], preferences: LearningPreferences) => void; onLoad: (file: File) => void; }> = ({ onStart, onLoad }) => {
+const HomePage: React.FC<{ 
+    onStart: (content: string, pageContents: string[] | null, images: {mimeType: string, data: string}[], preferences: LearningPreferences) => void; 
+    onLoadFile: (file: File) => void;
+    savedSession: SavableState | null;
+    onContinue: () => void;
+    onDelete: () => void;
+}> = ({ onStart, onLoadFile, savedSession, onContinue, onDelete }) => {
     const [sourceContent, setSourceContent] = useState('');
     const [sourcePageContents, setSourcePageContents] = useState<string[] | null>(null);
     const [sourceImages, setSourceImages] = useState<{mimeType: string, data: string}[]>([]);
@@ -614,7 +693,7 @@ const HomePage: React.FC<{ onStart: (content: string, pageContents: string[] | n
     const handleJsonFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            onLoad(file);
+            onLoadFile(file);
         }
     };
 
@@ -732,80 +811,113 @@ const HomePage: React.FC<{ onStart: (content: string, pageContents: string[] | n
     };
 
     return (
-        <div className="flex items-center justify-center min-h-full p-4 bg-gradient-to-br sm:p-6 md:p-8 from-primary/10 via-background to-secondary/20">
-            <div className="w-full max-w-3xl p-6 space-y-8 border rounded-xl shadow-lg md:p-8 bg-card">
-                <div className="text-center">
-                    <h2 className="text-3xl font-bold text-card-foreground">موضوع یادگیری خود را وارد کنید</h2>
-                    <p className="mt-2 text-muted-foreground">متن خود را کپی کنید، یک PDF بارگذاری کنید، یا یک فایل پیشرفت را باز کنید.</p>
+        <div className="flex flex-col items-center justify-center min-h-full p-4 bg-gradient-to-br sm:p-6 md:p-8 from-primary/10 via-background to-secondary/20">
+            <div className="w-full max-w-3xl space-y-8">
+                 <div className="text-center">
+                    <h2 className="text-3xl font-bold text-foreground">یادگیرنده هوشمند</h2>
+                    <p className="mt-2 text-muted-foreground">پلتفرم یادگیری شخصی شما. با بارگذاری محتوا شروع کنید یا جلسه قبلی خود را ادامه دهید.</p>
                 </div>
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    <div>
-                        <textarea
-                            value={sourceContent}
-                            onChange={(e) => setSourceContent(e.target.value)}
-                            className="w-full px-3 py-2 transition-colors duration-200 border rounded-md shadow-sm h-60 bg-background text-foreground border-border focus:ring-ring focus:border-primary disabled:bg-muted/50"
-                            placeholder="مثال: فصل اول کتاب تاریخ خود را اینجا قرار دهید یا یک فایل PDF بارگذاری کنید..."
-                            disabled={isParsingPdf}
-                        />
-                         {isParsingPdf && <div className="py-2 text-sm text-center text-muted-foreground">{pdfProgress}</div>}
-                    </div>
-                    
-                    <div className="p-4 border rounded-md bg-secondary/50 border-border">
-                      <h3 className="mb-4 font-semibold text-secondary-foreground">شخصی‌سازی یادگیری</h3>
-                        <div>
-                          <label htmlFor="learningGoal" className="block mb-2 text-sm font-medium text-secondary-foreground">هدف شما از یادگیری چیست؟</label>
-                          <input 
-                            type="text" 
-                            id="learningGoal"
-                            value={preferences.learningGoal} 
-                            onChange={e => setPreferences({...preferences, learningGoal: e.target.value})} 
-                            className="w-full p-2 border rounded-md bg-background border-border focus:ring-ring focus:border-primary" 
-                            placeholder="مثال: برای امتحان آماده می‌شوم، فقط از روی کنجکاوی، ..."/>
-                        </div>
-                      <div className="grid grid-cols-1 gap-6 mt-4 md:grid-cols-2">
-                        <div>
-                          <label className="block mb-2 text-sm font-medium text-secondary-foreground">سبک توضیحات</label>
-                           <select value={preferences.style} onChange={e => setPreferences({...preferences, style: e.target.value as any})} className="w-full p-2 border rounded-md bg-background border-border focus:ring-ring focus:border-primary">
-                               <option value="faithful">وفادار به متن</option>
-                               <option value="balanced">متعادل</option>
-                               <option value="creative">خلاقانه و گسترده</option>
-                           </select>
-                        </div>
-                         <div>
-                          <label className="block mb-2 text-sm font-medium text-secondary-foreground">دستورالعمل‌های سفارشی (اختیاری)</label>
-                          <input type="text" value={preferences.customInstructions} onChange={e => setPreferences({...preferences, customInstructions: e.target.value})} className="w-full p-2 border rounded-md bg-background border-border focus:ring-ring focus:border-primary" placeholder="مثال: روی جنبه تاریخی تمرکز کن"/>
-                        </div>
-                      </div>
-                      <div className="flex items-center mt-4 space-x-2 space-x-reverse">
-                        <input
-                            type="checkbox"
-                            id="addExplanatoryNodes"
-                            checked={preferences.addExplanatoryNodes}
-                            onChange={e => setPreferences({...preferences, addExplanatoryNodes: e.target.checked})}
-                            className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
-                        />
-                        <label htmlFor="addExplanatoryNodes" className="text-sm font-medium text-secondary-foreground">افزودن گره‌های توضیحی برای مفاهیم پیش‌نیاز</label>
-                      </div>
-                    </div>
 
-                    <div className="flex flex-col gap-4 sm:flex-row">
-                        <button type="submit" className="flex items-center justify-center flex-grow w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md text-primary-foreground bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring active:scale-95 disabled:bg-primary/70" disabled={!sourceContent.trim() || isParsingPdf}>
-                            <span>ایجاد طرح یادگیری</span>
-                            <ArrowRight className="w-5 h-5" />
+                {savedSession && (
+                    <div className="relative p-6 transition duration-300 border rounded-xl shadow-lg dashboard-card bg-card border-border">
+                        <button onClick={onDelete} title="حذف جلسه" className="absolute p-1.5 transition-colors rounded-full top-3 right-3 text-muted-foreground hover:bg-destructive/20 hover:text-destructive delete-session-btn">
+                            <Trash2 className="w-5 h-5" />
                         </button>
-                        <div className="flex gap-4">
-                            <input type="file" ref={pdfInputRef} onChange={handlePdfFileChange} accept=".pdf" className="hidden" />
-                            <button type="button" onClick={() => pdfInputRef.current?.click()} disabled={isParsingPdf} className="flex items-center justify-center w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent active:scale-95 disabled:opacity-70">
-                                {isParsingPdf ? <><Spinner /><span>در حال پردازش...</span></> : <><FileText className="w-5 h-5" /><span>بارگذاری PDF</span></>}
-                            </button>
-                            <input type="file" ref={jsonInputRef} onChange={handleJsonFileChange} accept=".json" className="hidden" />
-                            <button type="button" onClick={() => jsonInputRef.current?.click()} className="flex items-center justify-center w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent active:scale-95">
-                                 <Upload className="w-5 h-5" />
-                                <span>بارگذاری پیشرفت</span>
-                            </button>
+                        <div className="flex items-center gap-4 mb-4">
+                            <div className="p-3 rounded-full bg-primary/10 text-primary">
+                                <History className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold text-card-foreground">ادامه جلسه قبلی</h3>
+                                <p className="text-sm text-muted-foreground">
+                                    آخرین تغییرات: {new Date(savedSession.lastModified).toLocaleString('fa-IR')}
+                                </p>
+                            </div>
                         </div>
+                        <p className="mb-4 text-sm text-card-foreground/80 line-clamp-2">
+                            موضوع: {savedSession.preferences.learningGoal || (savedSession.sourceContent.substring(0, 80) + '...')}
+                        </p>
+                        <button onClick={onContinue} className="flex items-center justify-center w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md text-primary-foreground bg-primary/90 hover:bg-primary active:scale-95">
+                            <span>ادامه یادگیری</span>
+                            <ArrowRight className="w-5 h-5 transform -rotate-180" />
+                        </button>
                     </div>
-                </form>
+                )}
+
+                <div className="w-full p-6 space-y-8 border rounded-xl shadow-lg md:p-8 bg-card">
+                    <div className="text-center">
+                        <h2 className="text-3xl font-bold text-card-foreground">{savedSession ? 'یا یک موضوع جدید شروع کنید' : 'موضوع یادگیری خود را وارد کنید'}</h2>
+                        <p className="mt-2 text-muted-foreground">متن خود را کپی کنید، یک PDF بارگذاری کنید، یا یک فایل پیشرفت را باز کنید.</p>
+                    </div>
+                    <form onSubmit={handleSubmit} className="space-y-6">
+                        <div>
+                            <textarea
+                                value={sourceContent}
+                                onChange={(e) => setSourceContent(e.target.value)}
+                                className="w-full px-3 py-2 transition-colors duration-200 border rounded-md shadow-sm h-60 bg-background text-foreground border-border focus:ring-ring focus:border-primary disabled:bg-muted/50"
+                                placeholder="مثال: فصل اول کتاب تاریخ خود را اینجا قرار دهید یا یک فایل PDF بارگذاری کنید..."
+                                disabled={isParsingPdf}
+                            />
+                             {isParsingPdf && <div className="py-2 text-sm text-center text-muted-foreground">{pdfProgress}</div>}
+                        </div>
+                        
+                        <div className="p-4 border rounded-md bg-secondary/50 border-border">
+                          <h3 className="mb-4 font-semibold text-secondary-foreground">شخصی‌سازی یادگیری</h3>
+                            <div>
+                              <label htmlFor="learningGoal" className="block mb-2 text-sm font-medium text-secondary-foreground">هدف شما از یادگیری چیست؟</label>
+                              <input 
+                                type="text" 
+                                id="learningGoal"
+                                value={preferences.learningGoal} 
+                                onChange={e => setPreferences({...preferences, learningGoal: e.target.value})} 
+                                className="w-full p-2 border rounded-md bg-background border-border focus:ring-ring focus:border-primary" 
+                                placeholder="مثال: برای امتحان آماده می‌شوم، فقط از روی کنجکاوی، ..."/>
+                            </div>
+                          <div className="grid grid-cols-1 gap-6 mt-4 md:grid-cols-2">
+                            <div>
+                              <label className="block mb-2 text-sm font-medium text-secondary-foreground">سبک توضیحات</label>
+                               <select value={preferences.style} onChange={e => setPreferences({...preferences, style: e.target.value as any})} className="w-full p-2 border rounded-md bg-background border-border focus:ring-ring focus:border-primary">
+                                   <option value="faithful">وفادار به متن</option>
+                                   <option value="balanced">متعادل</option>
+                                   <option value="creative">خلاقانه و گسترده</option>
+                               </select>
+                            </div>
+                             <div>
+                              <label className="block mb-2 text-sm font-medium text-secondary-foreground">دستورالعمل‌های سفارشی (اختیاری)</label>
+                              <input type="text" value={preferences.customInstructions} onChange={e => setPreferences({...preferences, customInstructions: e.target.value})} className="w-full p-2 border rounded-md bg-background border-border focus:ring-ring focus:border-primary" placeholder="مثال: روی جنبه تاریخی تمرکز کن"/>
+                            </div>
+                          </div>
+                          <div className="flex items-center mt-4 space-x-2 space-x-reverse">
+                            <input
+                                type="checkbox"
+                                id="addExplanatoryNodes"
+                                checked={preferences.addExplanatoryNodes}
+                                onChange={e => setPreferences({...preferences, addExplanatoryNodes: e.target.checked})}
+                                className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                            />
+                            <label htmlFor="addExplanatoryNodes" className="text-sm font-medium text-secondary-foreground">افزودن گره‌های توضیحی برای مفاهیم پیش‌نیاز</label>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-4 sm:flex-row">
+                            <button type="submit" className="flex items-center justify-center flex-grow w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md text-primary-foreground bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring active:scale-95 disabled:bg-primary/70" disabled={!sourceContent.trim() || isParsingPdf}>
+                                <span>ایجاد طرح یادگیری</span>
+                                <ArrowRight className="w-5 h-5" />
+                            </button>
+                            <div className="flex gap-4">
+                                <input type="file" ref={pdfInputRef} onChange={handlePdfFileChange} accept=".pdf" className="hidden" />
+                                <button type="button" onClick={() => pdfInputRef.current?.click()} disabled={isParsingPdf} className="flex items-center justify-center w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent active:scale-95 disabled:opacity-70">
+                                    {isParsingPdf ? <><Spinner /><span>در حال پردازش...</span></> : <><FileText className="w-5 h-5" /><span>بارگذاری PDF</span></>}
+                                </button>
+                                <input type="file" ref={jsonInputRef} onChange={handleJsonFileChange} accept=".json" className="hidden" />
+                                <button type="button" onClick={() => jsonInputRef.current?.click()} className="flex items-center justify-center w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent active:scale-95">
+                                     <Upload className="w-5 h-5" />
+                                    <span>بارگذاری پیشرفت</span>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
     );
