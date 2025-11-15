@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, PreAssessmentAnalysis } from '../types';
+import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, PreAssessmentAnalysis, ChatMessage } from '../types';
 import { marked } from 'marked';
 
 const API_KEY = process.env.API_KEY;
@@ -503,5 +503,39 @@ export async function generatePracticeResponse(topic: string, problem: string): 
         });
 
         return marked.parse(response.text);
+    });
+}
+
+export async function generateChatResponse(history: ChatMessage[], question: string, nodeTitle: string | null, sourceContent: string): Promise<string> {
+    return withRetry(async () => {
+        const historyForPrompt = history.map(h => `${h.role === 'user' ? 'کاربر' : 'مربی'}: ${h.message}`).join('\n');
+
+        const contextPrompt = nodeTitle
+            ? `کاربر در حال مطالعه درسی با عنوان "${nodeTitle}" است. برای پاسخ به سوالات به این موضوع و محتوای کلی زیر توجه کن.`
+            : `کاربر در حال بررسی نقشه ذهنی کلی است.`;
+
+        const prompt = `شما یک مربی یادگیری هوشمند، صمیمی و آگاه به نام "مربی هوشمند" هستید. وظیفه شما کمک به کاربر برای درک بهتر مطالب درسی است. بر اساس متن درس و تاریخچه گفتگو به سوال کاربر پاسخ دهید. پاسخ‌های خود را به صورت Markdown ارائه دهید.
+
+        ${contextPrompt}
+        
+        محتوای کلی درس برای مرجع:
+        ---
+        ${sourceContent}
+        ---
+
+        تاریخچه گفتگو:
+        ${historyForPrompt}
+
+        سوال جدید کاربر: ${question}
+
+        پاسخ شما:
+        `;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-pro",
+            contents: prompt,
+        });
+
+        return marked.parse(response.text) as string;
     });
 }

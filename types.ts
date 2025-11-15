@@ -1,5 +1,10 @@
 
 
+export interface ChatMessage {
+  role: 'user' | 'model';
+  message: string;
+}
+
 
 export interface MindMapNode {
     id: string;
@@ -115,6 +120,10 @@ export interface MindMapNode {
     correctiveSummary: string;
     loadingMessage: string | null;
     error: string | null;
+    // Coach/Chat state
+    isChatOpen: boolean;
+    isChatFullScreen: boolean;
+    chatHistory: ChatMessage[];
   }
 
   export interface SavableState {

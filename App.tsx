@@ -1,7 +1,7 @@
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef } from 'react';
-import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis } from './types';
-import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment } from './services/geminiService';
-import { ArrowRight, BookOpen, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target } from './components/icons';
+import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage } from './types';
+import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse } from './services/geminiService';
+import { ArrowRight, BookOpen, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize } from './components/icons';
 import MindMap from './components/MindMap';
 import NodeView from './components/NodeView';
 import QuizView from './components/QuizView';
@@ -11,6 +11,7 @@ import PracticeZone from './components/PracticeZone';
 import Spinner from './components/Spinner';
 import StartupScreen from './components/StartupScreen';
 import PreAssessmentReview from './components/PreAssessmentReview';
+import ChatPanel from './components/ChatPanel';
 
 const CURRENT_APP_VERSION = 3;
 declare var pdfjsLib: any;
@@ -42,6 +43,10 @@ const initialState: AppState = {
   correctiveSummary: '',
   loadingMessage: null,
   error: null,
+  // Coach/Chat state
+  isChatOpen: false,
+  isChatFullScreen: false,
+  chatHistory: [],
 };
 
 function appReducer(state: AppState, action: any): AppState {
@@ -51,7 +56,8 @@ function appReducer(state: AppState, action: any): AppState {
     case 'START_GENERATION':
       return { ...initialState, theme: state.theme, status: AppStatus.LOADING, sourceContent: action.payload.sourceContent, sourcePageContents: action.payload.sourcePageContents, sourceImages: action.payload.sourceImages, preferences: action.payload.preferences, loadingMessage: 'در حال تحلیل محتوای شما و ساخت نقشه ذهنی...' };
     case 'PLAN_GENERATED':
-      return { ...state, status: AppStatus.PRE_ASSESSMENT, mindMap: action.payload.mindMap, preAssessment: action.payload.preAssessment, loadingMessage: null };
+        const welcomeMessage: ChatMessage = { role: 'model', message: 'سلام! من مربی هوشمند شما هستم. هر سوالی در مورد این طرح درس دارید، از من بپرسید.' };
+        return { ...state, status: AppStatus.PRE_ASSESSMENT, mindMap: action.payload.mindMap, preAssessment: action.payload.preAssessment, loadingMessage: null, chatHistory: [welcomeMessage] };
     case 'SUBMIT_PRE_ASSESSMENT':
         return { ...state, status: AppStatus.GRADING_PRE_ASSESSMENT, preAssessmentAnswers: action.payload };
     case 'PRE_ASSESSMENT_ANALYSIS_LOADED':
@@ -138,11 +144,21 @@ function appReducer(state: AppState, action: any): AppState {
             status: status,
             loadingMessage: null,
             error: null,
+            chatHistory: loadedState.chatHistory || [{ role: 'model', message: 'سلام! من مربی هوشمند شما هستم. از سرگیری یادگیری شما خوشحالم.' }]
         };
     case 'RESET':
       return { ...initialState, theme: state.theme };
     case 'ERROR':
       return { ...state, status: AppStatus.ERROR, error: action.payload, loadingMessage: null };
+    // Chat Actions
+    case 'OPEN_CHAT':
+        return { ...state, isChatOpen: true };
+    case 'CLOSE_CHAT':
+        return { ...state, isChatOpen: false, isChatFullScreen: false };
+    case 'TOGGLE_CHAT_FULLSCREEN':
+        return { ...state, isChatFullScreen: !state.isChatFullScreen };
+    case 'ADD_CHAT_MESSAGE':
+        return { ...state, chatHistory: [...state.chatHistory, action.payload] };
     default:
       return state;
   }
@@ -160,6 +176,7 @@ export default function App() {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [currentView, setCurrentView] = useState<'learning' | 'weaknesses' | 'practice'>('learning');
   const [showStartupScreen, setShowStartupScreen] = useState(true);
+  const [chatInitialMessage, setChatInitialMessage] = useState('');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', state.theme);
@@ -332,6 +349,39 @@ export default function App() {
       reader.readAsText(file);
   };
 
+  const handleSendChatMessage = async (message: string) => {
+    const userMessage: ChatMessage = { role: 'user', message };
+    dispatch({ type: 'ADD_CHAT_MESSAGE', payload: userMessage });
+    
+    // Add a temporary loading message for the model
+    const loadingMessage: ChatMessage = { role: 'model', message: '...' };
+    dispatch({ type: 'ADD_CHAT_MESSAGE', payload: loadingMessage });
+
+    try {
+        const activeNodeTitle = state.activeNodeId ? state.mindMap.find(n => n.id === state.activeNodeId)?.title || null : null;
+        const response = await generateChatResponse([...state.chatHistory, userMessage], message, activeNodeTitle, state.sourceContent);
+        const modelMessage: ChatMessage = { role: 'model', message: response };
+
+        // Replace the loading message with the actual response
+        dispatch({ type: 'ADD_CHAT_MESSAGE', payload: modelMessage });
+        const historyWithoutLoading = [...state.chatHistory, userMessage, modelMessage];
+        dispatch({type: 'ADD_CHAT_MESSAGE', payload: { ...state, chatHistory: historyWithoutLoading }});
+
+
+    } catch (err) {
+        console.error("Chat error:", err);
+        const errorMessage: ChatMessage = { role: 'model', message: 'متاسفانه در حال حاضر قادر به پاسخگویی نیستم. لطفاً دوباره تلاش کنید.' };
+        dispatch({ type: 'ADD_CHAT_MESSAGE', payload: errorMessage });
+        const historyWithoutLoading = [...state.chatHistory, userMessage, errorMessage];
+        dispatch({type: 'ADD_CHAT_MESSAGE', payload: { ...state, chatHistory: historyWithoutLoading }});
+    }
+  };
+  
+    const handleExplainRequest = (text: string) => {
+        setChatInitialMessage(`لطفاً این بخش را بیشتر توضیح بده: "${text}"`);
+        dispatch({ type: 'OPEN_CHAT' });
+    };
+
   const orderedNodes = useMemo(() => {
     if (!state.mindMap || state.mindMap.length === 0) return [];
     
@@ -432,6 +482,7 @@ export default function App() {
                     onNavigate={handleSelectNode}
                     prevNode={prevNode}
                     nextNode={nextNode}
+                    onExplainRequest={handleExplainRequest}
                 />;
       }
       case AppStatus.TAKING_QUIZ:
@@ -506,6 +557,28 @@ export default function App() {
         <main className="flex-grow overflow-auto">
             {renderContent()}
         </main>
+        {hasProgress && (
+            <>
+                <button 
+                    onClick={() => dispatch({ type: 'OPEN_CHAT' })} 
+                    className="fixed bottom-6 right-6 z-50 flex items-center justify-center w-16 h-16 rounded-full shadow-lg bg-primary text-primary-foreground hover:bg-primary-hover transition-transform transform hover:scale-110"
+                    aria-label="Open chat"
+                >
+                    <MessageSquare className="w-8 h-8" />
+                </button>
+                {state.isChatOpen && (
+                    <ChatPanel
+                        history={state.chatHistory}
+                        isFullScreen={state.isChatFullScreen}
+                        onSend={handleSendChatMessage}
+                        onClose={() => dispatch({ type: 'CLOSE_CHAT' })}
+                        onToggleFullScreen={() => dispatch({ type: 'TOGGLE_CHAT_FULLSCREEN' })}
+                        initialMessage={chatInitialMessage}
+                        onInitialMessageConsumed={() => setChatInitialMessage('')}
+                    />
+                )}
+            </>
+        )}
         <footer className="p-4 text-sm text-center border-t text-muted-foreground bg-card border-border">
             © {new Date().getFullYear()} پایه های چهار پایه. تمام حقوق محفوظ است.
         </footer>

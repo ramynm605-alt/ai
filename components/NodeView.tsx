@@ -1,8 +1,6 @@
-
-
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { MindMapNode, NodeContent } from '../types';
-import { ArrowRight } from './icons';
+import { ArrowRight, MessageSquare } from './icons';
 
 interface NodeViewProps {
     node: MindMapNode;
@@ -12,6 +10,7 @@ interface NodeViewProps {
     onNavigate: (nodeId: string) => void;
     prevNode: MindMapNode | null;
     nextNode: MindMapNode | null;
+    onExplainRequest: (text: string) => void;
 }
 
 const Section: React.FC<{ title: string; content: string }> = ({ title, content }) => (
@@ -21,14 +20,63 @@ const Section: React.FC<{ title: string; content: string }> = ({ title, content 
     </div>
 );
 
-const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz, onNavigate, prevNode, nextNode }) => {
+const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz, onNavigate, prevNode, nextNode, onExplainRequest }) => {
+    const [selectionPopup, setSelectionPopup] = useState<{ x: number; y: number; text: string } | null>(null);
+    const viewRef = useRef<HTMLDivElement>(null);
+
+    const handleMouseUp = () => {
+        const selection = window.getSelection();
+        if (selection && selection.toString().trim().length > 5) {
+            const text = selection.toString().trim();
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            if (viewRef.current) {
+                const containerRect = viewRef.current.getBoundingClientRect();
+                setSelectionPopup({
+                    x: rect.left - containerRect.left + rect.width / 2,
+                    y: rect.top - containerRect.top - 10, // Position above the selection
+                    text: text,
+                });
+            }
+        } else {
+            setSelectionPopup(null);
+        }
+    };
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (selectionPopup) {
+                setSelectionPopup(null);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [selectionPopup]);
+
+
     return (
-        <div className="max-w-4xl p-4 mx-auto sm:p-6 md:p-8">
+        <div className="max-w-4xl p-4 mx-auto sm:p-6 md:p-8" ref={viewRef}>
+             {selectionPopup && (
+                <div
+                    className="selection-popup"
+                    style={{ left: selectionPopup.x, top: selectionPopup.y, transform: 'translateX(-50%) translateY(-100%)' }}
+                    onMouseDown={(e) => e.stopPropagation()} // Prevent hiding when clicking the popup itself
+                    onClick={() => {
+                        onExplainRequest(selectionPopup.text);
+                        setSelectionPopup(null);
+                    }}
+                >
+                    <MessageSquare className="w-4 h-4" />
+                    <span>توضیح بیشتر</span>
+                </div>
+            )}
             <button onClick={onBack} className="flex items-center gap-2 mb-6 text-sm font-medium text-primary hover:underline">
                 <ArrowRight className="w-4 h-4 transform rotate-180" />
                 <span>بازگشت به نقشه ذهنی</span>
             </button>
-            <div className="p-6 border rounded-lg shadow-lg sm:p-8 bg-card border-border">
+            <div className="p-6 border rounded-lg shadow-lg sm:p-8 bg-card border-border" onMouseUp={handleMouseUp}>
                 <h2 className="mb-8 text-3xl font-bold text-center text-card-foreground">{node.title}</h2>
                 <Section title="مقدمه" content={content.introduction} />
                 <Section title="تئوری" content={content.theory} />
