@@ -1,7 +1,7 @@
 
 
 import React from 'react';
-import { QuizResult, QuizQuestion, MultipleChoiceQuestion, ShortAnswerQuestion, MatchingQuestion } from '../types';
+import { QuizResult, QuizQuestion } from '../types';
 import { CheckCircle, XCircle } from './icons';
 
 interface QuizReviewProps {
@@ -15,9 +15,6 @@ const getAnswerText = (question: QuizQuestion, answer: any): string => {
     }
     if (question.type === 'short-answer') {
         return (answer as string) || "پاسخ داده نشده";
-    }
-     if (question.type === 'matching') {
-        return "مشاهده جزئیات تطبیق";
     }
     return "نامشخص";
 };
@@ -54,10 +51,6 @@ const QuestionReviewCard: React.FC<{ result: QuizResult }> = ({ result }) => {
                     </div>
                 </>
             );
-        }
-        // Basic display for matching questions
-        if (question.type === 'matching') {
-             return <p className="mt-2 text-sm text-muted-foreground">پاسخ‌های سوالات تطبیقی در تحلیل بررسی شده‌اند.</p>
         }
         return null;
     }

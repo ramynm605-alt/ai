@@ -1,4 +1,5 @@
 
+
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { MindMapNode as MindMapNodeType } from '../types';
 import { CheckCircle } from './icons';
@@ -7,13 +8,37 @@ interface MindMapProps {
     nodes: MindMapNodeType[];
     progress: { [key: string]: 'completed' | 'failed' | 'in_progress' };
     onSelectNode: (id: string) => void;
-    onTakeQuiz: (id: string) => void; // This is kept for type consistency, but nodes are now single-action
+    onTakeQuiz: (id: string) => void;
 }
 
 const NODE_WIDTH = 160;
-const NODE_HEIGHT = 60;
+const NODE_HEIGHT = 70;
 const H_GAP = 50;
 const V_GAP = 90;
+
+const formatPageNumbers = (pages: number[]): string => {
+    if (!pages || pages.length === 0) return '';
+    
+    const sortedPages = [...new Set(pages)].sort((a, b) => a - b);
+    
+    if (sortedPages.length === 0) return '';
+    
+    const ranges: string[] = [];
+    let start = sortedPages[0];
+    let end = sortedPages[0];
+
+    for (let i = 1; i < sortedPages.length; i++) {
+        if (sortedPages[i] === end + 1) {
+            end = sortedPages[i];
+        } else {
+            ranges.push(start === end ? `${start}` : `${start}-${end}`);
+            start = end = sortedPages[i];
+        }
+    }
+    ranges.push(start === end ? `${start}` : `${start}-${end}`);
+    
+    return `ص: ${ranges.join(', ')}`;
+};
 
 
 // Node component - purely for presentation
@@ -27,8 +52,10 @@ const MindMapNode: React.FC<{
     const isCompleted = progress[node.id] === 'completed';
     const isLocked = node.locked && !isCompleted;
 
+    const pageInfo = formatPageNumbers(node.sourcePages);
+
     // Determine styles based on node state
-    let baseClasses = 'w-[160px] h-[60px] rounded-full flex items-center justify-center text-white text-sm font-bold relative transition-all duration-300 border-2 select-none shadow-md';
+    let baseClasses = 'w-[160px] min-h-[70px] p-2 rounded-2xl flex flex-col items-center justify-center text-white text-sm font-semibold relative transition-all duration-300 border-2 select-none shadow-md';
     let borderClasses = '';
     let glowClasses = '';
 
@@ -68,6 +95,7 @@ const MindMapNode: React.FC<{
         <div style={style} className={`${baseClasses} ${borderClasses} ${glowClasses}`} onClick={handleClick}>
              {isCompleted && <CheckCircle className="absolute w-6 h-6 p-0.5 text-green-400 bg-gray-900 rounded-full -top-2 -right-2" />}
             <span className="text-center">{node.title}</span>
+            {pageInfo && <span className="mt-1 text-xs font-normal text-gray-400">{pageInfo}</span>}
         </div>
     );
 };

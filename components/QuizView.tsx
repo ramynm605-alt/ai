@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Quiz, QuizQuestion, MultipleChoiceQuestion, ShortAnswerQuestion, MatchingQuestion, MatchingItem, UserAnswer } from '../types';
-import { Shuffle } from './icons';
+import { Quiz, QuizQuestion, MultipleChoiceQuestion, ShortAnswerQuestion, UserAnswer } from '../types';
 
 interface QuizViewProps {
     title: string;
@@ -46,74 +45,6 @@ const ShortAnswerRenderer: React.FC<{ question: ShortAnswerQuestion; answer: str
     </div>
 );
 
-const MatchingRenderer: React.FC<{ question: MatchingQuestion; answer: Record<string, string>; onAnswer: (answer: Record<string, string>) => void; }> = ({ question, answer, onAnswer }) => {
-    const [selectedStem, setSelectedStem] = useState<MatchingItem | null>(null);
-    const [shuffledOptions, setShuffledOptions] = useState<MatchingItem[]>([]);
-
-    useEffect(() => {
-        setShuffledOptions([...question.options].sort(() => Math.random() - 0.5));
-    }, [question.options]);
-
-    const handleStemClick = (stem: MatchingItem) => {
-        if (answer[stem.id]) return; // Already matched
-        setSelectedStem(stem);
-    };
-
-    const handleOptionClick = (option: MatchingItem) => {
-        if (!selectedStem) return;
-        if (Object.values(answer).includes(option.id)) return; // Option already used
-        
-        onAnswer({ ...answer, [selectedStem.id]: option.id });
-        setSelectedStem(null);
-    };
-
-    return (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            {/* Stems Column */}
-            <div className="space-y-3">
-                <h4 className="font-semibold text-center text-muted-foreground">موارد</h4>
-                {question.stems.map(stem => {
-                    const isMatched = !!answer[stem.id];
-                    const isSelected = selectedStem?.id === stem.id;
-                    return (
-                        <button
-                            key={stem.id}
-                            onClick={() => handleStemClick(stem)}
-                            disabled={isMatched}
-                            className={`w-full p-3 text-right border-2 rounded-lg transition-all ${
-                                isMatched ? 'bg-green-100 border-green-300 cursor-default' : 
-                                isSelected ? 'border-primary ring-2 ring-primary' : 'bg-background border-border hover:border-primary/70'
-                            }`}
-                        >
-                            {stem.text}
-                        </button>
-                    );
-                })}
-            </div>
-            {/* Options Column */}
-            <div className="space-y-3">
-                 <h4 className="font-semibold text-center text-muted-foreground">توضیحات</h4>
-                {shuffledOptions.map(option => {
-                    const isMatched = Object.values(answer).includes(option.id);
-                    return (
-                        <button
-                            key={option.id}
-                            onClick={() => handleOptionClick(option)}
-                            disabled={isMatched || !selectedStem}
-                            className={`w-full p-3 text-right border-2 rounded-lg transition-all ${
-                                isMatched ? 'bg-green-100 border-green-300 cursor-default' :
-                                selectedStem ? 'bg-background border-border hover:border-primary/70 cursor-pointer' : 'bg-muted/30 border-border cursor-not-allowed'
-                            }`}
-                        >
-                            {option.text}
-                        </button>
-                    );
-                })}
-            </div>
-        </div>
-    );
-};
-
 const QuizView: React.FC<QuizViewProps> = ({ title, quiz, onSubmit }) => {
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [answers, setAnswers] = useState<Record<string, UserAnswer>>({});
@@ -144,8 +75,6 @@ const QuizView: React.FC<QuizViewProps> = ({ title, quiz, onSubmit }) => {
                 return <MultipleChoiceRenderer question={question} answer={currentAnswer as number | null} onAnswer={(ans) => handleAnswer(question.id, ans)} />;
             case 'short-answer':
                 return <ShortAnswerRenderer question={question} answer={(currentAnswer as string) || ''} onAnswer={(ans) => handleAnswer(question.id, ans)} />;
-            case 'matching':
-                return <MatchingRenderer question={question} answer={(currentAnswer as Record<string, string>) || {}} onAnswer={(ans) => handleAnswer(question.id, ans)} />;
             default:
                 return <p>نوع سوال پشتیبانی نمی‌شود.</p>;
         }

@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult } from '../types';
+import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, PreAssessmentAnalysis } from '../types';
 import { marked } from 'marked';
 
 const API_KEY = process.env.API_KEY;
@@ -38,9 +38,10 @@ const mindMapSchema = {
                     title: { type: Type.STRING, description: "عنوان گره یا مفهوم." },
                     parentId: { type: Type.STRING, description: "شناسه گره والد. برای گره ریشه null است." },
                     difficulty: { type: Type.NUMBER, description: "امتیاز سختی از 0.0 (آسان) تا 1.0 (دشوار)." },
-                    isExplanatory: { type: Type.BOOLEAN, description: "آیا این یک گره توضیحی اضافی است یا خیر." }
+                    isExplanatory: { type: Type.BOOLEAN, description: "آیا این یک گره توضیحی اضافی است یا خیر." },
+                    sourcePages: { type: Type.ARRAY, items: { type: Type.INTEGER }, description: "شماره صفحاتی از منبع که این گره به آنها مربوط است." }
                 },
-                required: ["id", "title", "parentId", "difficulty", "isExplanatory"]
+                required: ["id", "title", "parentId", "difficulty", "isExplanatory", "sourcePages"]
             }
         },
         preAssessment: {
@@ -53,14 +54,17 @@ const mindMapSchema = {
                         type: Type.OBJECT,
                         properties: {
                             id: { type: Type.STRING },
-                            type: { type: Type.STRING, enum: ["multiple-choice"]},
-                            question: { type: Type.STRING, description: "متن سوال." },
-                            options: { type: Type.ARRAY, items: { type: Type.STRING }, description: "آرایه‌ای از گزینه‌های پاسخ." },
-                            correctAnswerIndex: { type: Type.INTEGER, description: "ایندکس پاسخ صحیح در آرایه گزینه‌ها." },
+                            type: { type: Type.STRING, enum: ["multiple-choice", "short-answer"] },
+                            question: { type: Type.STRING },
                             difficulty: { type: Type.STRING, enum: ['آسان', 'متوسط', 'سخت'] },
                             points: { type: Type.INTEGER },
+                            // Multiple-choice specific
+                            mcOptions: { type: Type.ARRAY, items: { type: Type.STRING } },
+                            correctAnswerIndex: { type: Type.INTEGER },
+                            // Short-answer specific
+                            correctAnswer: { type: Type.STRING },
                         },
-                        required: ["id", "type", "question", "options", "correctAnswerIndex", "difficulty", "points"]
+                        required: ["id", "type", "question", "difficulty", "points"]
                     }
                 }
             },
@@ -70,29 +74,52 @@ const mindMapSchema = {
     required: ["mindMap", "preAssessment"]
 };
 
-export async function generateLearningPlan(content: string, preferences: LearningPreferences): Promise<{ mindMap: MindMapNode[], preAssessment: Quiz }> {
+export async function generateLearningPlan(content: string, pageContents: string[] | null, images: {mimeType: string, data: string}[], preferences: LearningPreferences): Promise<{ mindMap: MindMapNode[], preAssessment: Quiz }> {
     return withRetry(async () => {
         const customInstructions = preferences.customInstructions ? `دستورالعمل سفارشی کاربر: ${preferences.customInstructions}` : '';
         const explanatoryInstruction = preferences.addExplanatoryNodes ? "اگر در متن به مفاهیم پیش‌نیاز اشاره شده که به خوبی توضیح داده نشده‌اند، گره‌های توضیحی اضافی برای آن‌ها ایجاد کن و isExplanatory را true قرار بده." : "";
+        const learningGoalInstruction = preferences.learningGoal ? `مهم: هدف اصلی کاربر از یادگیری این موضوع '${preferences.learningGoal}' است. ساختار نقشه ذهنی و سوالات پیش‌آزمون را متناسب با این هدف طراحی کن.` : '';
 
-        const prompt = `بر اساس متن زیر، یک طرح درس به صورت نقشه ذهنی سلسله مراتبی ایجاد کن.
+        const pageContentForPrompt = pageContents
+            ? `محتوای زیر بر اساس صفحه تفکیک شده است. هنگام ایجاد گره‌ها، شماره صفحات مرتبط را در فیلد sourcePages مشخص کن.\n\n` + pageContents.map((text, i) => `--- صفحه ${i + 1} ---\n${text}`).join('\n\n')
+            : `متن:\n---\n${content}\n---`;
+
+        const prompt = `بر اساس محتوای زیر، یک طرح درس به صورت نقشه ذهنی سلسله مراتبی ایجاد کن.
     1.  مفاهیم اصلی و فرعی را شناسایی کن. بر اساس پیچیدگی و حجم متن، یک نقشه ذهنی با تعداد کل گره‌ها بین ۲ تا ۱۱ ایجاد کن. برای متون کوتاه‌تر و ساده‌تر، تعداد گره‌ها را به ۲ یا ۳ محدود کن. برای متون پیچیده و طولانی، تعداد را به سمت ۱۱ افزایش بده. هدف ایجاد یک مسیر یادگیری جامع و در عین حال مختصر است.
     2.  برای هر گره، یک امتیاز سختی بین 0.0 (بسیار آسان) تا 1.0 (بسیار دشوار) بر اساس پیچیدگی مفهوم اختصاص بده.
     3.  ${explanatoryInstruction}
-    4.  همچنین، یک پیش‌آزمون با ۵ سوال چهارگزینه‌ای برای سنجش دانش اولیه کاربر از کل متن طراحی کن. سوالات باید دارای سطوح سختی و امتیاز متفاوت باشند. گزینه‌های اشتباه باید منطقی و گمراه‌کننده باشند تا نیاز به دقت بالا داشته باشند.
-    5.  خروجی باید یک شیء JSON با دو کلید mindMap و preAssessment باشد. برای هر گره در نقشه ذهنی یک id منحصر به فرد، title، parentId (برای گره ریشه null)، difficulty و isExplanatory ارائه بده.
+    4.  همچنین، یک پیش‌آزمون جامع با ۵ تا ۱۰ سوال برای سنجش دقیق دانش اولیه کاربر از کل متن طراحی کن. این آزمون باید **چالش‌برانگیز** باشد و شامل **ترکیب متنوعی** از انواع سوالات زیر باشد:
+        -   **چهارگزینه‌ای (multiple-choice):** سوالات مفهومی و تحلیلی.
+        -   **درست یا نادرست (true/false):** این نوع سوال را با فرمت \`multiple-choice\` بساز که گزینه‌ها فقط "درست" و "نادرست" باشند.
+        -   **تشریحی کوتاه (short-answer):** سوالاتی که نیازمند پاسخ کوتاه و دقیق برای سنجش درک مفهومی هستند.
+        -   **جای خالی (fill-in-the-blank):** این نوع سوال را با فرمت \`short-answer\` بساز و در متن سوال از \`____\` برای نشان دادن جای خالی استفاده کن.
+
+    5.  برای تمام سوالات، از **قوانین سختگیرانه** زیر پیروی کن:
+        - **سوالات کاملاً مفهومی و تحلیلی:** هر سوال باید یک سناریو، یک مقایسه، یا یک تحلیل علت و معلولی را مطرح کند. از سوالات ساده که پاسخشان مستقیماً در یک جمله از متن پیدا می‌شود، اکیداً خودداری کن.
+        - **بازنویسی کامل:** به هیچ وجه از جملات یا عبارات کلیدی متن اصلی در صورت سوال یا گزینه‌ها استفاده نکن. مفاهیم را با کلمات و ساختارهای کاملاً جدید بیان کن.
+        - **هنر طراحی گزینه‌های انحرافی (برای سوالات چندگزینه‌ای):** این بخش حیاتی است. گزینه‌های غلط باید به شدت فریبنده و قابل قبول به نظر برسند. هر گزینه غلط باید یکی از ویژگی‌های زیر را داشته باشد:
+            * **حقیقتی ناقص:** گزینه‌ای که بخشی از آن درست است اما در کل به دلیل یک کلمه یا عبارت کلیدی، غلط محسوب می‌شود.
+            * **صحیح اما بی‌ربط:** گزینه‌ای که یک عبارت کاملاً صحیح از متن است، اما پاسخ سوال مطرح شده نیست.
+            * **اشتباه رایج:** گزینه‌ای که یک تصور غلط یا اشتباه متداول در مورد موضوع را بیان می‌کند.
+            * **وارونه‌سازی ظریف:** گزینه‌ای که رابطه علت و معلولی را برعکس نشان می‌دهد یا یک مفهوم را به شکلی معکوس بیان می‌کند.
+            * **بسیار شبیه به پاسخ صحیح:** گزینه‌ای که فقط در یک کلمه یا جزئیات بسیار کوچک با پاسخ صحیح تفاوت دارد.
+        - **هدف نهایی:** کاربر پس از خواندن سوال و گزینه‌ها، باید دچار تردید جدی شود و برای انتخاب پاسخ صحیح، مجبور به فکر کردن عمیق و مراجعه به دانش مفهومی خود از متن گردد. گزینه‌ها نباید به سادگی قابل حذف باشند.
+    6.  ${learningGoalInstruction}
+    7.  خروجی باید یک شیء JSON با دو کلید mindMap و preAssessment باشد. برای هر گره در نقشه ذهنی یک id منحصر به فرد، title، parentId (برای گره ریشه null)، difficulty، isExplanatory و sourcePages (آرایه‌ای از شماره صفحات مرتبط) ارائه بده.
 
         ${customInstructions}
 
-        متن:
+        محتوا:
         ---
-        ${content}
+        ${pageContentForPrompt}
         ---
         `;
 
+        const imageParts = images.map(img => ({ inlineData: { mimeType: img.mimeType, data: img.data } }));
+
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
+            model: "gemini-2.5-pro",
+            contents: { parts: [{ text: prompt }, ...imageParts] },
             config: {
                 responseMimeType: "application/json",
                 responseSchema: mindMapSchema,
@@ -104,10 +131,78 @@ export async function generateLearningPlan(content: string, preferences: Learnin
 
         const mindMap = resultJson.mindMap.map((node: any) => ({
             ...node,
-            parentId: node.parentId === 'null' || node.parentId === '' ? null : node.parentId
+            parentId: node.parentId === 'null' || node.parentId === '' ? null : node.parentId,
+            sourcePages: node.sourcePages || [],
         }));
+        
+        const sanitizedQuestions = resultJson.preAssessment.questions.map((q: any) => {
+            const question = { ...q };
+            if (question.type === 'multiple-choice') {
+                question.options = Array.isArray(question.mcOptions) ? question.mcOptions : [];
+                delete question.mcOptions;
+            }
+            return question;
+        });
+        
+        const sanitizedPreAssessment = { ...resultJson.preAssessment, questions: sanitizedQuestions };
 
-        return { mindMap, preAssessment: resultJson.preAssessment };
+        return { mindMap, preAssessment: sanitizedPreAssessment };
+    });
+}
+
+const preAssessmentAnalysisSchema = {
+    type: Type.OBJECT,
+    properties: {
+        overallAnalysis: { type: Type.STRING, description: "یک تحلیل کلی و تشویق‌کننده از عملکرد کاربر در ۲-۳ جمله." },
+        strengths: { type: Type.ARRAY, items: { type: Type.STRING }, description: "لیستی از موضوعات یا مفاهیمی که کاربر به خوبی درک کرده است." },
+        weaknesses: { type: Type.ARRAY, items: { type: Type.STRING }, description: "لیستی از موضوعات یا مفاهیمی که کاربر نیاز به تمرکز بیشتری روی آنها دارد." },
+        recommendedLevel: { type: Type.STRING, enum: ["مبتدی", "متوسط", "پیشرفته"], description: "سطح دانش توصیه‌شده برای کاربر بر اساس نتایج." }
+    },
+    required: ["overallAnalysis", "strengths", "weaknesses", "recommendedLevel"]
+};
+
+
+export async function analyzePreAssessment(
+    questions: QuizQuestion[], 
+    userAnswers: Record<string, UserAnswer>, 
+    sourceContent: string
+): Promise<PreAssessmentAnalysis> {
+    return withRetry(async () => {
+        const prompt = `
+        شما یک مشاور آموزشی متخصص هستید. وظیفه شما تحلیل نتایج پیش‌آزمون یک دانش‌آموز است. بر اساس سوالات، پاسخ‌های صحیح، پاسخ‌های دانش‌آموز و متن اصلی درس، یک تحلیل دقیق از وضعیت دانش فعلی او ارائه دهید.
+
+        متن اصلی درس برای مرجع:
+        ---
+        ${sourceContent}
+        ---
+
+        ساختار آزمون و پاسخ‌های صحیح:
+        ---
+        ${JSON.stringify(questions, null, 2)}
+        ---
+
+        پاسخ‌های کاربر:
+        ---
+        ${JSON.stringify(userAnswers, null, 2)}
+        ---
+
+        وظایف شما:
+        1.  پاسخ‌های کاربر را با پاسخ‌های صحیح مقایسه کنید.
+        2.  با تحلیل پاسخ‌های صحیح و غلط، **نقاط قوت (strengths)** و **نقاط ضعف (weaknesses)** مفهومی کاربر را شناسایی کنید. به جای لیست کردن سوالات، مفاهیم اصلی پشت آنها را استخراج کنید.
+        3.  یک **تحلیل کلی (overallAnalysis)** کوتاه، دوستانه و تشویق‌کننده بنویسید.
+        4.  سطح دانش کاربر را به عنوان **(recommendedLevel)** یکی از موارد "مبتدی"، "متوسط" یا "پیشرفته" تعیین کنید.
+        5.  خروجی باید فقط یک آبجکت JSON مطابق با اسکیمای ارائه شده باشد.
+        `;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-pro",
+            contents: { parts: [{ text: prompt }] },
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: preAssessmentAnalysisSchema
+            }
+        });
+        return JSON.parse(response.text);
     });
 }
 
@@ -124,15 +219,24 @@ const nodeContentSchema = {
     required: ["introduction", "theory", "example", "connection", "conclusion"]
 };
 
-export async function generateNodeContent(nodeTitle: string, fullContent: string, style: LearningPreferences['style']): Promise<NodeContent> {
+export async function generateNodeContent(nodeTitle: string, fullContent: string, images: {mimeType: string, data: string}[], style: LearningPreferences['style'], strengths: string[], weaknesses: string[]): Promise<NodeContent> {
     return withRetry(async () => {
-        const styleInstruction = {
-            faithful: "توضیحات باید کاملاً وفادار به متن اصلی و بدون اطلاعات اضافی باشد.",
-            balanced: "توضیحات باید بر اساس متن اصلی باشد اما برای وضوح بیشتر می‌تواند کمی گسترش یابد.",
-            creative: "توضیحات می‌تواند خلاقانه، با مثال‌های جدید و گسترده‌تر از متن اصلی باشد تا درک عمیق‌تری ایجاد کند."
-        };
+        let adaptiveInstruction = '';
+        const isWeakTopic = weaknesses.some(w => nodeTitle.includes(w) || w.includes(nodeTitle));
+        const isStrongTopic = strengths.some(s => nodeTitle.includes(s) || s.includes(nodeTitle));
 
-        const prompt = `مفهوم "${nodeTitle}" را بر اساس متن کامل ارائه شده، توضیح بده. ساختار توضیحات باید شامل پنج بخش باشد: مقدمه، تئوری، مثال، ارتباط (با مفاهیم دیگر) و نتیجه‌گیری. سبک توضیحات باید '${style}' باشد. ${styleInstruction[style]}.
+        if (isWeakTopic) {
+            adaptiveInstruction = "مهم: این موضوع یکی از نقاط ضعف کاربر است. توضیحات را بسیار ساده، پایه‌ای و با جزئیات کامل ارائه بده. از مثال‌های قابل فهم و تشبیه‌های ساده استفاده کن تا مفاهیم به خوبی جا بیفتند.";
+        } else if (isStrongTopic) {
+            adaptiveInstruction = "مهم: کاربر در این موضوع تسلط دارد. توضیحات را به صورت خلاصه‌ای پیشرفته ارائه بده و بر روی نکات ظریف، کاربردهای خاص یا ارتباط آن با مفاهیم پیچیده‌تر تمرکز کن.";
+        }
+
+
+        const prompt = `وظیفه شما استخراج و سازماندهی **تمام** اطلاعات مربوط به مفهوم "${nodeTitle}" از متن کامل و تصاویر ارائه‌شده است. از خلاصه‌سازی یا حذف هرگونه جزئیات خودداری کنید. محتوا را به صورت جامع و کامل در پنج بخش ساختاریافته ارائه دهید: مقدمه، تئوری، مثال، ارتباط و نتیجه‌گیری.
+        
+        ${adaptiveInstruction}
+        
+        ساختار توضیحات باید شامل پنج بخش باشد: مقدمه، تئوری، مثال، ارتباط (با مفاهیم دیگر) و نتیجه‌گیری.
 
         مهم: در هر بخش، کلمات و عبارات کلیدی را با استفاده از Markdown به صورت **پررنگ** مشخص کن و مهم‌ترین جمله (فقط یک جمله) را با استفاده از Markdown به صورت *ایتالیک* مشخص کن.
 
@@ -141,10 +245,12 @@ export async function generateNodeContent(nodeTitle: string, fullContent: string
         ${fullContent}
         ---
         `;
+        
+        const imageParts = images.map(img => ({ inlineData: { mimeType: img.mimeType, data: img.data } }));
 
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
+            model: "gemini-2.5-pro",
+            contents: { parts: [{ text: prompt }, ...imageParts] },
             config: {
                 responseMimeType: "application/json",
                 responseSchema: nodeContentSchema,
@@ -175,19 +281,15 @@ const quizSchema = {
         type: Type.OBJECT,
         properties: {
             id: { type: Type.STRING },
-            type: { type: Type.STRING, enum: ["multiple-choice", "short-answer", "matching"] },
+            type: { type: Type.STRING, enum: ["multiple-choice", "short-answer"] },
             question: { type: Type.STRING },
             difficulty: { type: Type.STRING, enum: ['آسان', 'متوسط', 'سخت'] },
             points: { type: Type.INTEGER },
             // Multiple-choice specific
-            options: { type: Type.ARRAY, items: { type: Type.STRING } },
+            mcOptions: { type: Type.ARRAY, items: { type: Type.STRING } },
             correctAnswerIndex: { type: Type.INTEGER },
             // Short-answer specific
             correctAnswer: { type: Type.STRING },
-            // Matching specific
-            stems: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { id: { type: Type.STRING }, text: { type: Type.STRING } } } },
-            options_matching: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { id: { type: Type.STRING }, text: { type: Type.STRING } } } }, // Renamed to avoid conflict
-            correctPairs: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { stemId: { type: Type.STRING }, optionId: { type: Type.STRING } } } },
         },
         required: ["id", "type", "question", "difficulty", "points"]
       }
@@ -196,9 +298,9 @@ const quizSchema = {
   required: ["questions"]
 };
 
-export async function generateQuiz(nodeTitle: string, fullContent: string): Promise<Quiz> {
+export async function generateQuiz(nodeTitle: string, fullContent: string, images: {mimeType: string, data: string}[]): Promise<Quiz> {
     return withRetry(async () => {
-        const prompt = `برای سنجش تسلط بر مفهوم "${nodeTitle}"، یک آزمون متنوع با تعداد سوالات بین ۳ تا ۷ عدد طراحی کن. تعداد سوالات را بر اساس حجم و پیچیدگی مفهوم انتخاب کن. سوالات باید شامل ترکیبی از انواع 'multiple-choice', 'short-answer', و 'matching' باشند.
+        const prompt = `برای سنجش تسلط بر مفهوم "${nodeTitle}"، یک آزمون متنوع با تعداد سوالات بین ۳ تا ۷ عدد طراحی کن. تعداد سوالات را بر اساس حجم و پیچیدگی مفهوم انتخاب کن. سوالات باید شامل ترکیبی از انواع 'multiple-choice' و 'short-answer' باشند.
         
         برای هر سوال موارد زیر را مشخص کن:
         -   یک id منحصر به فرد
@@ -207,18 +309,30 @@ export async function generateQuiz(nodeTitle: string, fullContent: string): Prom
         -   درجه سختی (difficulty: 'آسان', 'متوسط', 'سخت')
         -   امتیاز (points: آسان=5, متوسط=10, سخت=15)
 
-        برای سوالات 'multiple-choice'، گزینه‌های اشتباه باید بسیار شبیه به پاسخ صحیح و قابل قبول به نظر برسند تا کاربر را به چالش بکشند و نیاز به دقت بالا داشته باشند.
-        سوالات باید مستقیماً از محتوای ارائه شده استخراج شوند. برای سوالات matching، کلید options را به options_matching تغییر نام بده تا با سوالات multiple-choice تداخل نداشته باشد.
+        **قوانین سختگیرانه برای طراحی سوالات تستی (مخصوصا چندگزینه‌ای):**
+        - **سوالات کاملاً مفهومی:** هر سوال باید یک سناریو، یک مقایسه، یا یک تحلیل علت و معلولی را مطرح کند. از سوالات ساده که پاسخشان مستقیماً در یک جمله از متن پیدا می‌شود، اکیداً خودداری کن.
+        - **بازنویسی کامل:** به هیچ وجه از جملات یا عبارات کلیدی متن اصلی در صورت سوال یا گزینه‌ها استفاده نکن. مفاهیم را با کلمات و ساختارهای کاملاً جدید بیان کن.
+        - **هنر طراحی گزینه‌های انحرافی (Distractors):** این بخش حیاتی است. گزینه‌های غلط باید به شدت فریبنده و قابل قبول به نظر برسند. هر گزینه غلط باید یکی از ویژگی‌های زیر را داشته باشد:
+            * **حقیقتی ناقص:** گزینه‌ای که بخشی از آن درست است اما در کل به دلیل یک کلمه یا عبارت کلیدی، غلط محسوب می‌شود.
+            * **صحیح اما بی‌ربط:** گزینه‌ای که یک عبارت کاملاً صحیح از متن است، اما پاسخ سوال مطرح شده نیست.
+            * **اشتباه رایج:** گزینه‌ای که یک تصور غلط یا اشتباه متداول در مورد موضوع را بیان می‌کند.
+            * **وارونه‌سازی ظریف:** گزینه‌ای که رابطه علت و معلولی را برعکس نشان می‌دهد یا یک مفهوم را به شکلی معکوس بیان می‌کند.
+            * **بسیار شبیه به پاسخ صحیح:** گزینه‌ای که فقط در یک کلمه یا جزئیات بسیار کوچک با پاسخ صحیح تفاوت دارد.
+        - **هدف نهایی:** کاربر پس از خواندن سوال و گزینه‌ها، باید دچار تردید جدی شود و برای انتخاب پاسخ صحیح، مجبور به فکر کردن عمیق و مراجعه به دانش مفهومی خود از متن گردد. گزینه‌ها نباید به سادگی قابل حذف باشند.
+
+        سوالات باید مستقیماً از محتوای ارائه شده (شامل متن و تصاویر) استخراج شوند.
 
         محتوای مرجع:
         ---
         ${fullContent}
         ---
         `;
+        
+        const imageParts = images.map(img => ({ inlineData: { mimeType: img.mimeType, data: img.data } }));
 
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
+            model: "gemini-2.5-pro",
+            contents: { parts: [{ text: prompt }, ...imageParts] },
             config: {
                 responseMimeType: "application/json",
                 responseSchema: quizSchema,
@@ -226,15 +340,17 @@ export async function generateQuiz(nodeTitle: string, fullContent: string): Prom
         });
 
         const parsed = JSON.parse(response.text);
-        // Remap options_matching to options for matching questions
-        parsed.questions.forEach((q: any) => {
-            if(q.type === 'matching') {
-                q.options = q.options_matching;
-                delete q.options_matching;
+        
+        const sanitizedQuestions = parsed.questions.map((q: any) => {
+            const question = { ...q };
+            if (question.type === 'multiple-choice') {
+                question.options = Array.isArray(question.mcOptions) ? question.mcOptions : [];
+                delete question.mcOptions;
             }
+            return question;
         });
 
-        return parsed;
+        return { ...parsed, questions: sanitizedQuestions };
     });
 }
 
@@ -258,12 +374,12 @@ const gradingSchema = {
     required: ["results"]
 }
 
-export async function gradeAndAnalyzeQuiz(questions: QuizQuestion[], userAnswers: Record<string, UserAnswer>, sourceContent: string): Promise<(Omit<QuizResult, 'question' | 'userAnswer'> & { questionId: string })[]> {
+export async function gradeAndAnalyzeQuiz(questions: QuizQuestion[], userAnswers: Record<string, UserAnswer>, sourceContent: string, sourceImages: {mimeType: string, data: string}[]): Promise<(Omit<QuizResult, 'question' | 'userAnswer'> & { questionId: string })[]> {
     return withRetry(async () => {
         const prompt = `
         شما یک دستیار معلم متخصص هستید. وظیفه شما تصحیح آزمون زیر و ارائه تحلیل دقیق برای هر سوال است.
 
-        متن اصلی درس برای مرجع:
+        متن اصلی و تصاویر درس برای مرجع:
         ---
         ${sourceContent}
         ---
@@ -280,17 +396,19 @@ export async function gradeAndAnalyzeQuiz(questions: QuizQuestion[], userAnswers
 
         وظایف شما:
         1.  برای هر سوال، پاسخ کاربر را با پاسخ صحیح مقایسه کن.
-        2.  برای سوالات تشریحی (short-answer)، پاسخ کاربر را بر اساس محتوای درس و مفهوم پاسخ صحیح، ارزیابی کن. پاسخ‌های نزدیک به مفهوم را صحیح در نظر بگیر.
+        2.  برای سوالات تشریحی (short-answer)، پاسخ کاربر را بر اساس محتوای درس (شامل متن و تصاویر) و مفهوم پاسخ صحیح، ارزیابی کن. پاسخ‌های نزدیک به مفهوم را صحیح در نظر بگیر.
         3.  برای هر سوال، یک تحلیل (analysis) کوتاه بنویس:
             -   اگر پاسخ صحیح بود، کاربر را تشویق کن و نکته کلیدی سوال را یادآوری کن.
             -   اگر پاسخ غلط بود، به طور واضح توضیح بده که چرا پاسخ صحیح، درست است و چرا پاسخ کاربر اشتباه بوده است.
         4.  امتیاز (score) کسب شده برای هر سوال را مشخص کن (اگر صحیح بود، امتیاز کامل سوال، در غیر این صورت صفر).
         5.  خروجی باید فقط یک آبجکت JSON مطابق با اسکیمای ارائه شده باشد.
         `;
+        
+        const imageParts = sourceImages.map(img => ({ inlineData: { mimeType: img.mimeType, data: img.data } }));
 
         const response = await ai.models.generateContent({
             model: "gemini-2.5-pro",
-            contents: prompt,
+            contents: { parts: [{ text: prompt }, ...imageParts] },
             config: {
                 responseMimeType: "application/json",
                 responseSchema: gradingSchema
@@ -302,39 +420,56 @@ export async function gradeAndAnalyzeQuiz(questions: QuizQuestion[], userAnswers
 }
 
 
-export async function generateFinalExam(fullContent: string, weaknessTopics: string): Promise<Quiz> {
+export async function generateFinalExam(fullContent: string, images: {mimeType: string, data: string}[], weaknessTopics: string): Promise<Quiz> {
     return withRetry(async () => {
-        const prompt = `بر اساس کل متن زیر، یک آزمون جامع نهایی با ۱۰ سوال متنوع (multiple-choice, short-answer) ایجاد کن. در طراحی سوالات، تمرکز ویژه‌ای بر روی این موضوعات که کاربر در آنها ضعف داشته، داشته باش: ${weaknessTopics}. برای هر سوال سختی و امتیاز تعریف کن.
+        const prompt = `بر اساس کل محتوای زیر (متن و تصاویر)، یک آزمون جامع نهایی با ۱۰ سوال متنوع (multiple-choice, short-answer) ایجاد کن. در طراحی سوالات، تمرکز ویژه‌ای بر روی این موضوعات که کاربر در آنها ضعف داشته، داشته باش: ${weaknessTopics}. برای هر سوال سختی و امتیاز تعریف کن.
+
+        **قوانین سختگیرانه برای طراحی سوالات تستی (مخصوصا چندگزینه‌ای):**
+        - **سوالات کاملاً مفهومی:** هر سوال باید یک سناریو، یک مقایسه، یا یک تحلیل علت و معلولی را مطرح کند. از سوالات ساده که پاسخشان مستقیماً در یک جمله از متن پیدا می‌شود، اکیداً خودداری کن.
+        - **بازنویسی کامل:** به هیچ وجه از جملات یا عبارات کلیدی متن اصلی در صورت سوال یا گزینه‌ها استفاده نکن. مفاهیم را با کلمات و ساختارهای کاملاً جدید بیان کن.
+        - **هنر طراحی گزینه‌های انحرافی (Distractors):** این بخش حیاتی است. گزینه‌های غلط باید به شدت فریبنده و قابل قبول به نظر برسند. هر گزینه غلط باید یکی از ویژگی‌های زیر را داشته باشد:
+            * **حقیقتی ناقص:** گزینه‌ای که بخشی از آن درست است اما در کل به دلیل یک کلمه یا عبارت کلیدی، غلط محسوب می‌شود.
+            * **صحیح اما بی‌ربط:** گزینه‌ای که یک عبارت کاملاً صحیح از متن است، اما پاسخ سوال مطرح شده نیست.
+            * **اشتباه رایج:** گزینه‌ای که یک تصور غلط یا اشتباه متداول در مورد موضوع را بیان می‌کند.
+            * **وارونه‌سازی ظریف:** گزینه‌ای که رابطه علت و معلولی را برعکس نشان می‌دهد یا یک مفهوم را به شکلی معکوس بیان می‌کند.
+            * **بسیار شبیه به پاسخ صحیح:** گزینه‌ای که فقط در یک کلمه یا جزئیات بسیار کوچک با پاسخ صحیح تفاوت دارد.
+        - **هدف نهایی:** کاربر پس از خواندن سوال و گزینه‌ها، باید دچار تردید جدی شود و برای انتخاب پاسخ صحیح، مجبور به فکر کردن عمیق و مراجعه به دانش مفهومی خود از متن گردد. گزینه‌ها نباید به سادگی قابل حذف باشند.
 
         متن کامل:
         ---
         ${fullContent}
         ---
         `;
+        
+        const imageParts = images.map(img => ({ inlineData: { mimeType: img.mimeType, data: img.data } }));
+
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
+            model: "gemini-2.5-pro",
+            contents: { parts: [{ text: prompt }, ...imageParts] },
             config: {
                 responseMimeType: "application/json",
                 responseSchema: quizSchema,
             }
         });
         const parsed = JSON.parse(response.text);
-        // Remap options_matching to options for matching questions if any
-        parsed.questions.forEach((q: any) => {
-            if(q.type === 'matching') {
-                q.options = q.options_matching;
-                delete q.options_matching;
+        
+        const sanitizedQuestions = parsed.questions.map((q: any) => {
+            const question = { ...q };
+            if (question.type === 'multiple-choice') {
+                question.options = Array.isArray(question.mcOptions) ? question.mcOptions : [];
+                delete question.mcOptions;
             }
+            return question;
         });
-        return parsed;
+
+        return { ...parsed, questions: sanitizedQuestions };
     });
 }
 
-export async function generateCorrectiveSummary(fullContent: string, incorrectAnswers: { question: string, correctAnswer: string }[]): Promise<string> {
+export async function generateCorrectiveSummary(fullContent: string, images: {mimeType: string, data: string}[], incorrectAnswers: { question: string, correctAnswer: string }[]): Promise<string> {
     return withRetry(async () => {
         const summaryPrompt = `
-        بر اساس متن کامل زیر و لیستی از سوالاتی که کاربر به اشتباه پاسخ داده است، یک "خلاصه اصلاحی" شخصی‌سازی شده به زبان Markdown ایجاد کن. برای هر مفهوم اشتباه پاسخ داده شده، یک توضیح واضح و مختصر ارائه بده.
+        بر اساس متن کامل و تصاویر زیر و لیستی از سوالاتی که کاربر به اشتباه پاسخ داده است، یک "خلاصه اصلاحی" شخصی‌سازی شده به زبان Markdown ایجاد کن. برای هر مفهوم اشتباه پاسخ داده شده، یک توضیح واضح و مختصر ارائه بده.
 
         متن کامل:
         ---
@@ -344,10 +479,12 @@ export async function generateCorrectiveSummary(fullContent: string, incorrectAn
         سوالات اشتباه پاسخ داده شده و پاسخ صحیح آنها:
         ${incorrectAnswers.map(item => `- سوال: ${item.question}\n  - پاسخ صحیح: ${item.correctAnswer}`).join('\n')}
         `;
+        
+        const imageParts = images.map(img => ({ inlineData: { mimeType: img.mimeType, data: img.data } }));
 
         const response = await ai.models.generateContent({
             model: "gemini-2.5-pro",
-            contents: summaryPrompt
+            contents: { parts: [{ text: summaryPrompt }, ...imageParts] }
         });
 
         return marked.parse(response.text);

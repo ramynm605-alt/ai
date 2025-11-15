@@ -1,9 +1,9 @@
 
 
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef } from 'react';
-import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState } from './types';
-import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz } from './services/geminiService';
-import { ArrowRight, BookOpen, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText } from './components/icons';
+import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis } from './types';
+import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment } from './services/geminiService';
+import { ArrowRight, BookOpen, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target } from './components/icons';
 import MindMap from './components/MindMap';
 import NodeView from './components/NodeView';
 import QuizView from './components/QuizView';
@@ -12,8 +12,9 @@ import WeaknessTracker from './components/WeaknessTracker';
 import PracticeZone from './components/PracticeZone';
 import Spinner from './components/Spinner';
 import StartupScreen from './components/StartupScreen';
+import PreAssessmentReview from './components/PreAssessmentReview';
 
-const CURRENT_APP_VERSION = 1;
+const CURRENT_APP_VERSION = 3;
 declare var pdfjsLib: any;
 
 
@@ -21,13 +22,18 @@ const initialState: AppState = {
   theme: 'balanced',
   status: AppStatus.IDLE,
   sourceContent: '',
+  sourcePageContents: null,
+  sourceImages: [],
   preferences: {
     style: 'balanced',
     addExplanatoryNodes: false,
     customInstructions: '',
+    learningGoal: '',
   },
   mindMap: [],
   preAssessment: null,
+  preAssessmentAnswers: null,
+  preAssessmentAnalysis: null,
   activeQuiz: null,
   activeNodeId: null,
   nodeContents: {},
@@ -44,11 +50,15 @@ function appReducer(state: AppState, action: any): AppState {
     case 'SET_THEME':
       return { ...state, theme: action.payload };
     case 'START_GENERATION':
-      return { ...initialState, theme: state.theme, status: AppStatus.LOADING, sourceContent: action.payload.sourceContent, preferences: action.payload.preferences };
+      return { ...initialState, theme: state.theme, status: AppStatus.LOADING, sourceContent: action.payload.sourceContent, sourcePageContents: action.payload.sourcePageContents, sourceImages: action.payload.sourceImages, preferences: action.payload.preferences };
     case 'PLAN_GENERATED':
       return { ...state, status: AppStatus.PRE_ASSESSMENT, mindMap: action.payload.mindMap, preAssessment: action.payload.preAssessment };
-    case 'START_LEARNING':
-      return { ...state, status: AppStatus.LEARNING, preAssessment: null, activeNodeId: null, activeQuiz: null, quizResults: null };
+    case 'SUBMIT_PRE_ASSESSMENT':
+        return { ...state, status: AppStatus.GRADING_PRE_ASSESSMENT, preAssessmentAnswers: action.payload };
+    case 'PRE_ASSESSMENT_ANALYSIS_LOADED':
+        return { ...state, status: AppStatus.PRE_ASSESSMENT_REVIEW, preAssessmentAnalysis: action.payload };
+    case 'START_PERSONALIZED_LEARNING':
+      return { ...state, status: AppStatus.LEARNING, activeNodeId: null, activeQuiz: null, quizResults: null };
     case 'SELECT_NODE':
       return { ...state, status: AppStatus.LOADING, activeNodeId: action.payload };
     case 'NODE_CONTENT_LOADED':
@@ -72,9 +82,9 @@ function appReducer(state: AppState, action: any): AppState {
                  const questionText = r.question.question;
                  if (!newWeaknesses.some(w => w.question === questionText)) {
                      const correctAnswerText = 
-                        r.question.type === 'multiple-choice' ? r.question.options[r.question.correctAnswerIndex] 
-                        : r.question.type === 'short-answer' ? r.question.correctAnswer 
-                        : 'See matching details'; // Simplified for matching
+                        r.question.type === 'multiple-choice' 
+                        ? r.question.options[r.question.correctAnswerIndex] 
+                        : r.question.correctAnswer;
                      
                      newWeaknesses.push({ 
                          question: questionText, 
@@ -118,11 +128,15 @@ function appReducer(state: AppState, action: any): AppState {
     case 'SUMMARY_LOADED':
         return { ...state, status: AppStatus.SUMMARY, finalExam: null, correctiveSummary: action.payload.summary };
     case 'LOAD_STATE':
+        const loadedState = action.payload;
+        const status = loadedState.preAssessmentAnalysis ? AppStatus.LEARNING : AppStatus.IDLE;
         return {
             ...initialState,
-            ...action.payload,
+            ...loadedState,
+            sourceImages: loadedState.sourceImages || [],
+            sourcePageContents: loadedState.sourcePageContents || null,
             theme: state.theme,
-            status: AppStatus.LEARNING,
+            status: status,
             error: null,
         };
     case 'RESET':
@@ -160,15 +174,26 @@ export default function App() {
     }
   }, []);
 
-  const handleStart = async (sourceContent: string, preferences: LearningPreferences) => {
-    dispatch({ type: 'START_GENERATION', payload: { sourceContent, preferences } });
+  const handleStart = async (sourceContent: string, sourcePageContents: string[] | null, sourceImages: {mimeType: string, data: string}[], preferences: LearningPreferences) => {
+    dispatch({ type: 'START_GENERATION', payload: { sourceContent, sourcePageContents, sourceImages, preferences } });
     try {
-      const { mindMap, preAssessment } = await generateLearningPlan(sourceContent, preferences);
+      const { mindMap, preAssessment } = await generateLearningPlan(sourceContent, sourcePageContents, sourceImages, preferences);
       const unlockedMindMap = mindMap.map(node => ({ ...node, locked: !!node.parentId }));
       dispatch({ type: 'PLAN_GENERATED', payload: { mindMap: unlockedMindMap, preAssessment } });
     } catch (err) {
       console.error(err);
       dispatch({ type: 'ERROR', payload: 'خطا در ایجاد طرح درس. لطفاً دوباره تلاش کنید.' });
+    }
+  };
+  
+  const handleSubmitPreAssessment = async (answers: Record<string, UserAnswer>) => {
+    dispatch({ type: 'SUBMIT_PRE_ASSESSMENT', payload: answers });
+    try {
+        const analysis = await analyzePreAssessment(state.preAssessment!.questions, answers, state.sourceContent);
+        dispatch({ type: 'PRE_ASSESSMENT_ANALYSIS_LOADED', payload: analysis });
+    } catch (err) {
+        console.error(err);
+        dispatch({ type: 'ERROR', payload: 'خطا در تحلیل پیش‌آزمون. لطفاً دوباره تلاش کنید.' });
     }
   };
 
@@ -179,29 +204,31 @@ export default function App() {
             dispatch({ type: 'NODE_CONTENT_LOADED', payload: state.nodeContents[nodeId] });
             return;
         }
-        const content = await generateNodeContent(state.mindMap.find(n => n.id === nodeId)!.title, state.sourceContent, state.preferences.style);
+        const strengths = state.preAssessmentAnalysis?.strengths || [];
+        const weaknesses = state.preAssessmentAnalysis?.weaknesses || [];
+        const content = await generateNodeContent(state.mindMap.find(n => n.id === nodeId)!.title, state.sourceContent, state.sourceImages, state.preferences.style, strengths, weaknesses);
         dispatch({ type: 'NODE_CONTENT_LOADED', payload: content });
     } catch (err) {
         console.error(err);
         dispatch({ type: 'ERROR', payload: 'خطا در بارگذاری محتوای درس.' });
     }
-  }, [state.mindMap, state.sourceContent, state.preferences.style, state.nodeContents]);
+  }, [state.mindMap, state.sourceContent, state.sourceImages, state.preferences.style, state.nodeContents, state.preAssessmentAnalysis]);
 
   const handleStartQuiz = useCallback(async (nodeId: string) => {
     dispatch({ type: 'START_QUIZ', payload: nodeId });
     try {
-        const quiz = await generateQuiz(state.mindMap.find(n => n.id === nodeId)!.title, state.sourceContent);
+        const quiz = await generateQuiz(state.mindMap.find(n => n.id === nodeId)!.title, state.sourceContent, state.sourceImages);
         dispatch({ type: 'QUIZ_LOADED', payload: quiz });
     } catch (err) {
         console.error(err);
         dispatch({ type: 'ERROR', payload: 'خطا در ایجاد آزمون.' });
     }
-  }, [state.mindMap, state.sourceContent]);
+  }, [state.mindMap, state.sourceContent, state.sourceImages]);
   
   const handleSubmitQuiz = useCallback(async (answers: Record<string, UserAnswer>) => {
     dispatch({ type: 'SUBMIT_QUIZ' });
     try {
-        const gradedResults = await gradeAndAnalyzeQuiz(state.activeQuiz!.questions, answers, state.sourceContent);
+        const gradedResults = await gradeAndAnalyzeQuiz(state.activeQuiz!.questions, answers, state.sourceContent, state.sourceImages);
         
         const resultsWithFullData = gradedResults.map(res => {
             const question = state.activeQuiz!.questions.find(q => q.id === res.questionId)!;
@@ -218,14 +245,14 @@ export default function App() {
         console.error(err);
         dispatch({ type: 'ERROR', payload: 'خطا در تصحیح آزمون.' });
     }
-  }, [state.activeQuiz, state.sourceContent]);
+  }, [state.activeQuiz, state.sourceContent, state.sourceImages]);
 
 
   const handleStartFinalExam = async () => {
     dispatch({ type: 'START_FINAL_EXAM' });
     try {
         const weaknessTopics = state.weaknesses.map(w => state.mindMap.find(n => n.title.includes(w.question.substring(0,20)))?.title).filter(Boolean).join(', ');
-        const exam = await generateFinalExam(state.sourceContent, weaknessTopics);
+        const exam = await generateFinalExam(state.sourceContent, state.sourceImages, weaknessTopics);
         dispatch({ type: 'FINAL_EXAM_LOADED', payload: exam });
     } catch (err) {
         dispatch({ type: 'ERROR', payload: 'خطا در ایجاد آزمون نهایی.' });
@@ -244,7 +271,7 @@ export default function App() {
         .filter(item => !item.isCorrect)
         .map(item => ({ question: item.q.question, correctAnswer: item.q.type === 'multiple-choice' ? item.q.options[item.q.correctAnswerIndex] : 'Complex Answer' }));
 
-        const summary = await generateCorrectiveSummary(state.sourceContent, incorrectAnswersForSummary);
+        const summary = await generateCorrectiveSummary(state.sourceContent, state.sourceImages, incorrectAnswersForSummary);
         dispatch({ type: 'SUMMARY_LOADED', payload: { summary } });
     } catch (err) {
         dispatch({ type: 'ERROR', payload: 'خطا در ایجاد خلاصه اصلاحی.' });
@@ -252,15 +279,18 @@ export default function App() {
   };
 
   const handleBackToPlan = () => {
-    dispatch({ type: 'START_LEARNING' });
+    dispatch({ type: 'START_PERSONALIZED_LEARNING' });
   };
   
   const handleSaveProgress = () => {
     const savableState: SavableState = {
         version: CURRENT_APP_VERSION,
         sourceContent: state.sourceContent,
+        sourcePageContents: state.sourcePageContents,
+        sourceImages: state.sourceImages,
         preferences: state.preferences,
         mindMap: state.mindMap,
+        preAssessmentAnalysis: state.preAssessmentAnalysis,
         nodeContents: state.nodeContents,
         userProgress: state.userProgress,
         weaknesses: state.weaknesses,
@@ -305,7 +335,6 @@ export default function App() {
   const orderedNodes = useMemo(() => {
     if (!state.mindMap || state.mindMap.length === 0) return [];
     
-    // FIX: Add explicit type `MindMapNodeWithChildren` to ensure correct type inference during tree traversal, resolving 'unknown' type errors.
     type MindMapNodeWithChildren = MindMapNode & { children: MindMapNodeWithChildren[] };
 
     const nodesById = new Map<string, MindMapNodeWithChildren>(state.mindMap.map(node => [node.id, { ...node, children: [] }]));
@@ -342,10 +371,14 @@ export default function App() {
         return <HomePage onStart={handleStart} onLoad={handleLoadProgress} />;
       case AppStatus.LOADING:
         return <div className="flex flex-col items-center justify-center h-full"><Spinner /><p className="mt-4 text-muted-foreground">در حال پردازش... لطفاً منتظر بمانید.</p></div>;
+      case AppStatus.GRADING_PRE_ASSESSMENT:
+        return <div className="flex flex-col items-center justify-center h-full"><Spinner /><p className="mt-4 text-muted-foreground">در حال تحلیل پیش‌آزمون شما... هوش مصنوعی در حال شناسایی نقاط قوت و ضعف شماست.</p></div>;
       case AppStatus.GRADING_QUIZ:
         return <div className="flex flex-col items-center justify-center h-full"><Spinner /><p className="mt-4 text-muted-foreground">در حال تصحیح آزمون... هوش مصنوعی در حال تحلیل پاسخ‌های شماست.</p></div>;
       case AppStatus.PRE_ASSESSMENT:
-        return <QuizView title="پیش‌آزمون هوشمند" quiz={state.preAssessment!} onSubmit={() => dispatch({ type: 'START_LEARNING' })} />;
+        return <QuizView title="پیش‌آزمون هوشمند" quiz={state.preAssessment!} onSubmit={handleSubmitPreAssessment} />;
+      case AppStatus.PRE_ASSESSMENT_REVIEW:
+        return <PreAssessmentReview analysis={state.preAssessmentAnalysis!} onStart={() => dispatch({ type: 'START_PERSONALIZED_LEARNING' })} />;
       case AppStatus.LEARNING:
       case AppStatus.ALL_NODES_COMPLETED:
         const allNodesCompleted = state.mindMap.length > 0 && state.mindMap.every(node => state.userProgress[node.id] === 'completed');
@@ -470,14 +503,18 @@ export default function App() {
   );
 }
 
-const HomePage: React.FC<{ onStart: (content: string, preferences: LearningPreferences) => void; onLoad: (file: File) => void; }> = ({ onStart, onLoad }) => {
+const HomePage: React.FC<{ onStart: (content: string, pageContents: string[] | null, images: {mimeType: string, data: string}[], preferences: LearningPreferences) => void; onLoad: (file: File) => void; }> = ({ onStart, onLoad }) => {
     const [sourceContent, setSourceContent] = useState('');
+    const [sourcePageContents, setSourcePageContents] = useState<string[] | null>(null);
+    const [sourceImages, setSourceImages] = useState<{mimeType: string, data: string}[]>([]);
     const [preferences, setPreferences] = useState<LearningPreferences>({
         style: 'balanced',
         addExplanatoryNodes: false,
         customInstructions: '',
+        learningGoal: '',
     });
     const [isParsingPdf, setIsParsingPdf] = useState(false);
+    const [pdfProgress, setPdfProgress] = useState('');
     const jsonInputRef = useRef<HTMLInputElement>(null);
     const pdfInputRef = useRef<HTMLInputElement>(null);
 
@@ -488,7 +525,7 @@ const HomePage: React.FC<{ onStart: (content: string, preferences: LearningPrefe
             alert("لطفاً محتوای کافی برای تحلیل وارد کنید (حداقل ۵۰ کاراکتر).");
             return;
         }
-        onStart(sourceContent, preferences);
+        onStart(sourceContent, sourcePageContents, sourceImages, preferences);
     };
 
     const handleJsonFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -503,7 +540,10 @@ const HomePage: React.FC<{ onStart: (content: string, preferences: LearningPrefe
         if (!file) return;
 
         setIsParsingPdf(true);
+        setPdfProgress('در حال خواندن فایل...');
         setSourceContent('');
+        setSourcePageContents(null);
+        setSourceImages([]);
 
         const reader = new FileReader();
         reader.onload = async (event) => {
@@ -512,25 +552,96 @@ const HomePage: React.FC<{ onStart: (content: string, preferences: LearningPrefe
 
                 const typedarray = new Uint8Array(event.target.result as ArrayBuffer);
                 const pdf = await pdfjsLib.getDocument(typedarray).promise;
-                let fullText = '';
+                
+                const pageTexts: string[] = [];
+                const images: { mimeType: string; data: string }[] = [];
+                const processedImages = new Set<string>();
+
                 for (let i = 1; i <= pdf.numPages; i++) {
+                    setPdfProgress(`در حال پردازش صفحه ${i} از ${pdf.numPages}...`);
                     const page = await pdf.getPage(i);
+                    
                     const textContent = await page.getTextContent();
                     const pageText = textContent.items.map((item: any) => item.str).join(' ');
-                    fullText += pageText + '\n\n'; // Add space between pages
+                    pageTexts.push(pageText);
+
+                    const operatorList = await page.getOperatorList();
+                    for (let j = 0; j < operatorList.fnArray.length; j++) {
+                        if (operatorList.fnArray[j] === pdfjsLib.OPS.paintImageXObject) {
+                            const imageName = operatorList.argsArray[j][0];
+                            if (processedImages.has(imageName)) continue;
+                            
+                            try {
+                                const img = await page.objs.get(imageName);
+                                if (!img || !img.data) continue;
+
+                                let mimeType: string;
+                                let base64Data: string;
+
+                                if (img.kind === pdfjsLib.ImageKind.JPEG) {
+                                    mimeType = 'image/jpeg';
+                                    let binary = '';
+                                    for (let k = 0; k < img.data.length; k++) {
+                                        binary += String.fromCharCode(img.data[k]);
+                                    }
+                                    base64Data = window.btoa(binary);
+                                } else {
+                                    mimeType = 'image/png';
+                                    const canvas = document.createElement('canvas');
+                                    canvas.width = img.width;
+                                    canvas.height = img.height;
+                                    const ctx = canvas.getContext('2d');
+                                    if (!ctx) continue;
+
+                                    const imageData = ctx.createImageData(img.width, img.height);
+                                    if (img.data.length === img.width * img.height * 3) { // RGB
+                                        const rgbaData = new Uint8ClampedArray(img.width * img.height * 4);
+                                        for (let k = 0; k < img.width * img.height; k++) {
+                                            rgbaData[k * 4] = img.data[k * 3];
+                                            rgbaData[k * 4 + 1] = img.data[k * 3 + 1];
+                                            rgbaData[k * 4 + 2] = img.data[k * 3 + 2];
+                                            rgbaData[k * 4 + 3] = 255;
+                                        }
+                                        imageData.data.set(rgbaData);
+                                    } else if (img.data.length === img.width * img.height) { // Grayscale
+                                        const rgbData = new Uint8ClampedArray(img.width * img.height * 4);
+                                        for (let k = 0; k < img.data.length; k++) {
+                                            rgbData[k * 4] = rgbData[k * 4 + 1] = rgbData[k * 4 + 2] = img.data[k];
+                                            rgbData[k * 4 + 3] = 255;
+                                        }
+                                        imageData.data.set(rgbData);
+                                    } else {
+                                        continue;
+                                    }
+                                    ctx.putImageData(imageData, 0, 0);
+                                    base64Data = canvas.toDataURL(mimeType).split(',')[1];
+                                }
+                                images.push({ mimeType, data: base64Data });
+                                processedImages.add(imageName);
+                            } catch (e) {
+                                console.warn(`Could not process image ${imageName}:`, e);
+                            }
+                        }
+                    }
                 }
-                setSourceContent(fullText);
+                setPdfProgress(`پردازش کامل شد! ${images.length} تصویر استخراج شد.`);
+                setSourcePageContents(pageTexts);
+                setSourceContent(pageTexts.join('\n\n'));
+                setSourceImages(images);
             } catch (error) {
                 console.error("Error parsing PDF:", error);
                 alert("خطا در پردازش فایل PDF. لطفاً از یک فایل معتبر استفاده کنید.");
+                setPdfProgress('');
             } finally {
                 setIsParsingPdf(false);
+                setTimeout(() => setPdfProgress(''), 3000);
             }
         };
         reader.onerror = () => {
             console.error("Error reading file.");
             alert("خطا در خواندن فایل.");
             setIsParsingPdf(false);
+            setPdfProgress('');
         }
         reader.readAsArrayBuffer(file);
 
@@ -545,17 +656,30 @@ const HomePage: React.FC<{ onStart: (content: string, preferences: LearningPrefe
                     <p className="mt-2 text-muted-foreground">متن خود را کپی کنید، یک PDF بارگذاری کنید، یا یک فایل پیشرفت را باز کنید.</p>
                 </div>
                 <form onSubmit={handleSubmit} className="space-y-6">
-                    <textarea
-                        value={sourceContent}
-                        onChange={(e) => setSourceContent(e.target.value)}
-                        className="w-full px-3 py-2 transition-colors duration-200 border rounded-md shadow-sm h-60 bg-background text-foreground border-border focus:ring-ring focus:border-primary disabled:bg-muted/50"
-                        placeholder="مثال: فصل اول کتاب تاریخ خود را اینجا قرار دهید یا یک فایل PDF بارگذاری کنید..."
-                        disabled={isParsingPdf}
-                    />
+                    <div>
+                        <textarea
+                            value={sourceContent}
+                            onChange={(e) => setSourceContent(e.target.value)}
+                            className="w-full px-3 py-2 transition-colors duration-200 border rounded-md shadow-sm h-60 bg-background text-foreground border-border focus:ring-ring focus:border-primary disabled:bg-muted/50"
+                            placeholder="مثال: فصل اول کتاب تاریخ خود را اینجا قرار دهید یا یک فایل PDF بارگذاری کنید..."
+                            disabled={isParsingPdf}
+                        />
+                         {isParsingPdf && <div className="py-2 text-sm text-center text-muted-foreground">{pdfProgress}</div>}
+                    </div>
                     
                     <div className="p-4 border rounded-md bg-secondary/50 border-border">
                       <h3 className="mb-4 font-semibold text-secondary-foreground">شخصی‌سازی یادگیری</h3>
-                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                        <div>
+                          <label htmlFor="learningGoal" className="block mb-2 text-sm font-medium text-secondary-foreground">هدف شما از یادگیری چیست؟</label>
+                          <input 
+                            type="text" 
+                            id="learningGoal"
+                            value={preferences.learningGoal} 
+                            onChange={e => setPreferences({...preferences, learningGoal: e.target.value})} 
+                            className="w-full p-2 border rounded-md bg-background border-border focus:ring-ring focus:border-primary" 
+                            placeholder="مثال: برای امتحان آماده می‌شوم، فقط از روی کنجکاوی، ..."/>
+                        </div>
+                      <div className="grid grid-cols-1 gap-6 mt-4 md:grid-cols-2">
                         <div>
                           <label className="block mb-2 text-sm font-medium text-secondary-foreground">سبک توضیحات</label>
                            <select value={preferences.style} onChange={e => setPreferences({...preferences, style: e.target.value as any})} className="w-full p-2 border rounded-md bg-background border-border focus:ring-ring focus:border-primary">

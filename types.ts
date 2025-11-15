@@ -7,10 +7,11 @@ export interface MindMapNode {
     locked: boolean;
     difficulty: number;
     isExplanatory: boolean;
+    sourcePages: number[];
     children?: MindMapNode[];
   }
 
-  export type QuestionType = 'multiple-choice' | 'short-answer' | 'matching';
+  export type QuestionType = 'multiple-choice' | 'short-answer';
 
   export interface BaseQuestion {
     id: string;
@@ -31,19 +32,7 @@ export interface MindMapNode {
     correctAnswer: string; // Example correct answer for display
   }
   
-  export interface MatchingItem {
-      id: string;
-      text: string;
-  }
-
-  export interface MatchingQuestion extends BaseQuestion {
-    type: 'matching';
-    stems: MatchingItem[]; // Column A
-    options: MatchingItem[]; // Column B
-    correctPairs: { stemId: string; optionId: string }[];
-  }
-  
-  export type QuizQuestion = MultipleChoiceQuestion | ShortAnswerQuestion | MatchingQuestion;
+  export type QuizQuestion = MultipleChoiceQuestion | ShortAnswerQuestion;
 
   export interface Quiz {
     questions: QuizQuestion[];
@@ -59,6 +48,7 @@ export interface MindMapNode {
     style: 'faithful' | 'balanced' | 'creative';
     addExplanatoryNodes: boolean;
     customInstructions: string;
+    learningGoal: string;
   }
 
   export interface NodeContent {
@@ -66,13 +56,22 @@ export interface MindMapNode {
     theory: string;
     example: string;
     connection: string;
-    conclusion: string;
+    conclusion:string;
+  }
+
+  export interface PreAssessmentAnalysis {
+    overallAnalysis: string;
+    strengths: string[];
+    weaknesses: string[];
+    recommendedLevel: string;
   }
 
   export enum AppStatus {
     IDLE = 'IDLE',
     LOADING = 'LOADING',
     PRE_ASSESSMENT = 'PRE_ASSESSMENT',
+    GRADING_PRE_ASSESSMENT = 'GRADING_PRE_ASSESSMENT',
+    PRE_ASSESSMENT_REVIEW = 'PRE_ASSESSMENT_REVIEW',
     LEARNING = 'LEARNING',
     VIEWING_NODE = 'VIEWING_NODE',
     TAKING_QUIZ = 'TAKING_QUIZ',
@@ -84,7 +83,7 @@ export interface MindMapNode {
     ERROR = 'ERROR',
   }
 
-  export type UserAnswer = string | number | Record<string, string>;
+  export type UserAnswer = string | number;
 
   export interface QuizResult {
     question: QuizQuestion;
@@ -98,9 +97,13 @@ export interface MindMapNode {
     theme: 'light' | 'balanced' | 'dark';
     status: AppStatus;
     sourceContent: string;
+    sourcePageContents: string[] | null;
+    sourceImages: { mimeType: string, data: string }[];
     preferences: LearningPreferences;
     mindMap: MindMapNode[];
     preAssessment: Quiz | null;
+    preAssessmentAnswers: Record<string, UserAnswer> | null;
+    preAssessmentAnalysis: PreAssessmentAnalysis | null;
     activeQuiz: Quiz | null;
     activeNodeId: string | null;
     nodeContents: { [key: string]: NodeContent };
@@ -115,8 +118,11 @@ export interface MindMapNode {
   export interface SavableState {
     version: number;
     sourceContent: string;
+    sourcePageContents: string[] | null;
+    sourceImages: { mimeType: string, data: string }[];
     preferences: LearningPreferences;
     mindMap: MindMapNode[];
+    preAssessmentAnalysis: PreAssessmentAnalysis | null;
     nodeContents: { [key: string]: NodeContent };
     userProgress: { [key: string]: 'completed' | 'failed' | 'in_progress' };
     weaknesses: Weakness[];
