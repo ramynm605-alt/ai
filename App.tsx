@@ -1,5 +1,3 @@
-
-
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef } from 'react';
 import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment } from './services/geminiService';
@@ -42,6 +40,7 @@ const initialState: AppState = {
   finalExam: null,
   quizResults: null,
   correctiveSummary: '',
+  loadingMessage: null,
   error: null,
 };
 
@@ -50,9 +49,9 @@ function appReducer(state: AppState, action: any): AppState {
     case 'SET_THEME':
       return { ...state, theme: action.payload };
     case 'START_GENERATION':
-      return { ...initialState, theme: state.theme, status: AppStatus.LOADING, sourceContent: action.payload.sourceContent, sourcePageContents: action.payload.sourcePageContents, sourceImages: action.payload.sourceImages, preferences: action.payload.preferences };
+      return { ...initialState, theme: state.theme, status: AppStatus.LOADING, sourceContent: action.payload.sourceContent, sourcePageContents: action.payload.sourcePageContents, sourceImages: action.payload.sourceImages, preferences: action.payload.preferences, loadingMessage: 'در حال تحلیل محتوای شما و ساخت نقشه ذهنی...' };
     case 'PLAN_GENERATED':
-      return { ...state, status: AppStatus.PRE_ASSESSMENT, mindMap: action.payload.mindMap, preAssessment: action.payload.preAssessment };
+      return { ...state, status: AppStatus.PRE_ASSESSMENT, mindMap: action.payload.mindMap, preAssessment: action.payload.preAssessment, loadingMessage: null };
     case 'SUBMIT_PRE_ASSESSMENT':
         return { ...state, status: AppStatus.GRADING_PRE_ASSESSMENT, preAssessmentAnswers: action.payload };
     case 'PRE_ASSESSMENT_ANALYSIS_LOADED':
@@ -60,13 +59,13 @@ function appReducer(state: AppState, action: any): AppState {
     case 'START_PERSONALIZED_LEARNING':
       return { ...state, status: AppStatus.LEARNING, activeNodeId: null, activeQuiz: null, quizResults: null };
     case 'SELECT_NODE':
-      return { ...state, status: AppStatus.LOADING, activeNodeId: action.payload };
+      return { ...state, status: AppStatus.LOADING, activeNodeId: action.payload, loadingMessage: 'در حال آماده‌سازی درس...' };
     case 'NODE_CONTENT_LOADED':
-      return { ...state, status: AppStatus.VIEWING_NODE, nodeContents: { ...state.nodeContents, [state.activeNodeId!]: action.payload } };
+      return { ...state, status: AppStatus.VIEWING_NODE, nodeContents: { ...state.nodeContents, [state.activeNodeId!]: action.payload }, loadingMessage: null };
     case 'START_QUIZ':
-      return { ...state, status: AppStatus.LOADING, activeNodeId: action.payload };
+      return { ...state, status: AppStatus.LOADING, activeNodeId: action.payload, loadingMessage: 'در حال طراحی سوالات آزمون...' };
     case 'QUIZ_LOADED':
-        return { ...state, status: AppStatus.TAKING_QUIZ, activeQuiz: action.payload };
+        return { ...state, status: AppStatus.TAKING_QUIZ, activeQuiz: action.payload, loadingMessage: null };
     case 'SUBMIT_QUIZ':
         return { ...state, status: AppStatus.GRADING_QUIZ };
     case 'QUIZ_ANALYSIS_LOADED': {
@@ -120,9 +119,9 @@ function appReducer(state: AppState, action: any): AppState {
         };
     }
     case 'START_FINAL_EXAM':
-        return { ...state, status: AppStatus.LOADING };
+        return { ...state, status: AppStatus.LOADING, loadingMessage: 'در حال آماده‌سازی آزمون نهایی...' };
     case 'FINAL_EXAM_LOADED':
-        return { ...state, status: AppStatus.FINAL_EXAM, finalExam: action.payload, activeQuiz: action.payload, activeNodeId: 'final_exam' };
+        return { ...state, status: AppStatus.FINAL_EXAM, finalExam: action.payload, activeQuiz: action.payload, activeNodeId: 'final_exam', loadingMessage: null };
     case 'COMPLETE_FINAL_EXAM': // This is now just for submitting the exam
         return { ...state, status: AppStatus.GRADING_QUIZ };
     case 'SUMMARY_LOADED':
@@ -137,12 +136,13 @@ function appReducer(state: AppState, action: any): AppState {
             sourcePageContents: loadedState.sourcePageContents || null,
             theme: state.theme,
             status: status,
+            loadingMessage: null,
             error: null,
         };
     case 'RESET':
       return { ...initialState, theme: state.theme };
     case 'ERROR':
-      return { ...state, status: AppStatus.ERROR, error: action.payload };
+      return { ...state, status: AppStatus.ERROR, error: action.payload, loadingMessage: null };
     default:
       return state;
   }
@@ -366,15 +366,25 @@ export default function App() {
 
   
   const renderContent = () => {
+    const LoadingScreen = ({ message, subMessage }: { message: string, subMessage?: string }) => (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-8 text-center bg-background/80 backdrop-blur-sm fade-in">
+            <Spinner />
+            <div>
+                <p className="text-xl font-semibold text-foreground">{message}</p>
+                {subMessage && <p className="mt-2 text-muted-foreground">{subMessage}</p>}
+            </div>
+        </div>
+    );
+    
     switch (state.status) {
       case AppStatus.IDLE:
         return <HomePage onStart={handleStart} onLoad={handleLoadProgress} />;
       case AppStatus.LOADING:
-        return <div className="flex flex-col items-center justify-center h-full"><Spinner /><p className="mt-4 text-muted-foreground">در حال پردازش... لطفاً منتظر بمانید.</p></div>;
+        return <LoadingScreen message={state.loadingMessage || 'در حال پردازش...'} subMessage="این فرآیند ممکن است کمی طول بکشد." />;
       case AppStatus.GRADING_PRE_ASSESSMENT:
-        return <div className="flex flex-col items-center justify-center h-full"><Spinner /><p className="mt-4 text-muted-foreground">در حال تحلیل پیش‌آزمون شما... هوش مصنوعی در حال شناسایی نقاط قوت و ضعف شماست.</p></div>;
+        return <LoadingScreen message="در حال تحلیل پیش‌آزمون شما..." subMessage="هوش مصنوعی در حال شناسایی نقاط قوت و ضعف شماست." />;
       case AppStatus.GRADING_QUIZ:
-        return <div className="flex flex-col items-center justify-center h-full"><Spinner /><p className="mt-4 text-muted-foreground">در حال تصحیح آزمون... هوش مصنوعی در حال تحلیل پاسخ‌های شماست.</p></div>;
+        return <LoadingScreen message="در حال تصحیح آزمون..." subMessage="هوش مصنوعی در حال تحلیل پاسخ‌های شماست." />;
       case AppStatus.PRE_ASSESSMENT:
         return <QuizView title="پیش‌آزمون هوشمند" quiz={state.preAssessment!} onSubmit={handleSubmitPreAssessment} />;
       case AppStatus.PRE_ASSESSMENT_REVIEW:

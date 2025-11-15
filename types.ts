@@ -1,5 +1,6 @@
 
 
+
 export interface MindMapNode {
     id: string;
     title: string;
@@ -112,6 +113,7 @@ export interface MindMapNode {
     finalExam: Quiz | null;
     quizResults: QuizResult[] | null;
     correctiveSummary: string;
+    loadingMessage: string | null;
     error: string | null;
   }
 
