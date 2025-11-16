@@ -22,7 +22,7 @@ const V_GAP_LANDSCAPE = 90;
 const NODE_WIDTH_PORTRAIT = 120;
 const NODE_HEIGHT_PORTRAIT = 80; // Taller to accommodate wrapped text
 const H_GAP_PORTRAIT = 20;
-const V_GAP_PORTRAIT = 70;
+const V_GAP_PORTRAIT = 100;
 
 const formatPageNumbers = (pages: number[]): string => {
     if (!pages || pages.length === 0) return '';
@@ -193,7 +193,7 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
         let H_GAP = isPortrait ? H_GAP_PORTRAIT : H_GAP_LANDSCAPE;
         
         const requiredWidth = (widestLevelCount * NODE_WIDTH) + Math.max(0, widestLevelCount - 1) * H_GAP;
-        const availableWidth = containerSize.width - 16; // some padding
+        const availableWidth = containerSize.width;
         
         if (isPortrait && availableWidth > 0 && requiredWidth > availableWidth) {
             const ratio = availableWidth / requiredWidth;
@@ -210,10 +210,8 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
         let dynamicVGap = V_GAP;
         
         if (containerSize.height > defaultTotalHeight && numLevels > 1) {
-            const availableHeight = containerSize.height - 16; // some padding
-            if (availableHeight > defaultTotalHeight) {
-                dynamicVGap = (availableHeight - numLevels * NODE_HEIGHT) / (numLevels - 1);
-            }
+            const availableHeight = containerSize.height;
+            dynamicVGap = (availableHeight - numLevels * NODE_HEIGHT) / (numLevels - 1);
         }
 
         const finalPositions: { [key: string]: { node: MindMapNodeType; x: number; y: number; level: number } } = {};
@@ -294,7 +292,7 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
     }, [containerSize, mapWidth, mapHeight]);
     
     return (
-        <div ref={containerRef} className="relative flex items-start justify-end w-full h-full p-4 overflow-auto">
+        <div ref={containerRef} className="relative flex items-center justify-end w-full h-full p-4 overflow-auto">
             <div 
                 className="relative" 
                 style={{ 
