@@ -11,6 +11,7 @@ interface NodeViewProps {
     prevNode: MindMapNode | null;
     nextNode: MindMapNode | null;
     onExplainRequest: (text: string) => void;
+    isIntroNode: boolean;
 }
 
 const LoadingSkeleton: React.FC = () => (
@@ -33,7 +34,7 @@ const Section: React.FC<{ title: string; content: string }> = ({ title, content 
     </div>
 );
 
-const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz, onNavigate, prevNode, nextNode, onExplainRequest }) => {
+const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz, onNavigate, prevNode, nextNode, onExplainRequest, isIntroNode }) => {
     const [selectionPopup, setSelectionPopup] = useState<{ x: number; y: number; text: string } | null>(null);
     const [reminderPopup, setReminderPopup] = useState<{ x: number; y: number; content: string } | null>(null);
     const viewRef = useRef<HTMLDivElement>(null);
@@ -129,29 +130,51 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
             </button>
             <div className="p-6 border rounded-lg shadow-lg sm:p-8 bg-card border-border">
                 <h2 className="mb-8 text-3xl font-bold text-center text-card-foreground">{node.title}</h2>
-                <Section title="مقدمه" content={content.introduction} />
-                <Section title="تئوری" content={content.theory} />
-                <Section title="مثال" content={content.example} />
-                <Section title="ارتباط با سایر مفاهیم" content={content.connection} />
-                <Section title="نتیجه‌گیری" content={content.conclusion} />
-                <div className="flex flex-col items-center gap-4 pt-6 mt-8 border-t sm:flex-row sm:justify-between border-border">
-                    <button 
-                        onClick={() => prevNode && onNavigate(prevNode.id)} 
-                        disabled={!prevNode}
-                        className="w-full px-6 py-2 font-semibold rounded-md sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed">
-                        درس قبلی
-                    </button>
-                    <button onClick={onStartQuiz} className="order-first w-full px-8 py-3 font-bold text-white transition-transform duration-200 rounded-lg sm:order-none sm:w-auto bg-primary hover:bg-primary-hover active:scale-95">
-                        آماده‌ام، برویم برای آزمون!
-                    </button>
-                    <button 
-                        onClick={() => nextNode && onNavigate(nextNode.id)} 
-                        disabled={!nextNode || nextNode.locked}
-                        className="w-full px-6 py-2 font-semibold rounded-md sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
-                        title={nextNode?.locked ? 'ابتدا باید درس فعلی را کامل کنید' : ''}
-                        >
-                        درس بعدی
-                    </button>
+                {isIntroNode ? (
+                    content.introduction ? (
+                         <div className="node-content-section leading-relaxed text-card-foreground/90" dangerouslySetInnerHTML={{ __html: content.introduction }} />
+                    ) : (
+                        <LoadingSkeleton />
+                    )
+                ) : (
+                    <>
+                        {content.introduction && <Section title="مقدمه" content={content.introduction} />}
+                        {content.theory && <Section title="تئوری" content={content.theory} />}
+                        {content.example && <Section title="مثال" content={content.example} />}
+                        {content.connection && <Section title="ارتباط با سایر مفاهیم" content={content.connection} />}
+                        {content.conclusion && <Section title="نتیجه‌گیری" content={content.conclusion} />}
+                    </>
+                )}
+                
+                <div className={`flex flex-col items-center gap-4 pt-6 mt-8 border-t border-border sm:flex-row ${isIntroNode ? 'sm:justify-center' : 'sm:justify-between'}`}>
+                    {isIntroNode ? (
+                         <button 
+                            onClick={onBack} 
+                            className="flex items-center gap-2 px-8 py-3 font-bold text-white transition-transform duration-200 rounded-lg bg-primary hover:bg-primary-hover active:scale-95">
+                            <span>شروع یادگیری و مشاهده نقشه راه</span>
+                            <ArrowRight className="w-5 h-5" />
+                        </button>
+                    ) : (
+                        <>
+                            <button 
+                                onClick={() => prevNode && onNavigate(prevNode.id)} 
+                                disabled={!prevNode}
+                                className="w-full px-6 py-2 font-semibold rounded-md sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed">
+                                درس قبلی
+                            </button>
+                            <button onClick={onStartQuiz} className="order-first w-full px-8 py-3 font-bold text-white transition-transform duration-200 rounded-lg sm:order-none sm:w-auto bg-primary hover:bg-primary-hover active:scale-95">
+                                آماده‌ام، برویم برای آزمون!
+                            </button>
+                            <button 
+                                onClick={() => nextNode && onNavigate(nextNode.id)} 
+                                disabled={!nextNode || nextNode.locked}
+                                className="w-full px-6 py-2 font-semibold rounded-md sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={nextNode?.locked ? 'ابتدا باید درس فعلی را کامل کنید' : ''}
+                                >
+                                درس بعدی
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
         </div>

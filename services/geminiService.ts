@@ -48,7 +48,7 @@ export async function generateLearningPlan(
         بر اساس محتوای زیر، یک طرح درس به صورت نقشه ذهنی سلسله مراتبی و **بسیار فشرده** ایجاد کن.
         1.  ساختار باید به شکل زیر باشد:
             -   **گره ریشه (Root Node):** اولین و تنها گره ریشه باید عنوانی مانند "مقدمه کلی" داشته باشد و یک نمای کلی از کل موضوع ارائه دهد. شناسه والد آن باید null باشد.
-            -   **گره‌های اصلی (Main Nodes):** مفاهیم اصلی را در گره‌های مجزا گروه‌بندی کن. هر مفهوم اصلی باید به طور کامل در یک گره پوشش داده شود تا از پراکندگی مطالب جلوگیری شود. یک مفهوم نباید در بیش از دو گره تکرار شود. اگر تکرار ضروری است، گره دوم باید یک "توضیح گسترده" یا "مقایسه" باشد.
+            -   **گره‌های اصلی (Main Nodes):** مفاهیم اصلی را در گره‌های مجزا و **متمایز** گروه‌بندی کن. هر مفهوم اصلی باید به طور کامل در یک گره پوشش داده شود تا از پراکندگی مطالب جلوگیری شود. **قانون عدم تکرار (بسیار مهم):** یک مفهوم نباید به طور مفصل در بیش از یک گره توضیح داده شود. اگر یک مفهوم در گره دیگری ذکر می‌شود، باید فقط به عنوان یک **مرجع کوتاه** برای نشان دادن ارتباط باشد. تنها استثنای مجاز برای تکرار جزئیات، زمانی است که یک دیدگاه جدید (مانند مقایسه یا تحلیل عمیق‌تر) ارائه می‌شود و این استثنا نباید بیش از یک بار برای یک مفهوم اتفاق بیفتد.
             -   **فشردگی:** تعداد کل گره‌ها را بین ۳ تا ۸ گره محدود کن تا نقشه ذهنی مختصر و مفید باقی بماند. هدف، درک عمیق مفاهیم کلیدی است، نه تقسیم‌بندی بیش از حد.
         2.  برای هر گره، یک امتیاز سختی بین 0.0 (بسیار آسان) تا 1.0 (بسیار دشوار) بر اساس پیچیدگی مفهوم اختصاص بده.
         3.  ${explanatoryInstruction}
@@ -224,39 +224,59 @@ export async function generateNodeContent(
     style: LearningPreferences['style'],
     strengths: string[],
     weaknesses: string[],
+    isIntroNode: boolean,
     onStreamUpdate: (partialContent: NodeContent) => void
 ): Promise<NodeContent> {
     return withRetry(async () => {
-        let adaptiveInstruction = '';
-        const isWeakTopic = weaknesses.some(w => nodeTitle.includes(w) || w.includes(nodeTitle));
-        const isStrongTopic = strengths.some(s => nodeTitle.includes(s) || s.includes(nodeTitle));
+        let prompt = '';
 
-        if (isWeakTopic) {
-            adaptiveInstruction = "مهم: این موضوع یکی از نقاط ضعف کاربر است. توضیحات را بسیار ساده، پایه‌ای و با جزئیات کامل ارائه بده. از مثال‌های قابل فهم و تشبیه‌های ساده استفاده کن تا مفاهیم به خوبی جا بیفتند.";
-        } else if (isStrongTopic) {
-            adaptiveInstruction = "مهم: کاربر در این موضوع تسلط دارد. توضیحات را به صورت خلاصه‌ای پیشرفته ارائه بده و بر روی نکات ظریف، کاربردهای خاص یا ارتباط آن با مفاهیم پیچیده‌تر تمرکز کن.";
+        if (isIntroNode) {
+            prompt = `شما یک دستیار آموزشی هستید. وظیفه شما ایجاد یک مقدمه جامع و کلی برای کل محتوای ارائه شده است. این مقدمه باید به تمام مفاهیم اصلی و غیرجزئی که در ادامه پوشش داده می‌شوند، اشاره کند.
+            
+            **قوانین مهم:**
+            1.  **جامع باشید:** هیچ مفهوم کلیدی را حذف نکنید. یک نمای کلی از کل مسیر یادگیری ارائه دهید.
+            2.  **ساختار ساده:** خروجی باید فقط یک متن یکپارچه باشد. از ایجاد بخش‌های مجزا مانند "تئوری"، "مثال" یا "ارتباط با سایر مفاهیم" خودداری کنید.
+            3.  **روان و واضح:** متن باید به صورت روان و قابل فهم نوشته شود تا کاربر دید کلی خوبی نسبت به مطالب پیدا کند.
+            
+            خروجی باید در فرمت Markdown باشد. کلمات و عبارات کلیدی را با استفاده از Markdown به صورت **پررنگ** مشخص کن.
+
+            محتوای کامل برای مرجع:
+            ---
+            ${fullContent}
+            ---
+            `;
+        } else {
+            let adaptiveInstruction = '';
+            const isWeakTopic = weaknesses.some(w => nodeTitle.includes(w) || w.includes(nodeTitle));
+            const isStrongTopic = strengths.some(s => nodeTitle.includes(s) || s.includes(nodeTitle));
+
+            if (isWeakTopic) {
+                adaptiveInstruction = "مهم: این موضوع یکی از نقاط ضعف کاربر است. توضیحات را بسیار ساده، پایه‌ای و با جزئیات کامل ارائه بده. از مثال‌های قابل فهم و تشبیه‌های ساده استفاده کن تا مفاهیم به خوبی جا بیفتند.";
+            } else if (isStrongTopic) {
+                adaptiveInstruction = "مهم: کاربر در این موضوع تسلط دارد. توضیحات را به صورت خلاصه‌ای پیشرفته ارائه بده و بر روی نکات ظریف، کاربردهای خاص یا ارتباط آن با مفاهیم پیچیده‌تر تمرکز کن.";
+            }
+
+            prompt = `وظیفه شما استخراج و سازماندهی **تمام** اطلاعات مربوط به مفهوم "${nodeTitle}" از متن کامل و تصاویر ارائه‌شده است. از خلاصه‌سازی یا حذف هرگونه جزئیات خودداری کنید. محتوا را به صورت جامع و کامل در پنج بخش ساختاریافته ارائه دهید.
+
+            ${adaptiveInstruction}
+            
+            خروجی باید در فرمت Markdown باشد و از هدرهای دقیق زیر برای جداسازی هر بخش استفاده کنید. هر هدر باید در یک خط جداگانه باشد:
+            ###INTRODUCTION###
+            ###THEORY###
+            ###EXAMPLE###
+            ###CONNECTION###
+            ###CONCLUSION###
+
+            در هر بخش، کلمات و عبارات کلیدی را با استفاده از Markdown به صورت **پررنگ** مشخص کن و مهم‌ترین جمله (فقط یک جمله) را با استفاده از Markdown به صورت *ایتالیک* مشخص کن.
+
+            در حین توضیح، اگر به یک مفهوم کلیدی که پیش‌نیاز این بخش است اشاره می‌کنید، از این فرمت خاص استفاده کنید: "همانطور که پیش‌تر اشاره شد[1](یادآوری: توضیح مختصری از مفهوم پیش‌نیاز در اینجا قرار دهید)، این موضوع ...". این فرمت به ما امکان می‌دهد یک یادآوری تعاملی برای کاربر ایجاد کنیم.
+
+            متن کامل برای مرجع:
+            ---
+            ${fullContent}
+            ---
+            `;
         }
-
-        const prompt = `وظیفه شما استخراج و سازماندهی **تمام** اطلاعات مربوط به مفهوم "${nodeTitle}" از متن کامل و تصاویر ارائه‌شده است. از خلاصه‌سازی یا حذف هرگونه جزئیات خودداری کنید. محتوا را به صورت جامع و کامل در پنج بخش ساختاریافته ارائه دهید.
-
-        ${adaptiveInstruction}
-        
-        خروجی باید در فرمت Markdown باشد و از هدرهای دقیق زیر برای جداسازی هر بخش استفاده کنید. هر هدر باید در یک خط جداگانه باشد:
-        ###INTRODUCTION###
-        ###THEORY###
-        ###EXAMPLE###
-        ###CONNECTION###
-        ###CONCLUSION###
-
-        در هر بخش، کلمات و عبارات کلیدی را با استفاده از Markdown به صورت **پررنگ** مشخص کن و مهم‌ترین جمله (فقط یک جمله) را با استفاده از Markdown به صورت *ایتالیک* مشخص کن.
-
-        در حین توضیح، اگر به یک مفهوم کلیدی که پیش‌نیاز این بخش است اشاره می‌کنید، از این فرمت خاص استفاده کنید: "همانطور که پیش‌تر اشاره شد[1](یادآوری: توضیح مختصری از مفهوم پیش‌نیاز در اینجا قرار دهید)، این موضوع ...". این فرمت به ما امکان می‌دهد یک یادآوری تعاملی برای کاربر ایجاد کنیم.
-
-        متن کامل برای مرجع:
-        ---
-        ${fullContent}
-        ---
-        `;
 
         const imageParts = images.map(img => ({ inlineData: { mimeType: img.mimeType, data: img.data } }));
         const stream = await ai.models.generateContentStream({
@@ -279,54 +299,56 @@ export async function generateNodeContent(
         for await (const chunk of stream) {
             fullText += chunk.text;
             
-            const sections: (keyof NodeContent)[] = ['introduction', 'theory', 'example', 'connection', 'conclusion'];
-            const headers = {
-                introduction: '###INTRODUCTION###',
-                theory: '###THEORY###',
-                example: '###EXAMPLE###',
-                connection: '###CONNECTION###',
-                conclusion: '###CONCLUSION###'
-            };
-
-            const headerKeys = Object.values(headers);
-            let tempText = fullText;
-            
-            // Default to introduction if no headers are present yet
-            if (!headerKeys.some(h => tempText.includes(h))) {
-                 rawMarkdownContent.introduction = tempText;
+            if (isIntroNode) {
+                 rawMarkdownContent.introduction = fullText;
             } else {
-                 for (let i = sections.length - 1; i >= 0; i--) {
-                    const currentSection = sections[i];
-                    const currentHeader = headers[currentSection];
-                    const headerIndex = tempText.lastIndexOf(currentHeader);
-        
-                    if (headerIndex !== -1) {
-                        const content = tempText.substring(headerIndex + currentHeader.length);
-                        rawMarkdownContent[currentSection] = content;
-                        tempText = tempText.substring(0, headerIndex);
-                    } else {
-                        // If a header is not found, clear its content to avoid stale data
-                        rawMarkdownContent[currentSection] = '';
+                const sections: (keyof NodeContent)[] = ['introduction', 'theory', 'example', 'connection', 'conclusion'];
+                const headers = {
+                    introduction: '###INTRODUCTION###',
+                    theory: '###THEORY###',
+                    example: '###EXAMPLE###',
+                    connection: '###CONNECTION###',
+                    conclusion: '###CONCLUSION###'
+                };
+
+                const headerKeys = Object.values(headers);
+                let tempText = fullText;
+                
+                if (!headerKeys.some(h => tempText.includes(h))) {
+                     rawMarkdownContent.introduction = tempText;
+                } else {
+                     for (let i = sections.length - 1; i >= 0; i--) {
+                        const currentSection = sections[i];
+                        const currentHeader = headers[currentSection];
+                        const headerIndex = tempText.lastIndexOf(currentHeader);
+            
+                        if (headerIndex !== -1) {
+                            const content = tempText.substring(headerIndex + currentHeader.length);
+                            rawMarkdownContent[currentSection] = content;
+                            tempText = tempText.substring(0, headerIndex);
+                        } else {
+                            rawMarkdownContent[currentSection] = '';
+                        }
                     }
                 }
             }
             
             const partialHtmlContent: NodeContent = {
-                introduction: marked.parse(processReminders(rawMarkdownContent.introduction)),
-                theory: marked.parse(processReminders(rawMarkdownContent.theory)),
-                example: marked.parse(processReminders(rawMarkdownContent.example)),
-                connection: marked.parse(processReminders(rawMarkdownContent.connection)),
-                conclusion: marked.parse(processReminders(rawMarkdownContent.conclusion)),
+                introduction: await marked.parse(processReminders(rawMarkdownContent.introduction)),
+                theory: await marked.parse(processReminders(rawMarkdownContent.theory)),
+                example: await marked.parse(processReminders(rawMarkdownContent.example)),
+                connection: await marked.parse(processReminders(rawMarkdownContent.connection)),
+                conclusion: await marked.parse(processReminders(rawMarkdownContent.conclusion)),
             };
             onStreamUpdate(partialHtmlContent);
         }
 
         const finalHtmlContent: NodeContent = {
-            introduction: marked.parse(processReminders(rawMarkdownContent.introduction)),
-            theory: marked.parse(processReminders(rawMarkdownContent.theory)),
-            example: marked.parse(processReminders(rawMarkdownContent.example)),
-            connection: marked.parse(processReminders(rawMarkdownContent.connection)),
-            conclusion: marked.parse(processReminders(rawMarkdownContent.conclusion)),
+            introduction: await marked.parse(processReminders(rawMarkdownContent.introduction)),
+            theory: await marked.parse(processReminders(rawMarkdownContent.theory)),
+            example: await marked.parse(processReminders(rawMarkdownContent.example)),
+            connection: await marked.parse(processReminders(rawMarkdownContent.connection)),
+            conclusion: await marked.parse(processReminders(rawMarkdownContent.conclusion)),
         };
 
         return finalHtmlContent;
@@ -559,7 +581,7 @@ export async function generateCorrectiveSummary(fullContent: string, images: {mi
             contents: { parts: [{ text: summaryPrompt }, ...imageParts] }
         });
 
-        return marked.parse(response.text);
+        return await marked.parse(response.text);
     });
 }
 
@@ -569,12 +591,13 @@ export async function generatePracticeResponse(topic: string, problem: string): 
             ? `یک راه حل کامل و گام به گام برای این مسئله ارائه بده: "${problem}"`
             : `یک سوال تمرینی (می‌تواند چندگزینه‌ای یا تشریحی باشد) در مورد موضوع "${topic}" به همراه پاسخ آن ایجاد کن.`;
         
+        // FIX: The `contents` property should directly contain the prompt string, not an object with a `contents` property.
         const response = await ai.models.generateContent({
             model: "gemini-2.5-pro",
             contents: prompt
         });
 
-        return marked.parse(response.text);
+        return await marked.parse(response.text);
     });
 }
 
@@ -603,11 +626,12 @@ export async function generateChatResponse(history: ChatMessage[], question: str
         پاسخ شما:
         `;
 
+        // FIX: The `contents` property should directly contain the prompt string, not an object with a `contents` property.
         const response = await ai.models.generateContent({
             model: "gemini-2.5-pro",
             contents: prompt,
         });
 
-        return marked.parse(response.text) as string;
+        return await marked.parse(response.text);
     });
 }

@@ -1,4 +1,5 @@
 
+
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef } from 'react';
 import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse } from './services/geminiService';
@@ -153,6 +154,27 @@ function appReducer(state: AppState, action: any): AppState {
             ...(allNodesCompleted && { allNodesCompletedStatus: AppStatus.ALL_NODES_COMPLETED })
         };
     }
+     case 'COMPLETE_INTRO_NODE': {
+        const rootNodeId = state.mindMap.find(n => n.parentId === null)?.id;
+        if (!rootNodeId) {
+            return { ...state, status: AppStatus.LEARNING, activeNodeId: null, activeQuiz: null, quizResults: null };
+        }
+
+        const newProgress = { ...state.userProgress, [rootNodeId]: 'completed' as const };
+        const newMindMap = state.mindMap.map(node => 
+            node.parentId === rootNodeId ? { ...node, locked: false } : node
+        );
+
+        return {
+            ...state,
+            status: AppStatus.LEARNING,
+            activeNodeId: null,
+            activeQuiz: null,
+            quizResults: null,
+            userProgress: newProgress,
+            mindMap: newMindMap,
+        };
+    }
     case 'START_FINAL_EXAM': {
       const finalExamQuiz: Quiz = { questions: [], isStreaming: true };
       return { ...state, status: AppStatus.FINAL_EXAM, finalExam: finalExamQuiz, activeQuiz: finalExamQuiz, activeNodeId: 'final_exam', loadingMessage: null };
@@ -278,6 +300,8 @@ export default function App() {
         dispatch({ type: 'NODE_CONTENT_STREAM_START' });
         const strengths = state.preAssessmentAnalysis?.strengths || [];
         const weaknesses = state.preAssessmentAnalysis?.weaknesses || [];
+        const isIntroNode = state.mindMap.find(n => n.id === nodeId)?.parentId === null;
+
         const content = await generateNodeContent(
             state.mindMap.find(n => n.id === nodeId)!.title,
             state.sourceContent,
@@ -285,6 +309,7 @@ export default function App() {
             state.preferences.style,
             strengths,
             weaknesses,
+            isIntroNode,
             (partialContent) => {
                 dispatch({ type: 'NODE_CONTENT_STREAM_UPDATE', payload: partialContent });
             }
@@ -377,7 +402,12 @@ export default function App() {
   };
 
   const handleBackToPlan = () => {
-    dispatch({ type: 'START_PERSONALIZED_LEARNING' });
+    const rootNodeId = state.mindMap.find(n => n.parentId === null)?.id;
+    if (rootNodeId && state.activeNodeId === rootNodeId) {
+        dispatch({ type: 'COMPLETE_INTRO_NODE' });
+    } else {
+        dispatch({ type: 'START_PERSONALIZED_LEARNING' });
+    }
   };
   
   const handleSaveProgress = () => {
@@ -541,8 +571,8 @@ export default function App() {
                         </button>
                     </div>
                 )}
-                <div className="flex-grow overflow-auto">
-                    {currentView === 'learning' && <MindMap nodes={state.mindMap} progress={state.userProgress} suggestedPath={state.suggestedPath} onSelectNode={handleSelectNode} onTakeQuiz={handleStartQuiz} theme={state.theme} />}
+                <div className="flex-grow overflow-auto min-h-0">
+                    {currentView === 'learning' && <MindMap nodes={state.mindMap} progress={state.userProgress} suggestedPath={state.suggestedPath} onSelectNode={handleSelectNode} onTakeQuiz={handleStartQuiz} theme={state.theme} activeNodeId={state.activeNodeId} />}
                     {currentView === 'weaknesses' && <WeaknessTracker weaknesses={state.weaknesses} />}
                     {currentView === 'practice' && <PracticeZone />}
                 </div>
@@ -559,6 +589,8 @@ export default function App() {
              return <LoadingScreen message="در حال آماده‌سازی درس..." />;
         }
         
+        const isIntroNode = activeNode.parentId === null;
+
         return <NodeView 
                     node={activeNode} 
                     content={content} 
@@ -568,6 +600,7 @@ export default function App() {
                     prevNode={prevNode}
                     nextNode={nextNode}
                     onExplainRequest={handleExplainRequest}
+                    isIntroNode={isIntroNode}
                 />;
       }
       case AppStatus.TAKING_QUIZ:

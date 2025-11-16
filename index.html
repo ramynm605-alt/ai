@@ -285,6 +285,29 @@
         transform: translateX(-50%) translateY(-110%);
         transition: opacity 0.2s, transform 0.2s;
       }
+
+      /* Mind Map Animations */
+      .mindmap-node {
+        opacity: 0;
+        transform: scale(0.5) translateY(20px);
+        transition: opacity 0.4s ease-out, transform 0.4s ease-out, border-color 0.4s, box-shadow 0.4s;
+      }
+      .mindmap-node-visible {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+      .mindmap-line {
+        stroke-dasharray: 500;
+        stroke-dashoffset: 500;
+        transition: stroke-dashoffset 0.8s ease-in-out, stroke 0.4s ease, stroke-width 0.4s ease;
+      }
+      .mindmap-line-visible {
+        stroke-dashoffset: 0;
+      }
+      .mindmap-line-active {
+          stroke: rgb(var(--primary));
+          stroke-width: 3;
+      }
     </style>
   <script type="importmap">
 {
