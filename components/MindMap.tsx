@@ -22,7 +22,7 @@ const V_GAP_LANDSCAPE = 90;
 const NODE_WIDTH_PORTRAIT = 120;
 const NODE_HEIGHT_PORTRAIT = 80; // Taller to accommodate wrapped text
 const H_GAP_PORTRAIT = 20;
-const V_GAP_PORTRAIT = 100;
+const V_GAP_PORTRAIT = 70;
 
 const formatPageNumbers = (pages: number[]): string => {
     if (!pages || pages.length === 0) return '';
@@ -147,9 +147,9 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
         };
     }, [containerSize.width, containerSize.height]);
 
-    const { positions, mapWidth, mapHeight, vGap, nodeWidth } = useMemo(() => {
+    const { positions, mapWidth, mapHeight, vGap, nodeWidth, nodeHeight } = useMemo(() => {
         if (nodes.length === 0) {
-          return { positions: {}, mapWidth: 0, mapHeight: 0, vGap: V_GAP_LANDSCAPE, nodeWidth: NODE_WIDTH_LANDSCAPE };
+          return { positions: {}, mapWidth: 0, mapHeight: 0, vGap: V_GAP_LANDSCAPE, nodeWidth: NODE_WIDTH_LANDSCAPE, nodeHeight: NODE_HEIGHT_LANDSCAPE };
         }
 
         type MindMapNodeWithChildren = Omit<MindMapNodeType, 'children'> & { children: MindMapNodeWithChildren[] };
@@ -180,27 +180,11 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
             node.children.forEach(child => q.push([child, level + 1]));
         }
 
-        const nodesPerLevel: { [level: number]: number } = {};
-        for (const level of nodeLevelMap.values()) {
-            nodesPerLevel[level] = (nodesPerLevel[level] || 0) + 1;
-        }
-        const widestLevelCount = Math.max(1, ...Object.values(nodesPerLevel));
-
         const isPortrait = containerSize.width > 0 && containerSize.height > containerSize.width;
 
-        let NODE_WIDTH = isPortrait ? NODE_WIDTH_PORTRAIT : NODE_WIDTH_LANDSCAPE;
-        let NODE_HEIGHT = isPortrait ? NODE_HEIGHT_PORTRAIT : NODE_HEIGHT_LANDSCAPE;
-        let H_GAP = isPortrait ? H_GAP_PORTRAIT : H_GAP_LANDSCAPE;
-        
-        const requiredWidth = (widestLevelCount * NODE_WIDTH) + Math.max(0, widestLevelCount - 1) * H_GAP;
-        const availableWidth = containerSize.width;
-        
-        if (isPortrait && availableWidth > 0 && requiredWidth > availableWidth) {
-            const ratio = availableWidth / requiredWidth;
-            NODE_WIDTH *= ratio;
-            H_GAP *= ratio;
-        }
-
+        const NODE_WIDTH = isPortrait ? NODE_WIDTH_PORTRAIT : NODE_WIDTH_LANDSCAPE;
+        const NODE_HEIGHT = isPortrait ? NODE_HEIGHT_PORTRAIT : NODE_HEIGHT_LANDSCAPE;
+        const H_GAP = isPortrait ? H_GAP_PORTRAIT : H_GAP_LANDSCAPE;
 
         const maxLevel = Math.max(0, ...Array.from(nodeLevelMap.values()));
         const numLevels = maxLevel + 1;
@@ -210,8 +194,10 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
         let dynamicVGap = V_GAP;
         
         if (containerSize.height > defaultTotalHeight && numLevels > 1) {
-            const availableHeight = containerSize.height;
-            dynamicVGap = (availableHeight - numLevels * NODE_HEIGHT) / (numLevels - 1);
+            const availableHeight = containerSize.height - 16; // some padding
+            if (availableHeight > defaultTotalHeight) {
+                dynamicVGap = (availableHeight - numLevels * NODE_HEIGHT) / (numLevels - 1);
+            }
         }
 
         const finalPositions: { [key: string]: { node: MindMapNodeType; x: number; y: number; level: number } } = {};
@@ -276,7 +262,7 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
         const calculatedWidth = maxWidth + NODE_WIDTH;
         const calculatedHeight = numLevels * NODE_HEIGHT + Math.max(0, numLevels - 1) * dynamicVGap;
 
-        return { positions: finalPositions, mapWidth: calculatedWidth, mapHeight: calculatedHeight, vGap: dynamicVGap, nodeWidth: NODE_WIDTH };
+        return { positions: finalPositions, mapWidth: calculatedWidth, mapHeight: calculatedHeight, vGap: dynamicVGap, nodeWidth: NODE_WIDTH, nodeHeight: NODE_HEIGHT };
     }, [nodes, containerSize]);
 
     const scale = useMemo(() => {
@@ -284,15 +270,22 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
             return 1;
         }
         
-        const scaleX = (containerSize.width / mapWidth);
-        const scaleY = (containerSize.height / mapHeight);
+        const isPortrait = containerSize.width > 0 && containerSize.height > containerSize.width;
         
-        // Don't scale up, only scale down to fit the container.
+        const scaleY = containerSize.height / mapHeight;
+
+        if (isPortrait) {
+            // In portrait, zoom to fit vertically, allow horizontal scroll.
+            return Math.min(scaleY, 1); 
+        }
+
+        // In landscape, fit the whole map.
+        const scaleX = containerSize.width / mapWidth;
         return Math.min(scaleX, scaleY, 1);
     }, [containerSize, mapWidth, mapHeight]);
     
     return (
-        <div ref={containerRef} className="relative flex items-center justify-end w-full h-full p-4 overflow-auto">
+        <div ref={containerRef} className="relative flex items-center justify-center w-full h-full p-4 overflow-auto">
             <div 
                 className="relative" 
                 style={{ 
@@ -313,10 +306,8 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
                     {nodes.filter(node => node.parentId && positions[node.id] && positions[node.parentId]).map(node => {
                         const parentPos = positions[node.parentId];
                         const childPos = positions[node.id];
-                        const isPortrait = containerSize.width > 0 && containerSize.height > containerSize.width;
-                        const NODE_HEIGHT = isPortrait ? NODE_HEIGHT_PORTRAIT : NODE_HEIGHT_LANDSCAPE;
 
-                        const d = `M ${parentPos.x + nodeWidth / 2} ${parentPos.y + NODE_HEIGHT} C ${parentPos.x + nodeWidth / 2} ${parentPos.y + NODE_HEIGHT + vGap/2}, ${childPos.x + nodeWidth / 2} ${childPos.y - vGap/2}, ${childPos.x + nodeWidth / 2} ${childPos.y}`;
+                        const d = `M ${parentPos.x + nodeWidth / 2} ${parentPos.y + nodeHeight} C ${parentPos.x + nodeWidth / 2} ${parentPos.y + nodeHeight + vGap/2}, ${childPos.x + nodeWidth / 2} ${childPos.y - vGap/2}, ${childPos.x + nodeWidth / 2} ${childPos.y}`;
                         
                         const isActiveLine = childPos.node.id === activeNodeId;
                         const lineClasses = `mindmap-line ${isMounted ? 'mindmap-line-visible' : ''} ${isActiveLine ? 'mindmap-line-active' : ''}`;
@@ -347,6 +338,7 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
                                 left: x,
                                 top: y,
                                 width: nodeWidth,
+                                height: nodeHeight,
                                 transitionDelay: `${level * 100}ms`
                             }}
                             isOnSuggestedPath={!!suggestedPath?.includes(node.id)}
