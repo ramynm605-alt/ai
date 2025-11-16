@@ -9,61 +9,19 @@ if (!API_KEY) {
 }
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
-// Helper function for retrying with exponential backoff and rate limit handling
+// Helper function for retrying with exponential backoff
 async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
     try {
         return await fn();
     } catch (error: any) {
-        if (retries <= 0) {
-            console.error("API call failed after all retries:", error);
-            throw new Error("متاسفانه ارتباط با هوش مصنوعی پس از چند تلاش ناموفق بود. این ممکن است به دلیل ترافیک بالا باشد. لطفاً لحظاتی بعد دوباره امتحان کنید.");
+        // Only retry on 503 Service Unavailable errors
+        if (retries > 0 && error.message && error.message.includes('503')) {
+            console.warn(`API call failed with 503, retrying in ${delay}ms... (${retries} retries left)`);
+            await new Promise(res => setTimeout(res, delay));
+            return withRetry(fn, retries - 1, delay * 2); // Exponential backoff
         }
-
-        let retryAfterMs = delay;
-        let isRetriable = false;
-
-        // Check for 503 Service Unavailable
-        if (error.message && error.message.includes('503')) {
-            isRetriable = true;
-            retryAfterMs = delay * 2; // Exponential backoff for 503
-            console.warn(`API call failed with 503, retrying in ${retryAfterMs}ms... (${retries} retries left)`);
-        }
-        // Check for 429 Rate Limit Exceeded
-        else if (error.message && (error.message.includes('429') || error.message.includes('RESOURCE_EXHAUSTED'))) {
-            isRetriable = true;
-            try {
-                // The error message from the SDK is often a JSON string, sometimes prefixed.
-                const errorJsonString = error.message.substring(error.message.indexOf('{'));
-                const errorDetails = JSON.parse(errorJsonString);
-                const retryInfo = errorDetails?.error?.details?.find(
-                    (d: any) => d['@type'] === 'type.googleapis.com/google.rpc.RetryInfo'
-                );
-
-                if (retryInfo?.retryDelay) {
-                    const seconds = parseFloat(retryInfo.retryDelay.replace('s', ''));
-                    // Use suggested delay + a small buffer
-                    retryAfterMs = Math.ceil(seconds * 1000) + 500;
-                    console.warn(`Rate limit exceeded. Retrying in ${retryAfterMs}ms as suggested by API... (${retries} retries left)`);
-                } else {
-                     // Fallback to exponential backoff if retryDelay is not present
-                    retryAfterMs = delay * 2;
-                    console.warn(`Rate limit exceeded, no retryDelay found. Retrying in ${retryAfterMs}ms... (${retries} retries left)`);
-                }
-            } catch (e) {
-                // If parsing fails, fall back to exponential backoff
-                retryAfterMs = delay * 2;
-                console.warn(`Could not parse rate limit error details. Retrying in ${retryAfterMs}ms... (${retries} retries left)`);
-            }
-        }
-
-        if (isRetriable) {
-            await new Promise(res => setTimeout(res, retryAfterMs));
-            // The next base delay for exponential backoff continues to increase.
-            return withRetry(fn, retries - 1, delay * 2);
-        }
-
-        console.error("API call failed with a non-retriable error:", error);
-        throw error; // Re-throw the error if it's not retriable
+        console.error("API call failed after multiple retries or with a non-retriable error:", error);
+        throw error; // Re-throw the error if retries are exhausted or it's not a 503
     }
 }
 
