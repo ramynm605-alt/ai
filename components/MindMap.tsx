@@ -1,8 +1,7 @@
 
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { MindMapNode as MindMapNodeType } from '../types';
-import { CheckCircle, Sparkles } from './icons';
-import ParticleBackground from './ParticleBackground';
+import { CheckCircle, Sparkles, Lock } from './icons';
 
 interface MindMapProps {
     nodes: MindMapNodeType[];
@@ -14,339 +13,226 @@ interface MindMapProps {
     activeNodeId: string | null;
 }
 
-const NODE_WIDTH_LANDSCAPE = 160;
-const NODE_HEIGHT_LANDSCAPE = 70;
-const H_GAP_LANDSCAPE = 50;
-const V_GAP_LANDSCAPE = 90;
-
-const NODE_WIDTH_PORTRAIT = 120;
-const NODE_HEIGHT_PORTRAIT = 80; // Taller to accommodate wrapped text
-const H_GAP_PORTRAIT = 20;
-const V_GAP_PORTRAIT = 70;
+// Unified node dimensions for all screen orientations
+const NODE_WIDTH = 160;
+const NODE_HEIGHT = 70;
+const H_GAP = 50;
+const V_GAP = 90; // Base vertical gap
 
 const formatPageNumbers = (pages: number[]): string => {
     if (!pages || pages.length === 0) return '';
     
-    const sortedPages = [...new Set(pages)].sort((a, b) => a - b);
+    pages.sort((a, b) => a - b);
     
-    if (sortedPages.length === 0) return '';
+    const ranges: (number | string)[] = [];
+    if (pages.length === 0) return '';
+
+    let start = pages[0];
     
-    const ranges: string[] = [];
-    let start = sortedPages[0];
-    let end = sortedPages[0];
-
-    for (let i = 1; i < sortedPages.length; i++) {
-        if (sortedPages[i] === end + 1) {
-            end = sortedPages[i];
-        } else {
-            ranges.push(start === end ? `${start}` : `${start}-${end}`);
-            start = end = sortedPages[i];
-        }
-    }
-    ranges.push(start === end ? `${start}` : `${start}-${end}`);
-    
-    return `ص: ${ranges.join(', ')}`;
-};
-
-
-// Node component - purely for presentation
-const MindMapNode: React.FC<{
-    node: MindMapNodeType;
-    progress: MindMapProps['progress'];
-    onSelectNode: MindMapProps['onSelectNode'];
-    style: React.CSSProperties;
-    isOnSuggestedPath: boolean;
-    isActive: boolean;
-    className: string;
-}> = ({ node, progress, onSelectNode, style, isOnSuggestedPath, isActive, className }) => {
-    
-    const isCompleted = progress[node.id] === 'completed';
-    const isLocked = node.locked && !isCompleted;
-
-    const pageInfo = formatPageNumbers(node.sourcePages);
-
-    let baseClasses = 'min-h-[70px] p-2 rounded-2xl flex flex-col items-center justify-center text-card-foreground text-sm font-semibold relative border-2 select-none shadow-md bg-card transition-all duration-300';
-    let borderClasses = '';
-    let glowClasses = '';
-
-    if (isActive) {
-        baseClasses += ' scale-110';
-        borderClasses = 'border-primary';
-        glowClasses = 'shadow-[0_0_15px_rgb(var(--primary))]';
-    } else if (isLocked) {
-        baseClasses += ' opacity-50 grayscale cursor-not-allowed';
-        borderClasses = 'border-muted';
-    } else {
-        baseClasses += ' cursor-pointer hover:scale-105';
-        if (isOnSuggestedPath && !isCompleted) {
-            borderClasses = 'border-primary';
-            glowClasses = 'shadow-[0_0_15px_rgb(var(--primary)_/_0.5)]';
-        } else if (isCompleted) {
-            borderClasses = 'border-success';
-            glowClasses = 'hover:shadow-[0_0_15px_rgb(var(--success))]';
-        } else {
-            if (node.isExplanatory) {
-                borderClasses = 'border-accent';
-                glowClasses = 'hover:shadow-[0_0_15px_rgb(var(--accent))]';
-            } else if (node.difficulty < 0.4) {
-                borderClasses = 'border-border';
-                glowClasses = 'hover:shadow-[0_0_15px_rgb(var(--foreground)_/_0.5)]';
-            } else if (node.difficulty < 0.7) {
-                borderClasses = 'border-muted';
-                glowClasses = 'hover:shadow-[0_0_15px_rgb(var(--muted))]';
+    for (let i = 1; i <= pages.length; i++) {
+        if (i === pages.length || pages[i] !== pages[i-1] + 1) {
+            const end = pages[i-1];
+            if (start === end) {
+                ranges.push(start);
+            } else if (end === start + 1) {
+                ranges.push(start, end);
             } else {
-                borderClasses = 'border-destructive';
-                glowClasses = 'hover:shadow-[0_0_15px_rgb(var(--destructive))]';
+                ranges.push(`${start}-${end}`);
+            }
+            if (i < pages.length) {
+                start = pages[i];
             }
         }
     }
     
-    const handleClick = () => {
-        if (!isLocked) {
-            onSelectNode(node.id);
-        }
-    };
-
-    return (
-        <div style={style} className={`${baseClasses} ${borderClasses} ${glowClasses} ${className}`} onClick={handleClick}>
-             {isCompleted && <CheckCircle className="absolute w-6 h-6 p-0.5 text-success bg-card rounded-full -top-2 -right-2" />}
-            <span className="text-center">{node.title}</span>
-            {pageInfo && <span className="mt-1 text-xs font-normal text-muted-foreground">{pageInfo}</span>}
-        </div>
-    );
+    return `صفحات: ${ranges.join(', ')}`;
 };
 
-// Main MindMap component
-const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSelectNode, theme, activeNodeId }) => {
+const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSelectNode, onTakeQuiz, theme, activeNodeId }) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-    const [isMounted, setIsMounted] = useState(false);
+    const [isVisible, setIsVisible] = useState(false);
 
     useEffect(() => {
-        const timer = setTimeout(() => setIsMounted(true), 100);
+        const timer = setTimeout(() => setIsVisible(true), 100); // Delay for animation
         return () => clearTimeout(timer);
     }, []);
 
-    useEffect(() => {
-        const observer = new ResizeObserver(entries => {
-            if (entries[0]) {
-                const { width, height } = entries[0].contentRect;
-                if (width > 0 && height > 0 && (width !== containerSize.width || height !== containerSize.height)) {
-                    setContainerSize({ width, height });
-                }
+    const { positionedNodes, lines, width, height } = useMemo(() => {
+        if (nodes.length === 0) {
+            return { positionedNodes: [], lines: [], width: 0, height: 0 };
+        }
+
+        type NodeWithChildren = MindMapNodeType & { children: NodeWithChildren[], level: number, x: number, y: number };
+        // FIX: The Map constructor expects an array of key-value pairs ([key, value]).
+        const nodeMap = new Map<string, NodeWithChildren>(nodes.map(n => [n.id, { ...n, children: [], level: 0, x: 0, y: 0 }]));
+        const roots: NodeWithChildren[] = [];
+
+        nodes.forEach(node => {
+            if (node.parentId && nodeMap.has(node.parentId)) {
+                nodeMap.get(node.parentId)!.children.push(nodeMap.get(node.id)!);
+            } else {
+                roots.push(nodeMap.get(node.id)!);
             }
         });
-        const currentRef = containerRef.current;
-        if (currentRef) {
-            observer.observe(currentRef);
-        }
-        return () => {
-            if (currentRef) {
-                observer.unobserve(currentRef);
-            }
-        };
-    }, [containerSize.width, containerSize.height]);
 
-    const { positions, mapWidth, mapHeight, vGap, nodeWidth, nodeHeight } = useMemo(() => {
-        if (nodes.length === 0) {
-          return { positions: {}, mapWidth: 0, mapHeight: 0, vGap: V_GAP_LANDSCAPE, nodeWidth: NODE_WIDTH_LANDSCAPE, nodeHeight: NODE_HEIGHT_LANDSCAPE };
-        }
-
-        type MindMapNodeWithChildren = Omit<MindMapNodeType, 'children'> & { children: MindMapNodeWithChildren[] };
-
-        const buildTree = (list: MindMapNodeType[]): MindMapNodeWithChildren[] => {
-            const map = new Map<string, MindMapNodeWithChildren>();
-            list.forEach(node => {
-                map.set(node.id, { ...node, children: [] });
-            });
-
-            const roots: MindMapNodeWithChildren[] = [];
-            map.forEach(node => {
-                if (node.parentId && map.has(node.parentId)) {
-                    map.get(node.parentId)!.children.push(node);
-                } else {
-                    roots.push(node);
-                }
-            });
-            return roots;
-        };
-
-        const tree = buildTree(nodes);
-        const nodeLevelMap = new Map<string, number>();
-        const q: [MindMapNodeWithChildren, number][] = tree.map(n => [n, 0]);
-        while(q.length > 0) {
-            const [node, level] = q.shift()!;
-            nodeLevelMap.set(node.id, level);
-            node.children.forEach(child => q.push([child, level + 1]));
-        }
-
-        const isPortrait = containerSize.width > 0 && containerSize.height > containerSize.width;
-
-        const NODE_WIDTH = isPortrait ? NODE_WIDTH_PORTRAIT : NODE_WIDTH_LANDSCAPE;
-        const NODE_HEIGHT = isPortrait ? NODE_HEIGHT_PORTRAIT : NODE_HEIGHT_LANDSCAPE;
-        const H_GAP = isPortrait ? H_GAP_PORTRAIT : H_GAP_LANDSCAPE;
-
-        const maxLevel = Math.max(0, ...Array.from(nodeLevelMap.values()));
-        const numLevels = maxLevel + 1;
-        const V_GAP = isPortrait ? V_GAP_PORTRAIT : V_GAP_LANDSCAPE;
+        const levels: NodeWithChildren[][] = [];
         
-        const defaultTotalHeight = numLevels * NODE_HEIGHT + Math.max(0, numLevels - 1) * V_GAP;
-        let dynamicVGap = V_GAP;
-        
-        if (containerSize.height > defaultTotalHeight && numLevels > 1) {
-            const availableHeight = containerSize.height - 16; // some padding
-            if (availableHeight > defaultTotalHeight) {
-                dynamicVGap = (availableHeight - numLevels * NODE_HEIGHT) / (numLevels - 1);
-            }
-        }
-
-        const finalPositions: { [key: string]: { node: MindMapNodeType; x: number; y: number; level: number } } = {};
-        const next: { [level: number]: number } = {};
-        const mod: { [level: number]: number } = {};
-        
-        const setInitialX = (node: MindMapNodeWithChildren) => {
-            node.children.forEach(child => setInitialX(child));
-            const level = nodeLevelMap.get(node.id)!;
-            if (!next[level]) next[level] = 0;
-            if (!mod[level]) mod[level] = 0;
-
-            let x = next[level];
-            let modSum = 0;
-
-            if (node.children.length > 0) {
-                const firstChildX = finalPositions[node.children[0].id].x;
-                const lastChildX = finalPositions[node.children[node.children.length - 1].id].x;
-                x = (firstChildX + lastChildX) / 2;
-            }
-            modSum = next[level] > x ? next[level] - x : 0;
+        // FIX: Changed function signature to accept MindMapNodeType to resolve recursive type issue.
+        // The implementation now looks up the full NodeWithChildren from the map to ensure properties are correctly set and accessed.
+        function assignLevels(node: MindMapNodeType, level: number) {
+            const positionedNode = nodeMap.get(node.id)!;
+            // Prevent reprocessing to avoid infinite loops in case of cyclic dependencies
+            if(positionedNode.level > 0) return;
             
-            finalPositions[node.id] = {
-                node: nodes.find(n => n.id === node.id)!,
-                x: x,
-                y: 0, // y is set in the next pass
-                level,
-            };
+            positionedNode.level = level;
+            if (!levels[level]) {
+                levels[level] = [];
+            }
+            levels[level].push(positionedNode);
+            positionedNode.children.forEach(child => assignLevels(child, level + 1));
+        }
 
-            mod[level] += modSum;
-            next[level] = x + NODE_WIDTH + H_GAP + modSum;
+        roots.forEach(root => assignLevels(root, 0));
+
+        const positionedNodesList: NodeWithChildren[] = [];
+        const maxWidth = (Math.max(...levels.map(level => level.length)) * (NODE_WIDTH + H_GAP));
+
+        levels.forEach((levelNodes, level) => {
+            const levelWidth = levelNodes.length * (NODE_WIDTH + H_GAP);
+            const startX = (maxWidth - levelWidth) / 2;
+            levelNodes.forEach((node, i) => {
+                node.x = startX + i * (NODE_WIDTH + H_GAP);
+                node.y = level * (NODE_HEIGHT + V_GAP);
+                positionedNodesList.push(node);
+            });
+        });
+        
+        const positionedNodesMap = new Map<string, NodeWithChildren>(positionedNodesList.map(n => [n.id, n]));
+
+        const lines: { x1: number, y1: number, x2: number, y2: number, parentId: string, childId: string }[] = [];
+        positionedNodesList.forEach(node => {
+            node.children.forEach(child => {
+                 const childNode = positionedNodesMap.get(child.id);
+                 if(childNode) {
+                    lines.push({
+                        x1: node.x + NODE_WIDTH / 2,
+                        y1: node.y + NODE_HEIGHT,
+                        x2: childNode.x + NODE_WIDTH / 2,
+                        y2: childNode.y,
+                        parentId: node.id,
+                        childId: child.id,
+                    });
+                 }
+            });
+        });
+
+        const PADDING = 20;
+        const finalWidth = maxWidth + PADDING * 2;
+        const finalHeight = (levels.length * (NODE_HEIGHT + V_GAP)) - V_GAP + PADDING * 2;
+        
+        positionedNodesList.forEach(n => {
+            n.x += PADDING;
+            n.y += PADDING;
+        });
+        lines.forEach(l => {
+            l.x1 += PADDING;
+            l.x2 += PADDING;
+            l.y1 += PADDING;
+            l.y2 += PADDING;
+        });
+
+
+        return { positionedNodes: positionedNodesList, lines, width: finalWidth, height: finalHeight };
+
+    }, [nodes]);
+
+    const NodeComponent: React.FC<{ node: MindMapNodeType & { x?: number, y?: number } }> = ({ node }) => {
+        const status = progress[node.id];
+        const isLocked = node.locked && status !== 'completed';
+        const isSuggested = suggestedPath?.includes(node.id);
+        const isActive = activeNodeId === node.id;
+
+        let borderClass = 'border-border';
+        if (isActive) borderClass = 'border-primary ring-2 ring-primary ring-offset-2 ring-offset-background';
+        else if (status === 'completed') borderClass = 'border-success';
+        else if (status === 'failed') borderClass = 'border-destructive';
+        else if (isSuggested && !status) borderClass = 'border-primary/50';
+
+        const handleNodeClick = () => {
+            if (!isLocked) {
+                onSelectNode(node.id);
+            }
         };
 
-        tree.slice().reverse().forEach(root => setInitialX(root));
-
-        let maxWidth = 0;
-
-        const calculateFinalX = (node: MindMapNodeWithChildren, modSum = 0) => {
-            const level = nodeLevelMap.get(node.id)!;
-            const y = level * (NODE_HEIGHT + dynamicVGap);
-            const x = finalPositions[node.id].x + modSum;
-
-            finalPositions[node.id].x = x;
-            finalPositions[node.id].y = y;
-
-            if (x > maxWidth) { maxWidth = x; }
-
-            let childModSum = modSum;
-            if (mod[level]) childModSum += mod[level];
-            
-            node.children.forEach(child => calculateFinalX(child, childModSum));
+        const handleQuizClick = (e: React.MouseEvent) => {
+            e.stopPropagation();
+            onTakeQuiz(node.id);
         };
 
-        tree.forEach(root => calculateFinalX(root));
+        const isIntroNode = node.parentId === null;
 
-        const minX = Math.min(0, ...Object.values(finalPositions).map(p => p.x));
-        if (minX < 0) {
-            Object.values(finalPositions).forEach(p => p.x -= minX);
-            maxWidth -= minX;
-        }
-
-        const calculatedWidth = maxWidth + NODE_WIDTH;
-        const calculatedHeight = numLevels * NODE_HEIGHT + Math.max(0, numLevels - 1) * dynamicVGap;
-
-        return { positions: finalPositions, mapWidth: calculatedWidth, mapHeight: calculatedHeight, vGap: dynamicVGap, nodeWidth: NODE_WIDTH, nodeHeight: NODE_HEIGHT };
-    }, [nodes, containerSize]);
-
-    const scale = useMemo(() => {
-        if (!containerSize.width || !containerSize.height || !mapWidth || !mapHeight) {
-            return 1;
-        }
-        
-        const isPortrait = containerSize.width > 0 && containerSize.height > containerSize.width;
-        
-        const scaleY = containerSize.height / mapHeight;
-
-        if (isPortrait) {
-            // In portrait, zoom to fit vertically, allow horizontal scroll.
-            return Math.min(scaleY, 1); 
-        }
-
-        // In landscape, fit the whole map.
-        const scaleX = containerSize.width / mapWidth;
-        return Math.min(scaleX, scaleY, 1);
-    }, [containerSize, mapWidth, mapHeight]);
-    
-    return (
-        <div ref={containerRef} className="relative flex items-center justify-center w-full h-full p-4 overflow-auto">
-            <div 
-                className="relative" 
-                style={{ 
-                    width: mapWidth, 
-                    height: mapHeight, 
-                    transform: `scale(${scale})`, 
-                    transformOrigin: 'top left' 
-                }}
+        return (
+            <div
+                className={`mindmap-node ${isVisible ? 'mindmap-node-visible' : ''} absolute flex flex-col items-center justify-center p-3 text-center transition-all duration-300 transform border-2 rounded-lg shadow-lg cursor-pointer bg-card text-card-foreground hover:shadow-xl hover:-translate-y-1 ${borderClass}`}
+                style={{ left: node.x, top: node.y, width: NODE_WIDTH, height: NODE_HEIGHT }}
+                onClick={handleNodeClick}
+                aria-disabled={isLocked}
+                role="button"
+                tabIndex={isLocked ? -1 : 0}
             >
-                <ParticleBackground theme={theme} />
-                <svg className="absolute top-0 left-0" style={{ width: mapWidth, height: mapHeight }}>
+                {isLocked && <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/70 backdrop-blur-sm"><Lock className="w-6 h-6 text-muted-foreground" /></div>}
+                <h3 className="text-sm font-bold">{node.title}</h3>
+                
+                {node.sourcePages && node.sourcePages.length > 0 && 
+                    <p className="mt-1 text-xs text-muted-foreground">{formatPageNumbers(node.sourcePages)}</p>
+                }
+                
+                {isSuggested && !status && <Sparkles className="absolute w-5 h-5 -top-2 -right-2 text-primary" />}
+                
+                {status === 'completed' && (
+                     <div className="absolute flex items-center justify-center w-6 h-6 rounded-full -bottom-3 bg-success">
+                        <CheckCircle className="w-4 h-4 text-white" />
+                    </div>
+                )}
+                
+                {status !== 'completed' && !isLocked && !isIntroNode && (
+                    <button onClick={handleQuizClick} className="px-3 py-1 mt-auto text-xs font-semibold rounded-md text-primary-foreground bg-primary hover:bg-primary-hover">
+                        آزمون
+                    </button>
+                )}
+
+            </div>
+        );
+    };
+
+    return (
+        <div ref={containerRef} className="relative w-full h-full overflow-auto">
+            <div className="relative" style={{ width, height, minWidth: '100%', minHeight: '100%' }}>
+                <svg className="absolute top-0 left-0" style={{ width, height }}>
                     <defs>
-                        <linearGradient id="line-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                            <stop offset="0%" style={{stopColor: 'rgb(var(--muted))', stopOpacity: 0.8}} />
-                            <stop offset="100%" style={{stopColor: 'rgb(var(--muted))', stopOpacity: 0.2}} />
-                        </linearGradient>
+                        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5"
+                            markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(var(--muted))" />
+                        </marker>
                     </defs>
-                    {nodes.filter(node => node.parentId && positions[node.id] && positions[node.parentId]).map(node => {
-                        const parentPos = positions[node.parentId];
-                        const childPos = positions[node.id];
-
-                        const d = `M ${parentPos.x + nodeWidth / 2} ${parentPos.y + nodeHeight} C ${parentPos.x + nodeWidth / 2} ${parentPos.y + nodeHeight + vGap/2}, ${childPos.x + nodeWidth / 2} ${childPos.y - vGap/2}, ${childPos.x + nodeWidth / 2} ${childPos.y}`;
-                        
-                        const isActiveLine = childPos.node.id === activeNodeId;
-                        const lineClasses = `mindmap-line ${isMounted ? 'mindmap-line-visible' : ''} ${isActiveLine ? 'mindmap-line-active' : ''}`;
-                        const transitionDelay = `${parentPos.level * 100 + 50}ms`;
-
-                        return (
-                            <path 
-                                key={`${node.parentId}-${node.id}`} 
-                                d={d} 
-                                stroke={isActiveLine ? '' : "url(#line-gradient)"} 
-                                strokeWidth="2" 
+                    {lines.map((line, i) => {
+                         const isActive = activeNodeId === line.parentId || activeNodeId === line.childId;
+                         return (
+                            <path
+                                key={i}
+                                d={`M${line.x1},${line.y1} C${line.x1},${line.y1 + V_GAP / 2} ${line.x2},${line.y2 - V_GAP / 2} ${line.x2},${line.y2}`}
                                 fill="none"
-                                className={lineClasses}
-                                style={{ transitionDelay }}
+                                stroke="rgb(var(--border))"
+                                strokeWidth="2"
+                                className={`mindmap-line ${isVisible ? 'mindmap-line-visible' : ''} ${isActive ? 'mindmap-line-active' : ''}`}
+                                style={{ transitionDelay: `${i * 50}ms` }}
                             />
-                        );
+                         );
                     })}
                 </svg>
-                <div className="relative">
-                    {Object.values(positions).map(({ node, x, y, level }) => (
-                        <MindMapNode
-                            key={node.id}
-                            node={node}
-                            progress={progress}
-                            onSelectNode={onSelectNode}
-                            style={{
-                                position: 'absolute',
-                                left: x,
-                                top: y,
-                                width: nodeWidth,
-                                height: nodeHeight,
-                                transitionDelay: `${level * 100}ms`
-                            }}
-                            isOnSuggestedPath={!!suggestedPath?.includes(node.id)}
-                            isActive={node.id === activeNodeId}
-                            className={`mindmap-node ${isMounted ? 'mindmap-node-visible' : ''}`}
-                        />
-                    ))}
-                </div>
+                {positionedNodes.map(node => (
+                    <NodeComponent key={node.id} node={node} />
+                ))}
             </div>
         </div>
     );
