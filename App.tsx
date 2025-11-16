@@ -1,5 +1,6 @@
+
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef } from 'react';
-import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage } from './types';
+import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse } from './services/geminiService';
 import { ArrowRight, BookOpen, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize } from './components/icons';
 import MindMap from './components/MindMap';
@@ -12,13 +13,14 @@ import Spinner from './components/Spinner';
 import StartupScreen from './components/StartupScreen';
 import PreAssessmentReview from './components/PreAssessmentReview';
 import ChatPanel from './components/ChatPanel';
+import ParticleBackground from './components/ParticleBackground';
 
 const CURRENT_APP_VERSION = 3;
 declare var pdfjsLib: any;
 
 
 const initialState: AppState = {
-  theme: 'balanced',
+  theme: 'dark', // Default to dark luxury theme
   status: AppStatus.IDLE,
   sourceContent: '',
   sourcePageContents: null,
@@ -30,12 +32,14 @@ const initialState: AppState = {
     learningGoal: '',
   },
   mindMap: [],
+  suggestedPath: null,
   preAssessment: null,
   preAssessmentAnswers: null,
   preAssessmentAnalysis: null,
   activeQuiz: null,
   activeNodeId: null,
   nodeContents: {},
+  streamingNodeContent: null,
   userProgress: {},
   weaknesses: [],
   finalExam: null,
@@ -55,9 +59,24 @@ function appReducer(state: AppState, action: any): AppState {
       return { ...state, theme: action.payload };
     case 'START_GENERATION':
       return { ...initialState, theme: state.theme, status: AppStatus.LOADING, sourceContent: action.payload.sourceContent, sourcePageContents: action.payload.sourcePageContents, sourceImages: action.payload.sourceImages, preferences: action.payload.preferences, loadingMessage: 'در حال تحلیل محتوای شما و ساخت نقشه ذهنی...' };
-    case 'PLAN_GENERATED':
+    case 'MIND_MAP_GENERATED': {
         const welcomeMessage: ChatMessage = { role: 'model', message: 'سلام! من مربی هوشمند شما هستم. هر سوالی در مورد این طرح درس دارید، از من بپرسید.' };
-        return { ...state, status: AppStatus.PRE_ASSESSMENT, mindMap: action.payload.mindMap, preAssessment: action.payload.preAssessment, loadingMessage: null, chatHistory: [welcomeMessage] };
+        return { 
+            ...state, 
+            status: AppStatus.PRE_ASSESSMENT, 
+            mindMap: action.payload.mindMap, 
+            suggestedPath: action.payload.suggestedPath,
+            preAssessment: { questions: [], isStreaming: true },
+            loadingMessage: null, 
+            chatHistory: [welcomeMessage] 
+        };
+    }
+    case 'PRE_ASSESSMENT_QUESTION_STREAMED':
+      if (!state.preAssessment) return state;
+      return { ...state, preAssessment: { ...state.preAssessment, questions: [...state.preAssessment.questions, action.payload] } };
+    case 'PRE_ASSESSMENT_STREAM_END':
+      if (!state.preAssessment) return state;
+      return { ...state, preAssessment: { ...state.preAssessment, isStreaming: false } };
     case 'SUBMIT_PRE_ASSESSMENT':
         return { ...state, status: AppStatus.GRADING_PRE_ASSESSMENT, preAssessmentAnswers: action.payload };
     case 'PRE_ASSESSMENT_ANALYSIS_LOADED':
@@ -65,13 +84,23 @@ function appReducer(state: AppState, action: any): AppState {
     case 'START_PERSONALIZED_LEARNING':
       return { ...state, status: AppStatus.LEARNING, activeNodeId: null, activeQuiz: null, quizResults: null };
     case 'SELECT_NODE':
-      return { ...state, status: AppStatus.LOADING, activeNodeId: action.payload, loadingMessage: 'در حال آماده‌سازی درس...' };
+      return { ...state, activeNodeId: action.payload, streamingNodeContent: null };
+    case 'NODE_CONTENT_STREAM_START':
+        return { ...state, status: AppStatus.VIEWING_NODE, streamingNodeContent: { introduction: '', theory: '', example: '', connection: '', conclusion: '' } };
+    case 'NODE_CONTENT_STREAM_UPDATE':
+        return { ...state, streamingNodeContent: action.payload };
+    case 'NODE_CONTENT_STREAM_END':
+        return { ...state, nodeContents: { ...state.nodeContents, [action.payload.nodeId]: action.payload.content }, streamingNodeContent: null };
     case 'NODE_CONTENT_LOADED':
-      return { ...state, status: AppStatus.VIEWING_NODE, nodeContents: { ...state.nodeContents, [state.activeNodeId!]: action.payload }, loadingMessage: null };
+        return { ...state, status: AppStatus.VIEWING_NODE, nodeContents: { ...state.nodeContents, [state.activeNodeId!]: action.payload }, streamingNodeContent: null };
     case 'START_QUIZ':
-      return { ...state, status: AppStatus.LOADING, activeNodeId: action.payload, loadingMessage: 'در حال طراحی سوالات آزمون...' };
-    case 'QUIZ_LOADED':
-        return { ...state, status: AppStatus.TAKING_QUIZ, activeQuiz: action.payload, loadingMessage: null };
+      return { ...state, status: AppStatus.TAKING_QUIZ, activeNodeId: action.payload, activeQuiz: { questions: [], isStreaming: true } };
+    case 'QUIZ_QUESTION_STREAMED':
+      if (!state.activeQuiz) return state;
+      return { ...state, activeQuiz: { ...state.activeQuiz, questions: [...state.activeQuiz.questions, action.payload] } };
+    case 'QUIZ_STREAM_END':
+      if (!state.activeQuiz) return state;
+      return { ...state, activeQuiz: { ...state.activeQuiz, isStreaming: false } };
     case 'SUBMIT_QUIZ':
         return { ...state, status: AppStatus.GRADING_QUIZ };
     case 'QUIZ_ANALYSIS_LOADED': {
@@ -124,10 +153,18 @@ function appReducer(state: AppState, action: any): AppState {
             ...(allNodesCompleted && { allNodesCompletedStatus: AppStatus.ALL_NODES_COMPLETED })
         };
     }
-    case 'START_FINAL_EXAM':
-        return { ...state, status: AppStatus.LOADING, loadingMessage: 'در حال آماده‌سازی آزمون نهایی...' };
-    case 'FINAL_EXAM_LOADED':
-        return { ...state, status: AppStatus.FINAL_EXAM, finalExam: action.payload, activeQuiz: action.payload, activeNodeId: 'final_exam', loadingMessage: null };
+    case 'START_FINAL_EXAM': {
+      const finalExamQuiz: Quiz = { questions: [], isStreaming: true };
+      return { ...state, status: AppStatus.FINAL_EXAM, finalExam: finalExamQuiz, activeQuiz: finalExamQuiz, activeNodeId: 'final_exam', loadingMessage: null };
+    }
+    case 'FINAL_EXAM_QUESTION_STREAMED':
+      if (!state.finalExam) return state;
+      const updatedFinalExam = { ...state.finalExam, questions: [...state.finalExam.questions, action.payload] };
+      return { ...state, finalExam: updatedFinalExam, activeQuiz: updatedFinalExam };
+    case 'FINAL_EXAM_STREAM_END':
+      if (!state.finalExam) return state;
+      const finalVersion = { ...state.finalExam, isStreaming: false };
+      return { ...state, finalExam: finalVersion, activeQuiz: finalVersion };
     case 'COMPLETE_FINAL_EXAM': // This is now just for submitting the exam
         return { ...state, status: AppStatus.GRADING_QUIZ };
     case 'SUMMARY_LOADED':
@@ -158,7 +195,14 @@ function appReducer(state: AppState, action: any): AppState {
     case 'TOGGLE_CHAT_FULLSCREEN':
         return { ...state, isChatFullScreen: !state.isChatFullScreen };
     case 'ADD_CHAT_MESSAGE':
-        return { ...state, chatHistory: [...state.chatHistory, action.payload] };
+        const newHistory = [...state.chatHistory];
+        // If the last message was a loading placeholder, replace it. Otherwise, add a new message.
+        if (newHistory.length > 0 && newHistory[newHistory.length - 1].message === '...') {
+            newHistory[newHistory.length - 1] = action.payload;
+        } else {
+            newHistory.push(action.payload);
+        }
+        return { ...state, chatHistory: newHistory };
     default:
       return state;
   }
@@ -194,9 +238,19 @@ export default function App() {
   const handleStart = async (sourceContent: string, sourcePageContents: string[] | null, sourceImages: {mimeType: string, data: string}[], preferences: LearningPreferences) => {
     dispatch({ type: 'START_GENERATION', payload: { sourceContent, sourcePageContents, sourceImages, preferences } });
     try {
-      const { mindMap, preAssessment } = await generateLearningPlan(sourceContent, sourcePageContents, sourceImages, preferences);
-      const unlockedMindMap = mindMap.map(node => ({ ...node, locked: !!node.parentId }));
-      dispatch({ type: 'PLAN_GENERATED', payload: { mindMap: unlockedMindMap, preAssessment } });
+      await generateLearningPlan(
+            sourceContent, 
+            sourcePageContents, 
+            sourceImages, 
+            preferences,
+            (mindMap, suggestedPath) => {
+                dispatch({ type: 'MIND_MAP_GENERATED', payload: { mindMap, suggestedPath } });
+            },
+            (question) => {
+                dispatch({ type: 'PRE_ASSESSMENT_QUESTION_STREAMED', payload: question });
+            }
+        );
+        dispatch({ type: 'PRE_ASSESSMENT_STREAM_END' });
     } catch (err) {
       console.error(err);
       dispatch({ type: 'ERROR', payload: 'خطا در ایجاد طرح درس. لطفاً دوباره تلاش کنید.' });
@@ -221,26 +275,46 @@ export default function App() {
             dispatch({ type: 'NODE_CONTENT_LOADED', payload: state.nodeContents[nodeId] });
             return;
         }
+        dispatch({ type: 'NODE_CONTENT_STREAM_START' });
         const strengths = state.preAssessmentAnalysis?.strengths || [];
         const weaknesses = state.preAssessmentAnalysis?.weaknesses || [];
-        const content = await generateNodeContent(state.mindMap.find(n => n.id === nodeId)!.title, state.sourceContent, state.sourceImages, state.preferences.style, strengths, weaknesses);
-        dispatch({ type: 'NODE_CONTENT_LOADED', payload: content });
+        const content = await generateNodeContent(
+            state.mindMap.find(n => n.id === nodeId)!.title,
+            state.sourceContent,
+            state.sourceImages,
+            state.preferences.style,
+            strengths,
+            weaknesses,
+            (partialContent) => {
+                dispatch({ type: 'NODE_CONTENT_STREAM_UPDATE', payload: partialContent });
+            }
+        );
+        dispatch({ type: 'NODE_CONTENT_STREAM_END', payload: { nodeId, content } });
     } catch (err) {
         console.error(err);
         dispatch({ type: 'ERROR', payload: 'خطا در بارگذاری محتوای درس.' });
     }
-  }, [state.mindMap, state.sourceContent, state.sourceImages, state.preferences.style, state.nodeContents, state.preAssessmentAnalysis]);
+}, [state.mindMap, state.sourceContent, state.sourceImages, state.preferences.style, state.nodeContents, state.preAssessmentAnalysis]);
+
 
   const handleStartQuiz = useCallback(async (nodeId: string) => {
     dispatch({ type: 'START_QUIZ', payload: nodeId });
     try {
-        const quiz = await generateQuiz(state.mindMap.find(n => n.id === nodeId)!.title, state.sourceContent, state.sourceImages);
-        dispatch({ type: 'QUIZ_LOADED', payload: quiz });
+        const finalQuiz = await generateQuiz(
+            state.mindMap.find(n => n.id === nodeId)!.title,
+            state.sourceContent,
+            state.sourceImages,
+            (question: QuizQuestion) => {
+                dispatch({ type: 'QUIZ_QUESTION_STREAMED', payload: question });
+            }
+        );
+        dispatch({ type: 'QUIZ_STREAM_END', payload: finalQuiz });
     } catch (err) {
         console.error(err);
         dispatch({ type: 'ERROR', payload: 'خطا در ایجاد آزمون.' });
     }
-  }, [state.mindMap, state.sourceContent, state.sourceImages]);
+}, [state.mindMap, state.sourceContent, state.sourceImages]);
+
   
   const handleSubmitQuiz = useCallback(async (answers: Record<string, UserAnswer>) => {
     dispatch({ type: 'SUBMIT_QUIZ' });
@@ -269,8 +343,15 @@ export default function App() {
     dispatch({ type: 'START_FINAL_EXAM' });
     try {
         const weaknessTopics = state.weaknesses.map(w => state.mindMap.find(n => n.title.includes(w.question.substring(0,20)))?.title).filter(Boolean).join(', ');
-        const exam = await generateFinalExam(state.sourceContent, state.sourceImages, weaknessTopics);
-        dispatch({ type: 'FINAL_EXAM_LOADED', payload: exam });
+        await generateFinalExam(
+            state.sourceContent, 
+            state.sourceImages, 
+            weaknessTopics,
+            (question) => {
+                dispatch({ type: 'FINAL_EXAM_QUESTION_STREAMED', payload: question });
+            }
+        );
+        dispatch({ type: 'FINAL_EXAM_STREAM_END' });
     } catch (err) {
         dispatch({ type: 'ERROR', payload: 'خطا در ایجاد آزمون نهایی.' });
     }
@@ -307,6 +388,7 @@ export default function App() {
         sourceImages: state.sourceImages,
         preferences: state.preferences,
         mindMap: state.mindMap,
+        suggestedPath: state.suggestedPath,
         preAssessmentAnalysis: state.preAssessmentAnalysis,
         nodeContents: state.nodeContents,
         userProgress: state.userProgress,
@@ -359,21 +441,19 @@ export default function App() {
 
     try {
         const activeNodeTitle = state.activeNodeId ? state.mindMap.find(n => n.id === state.activeNodeId)?.title || null : null;
-        const response = await generateChatResponse([...state.chatHistory, userMessage], message, activeNodeTitle, state.sourceContent);
+        // Construct history up to the point before the user sent the message
+        const historyForAI = [...state.chatHistory, userMessage];
+        const response = await generateChatResponse(historyForAI, message, activeNodeTitle, state.sourceContent);
         const modelMessage: ChatMessage = { role: 'model', message: response };
 
         // Replace the loading message with the actual response
         dispatch({ type: 'ADD_CHAT_MESSAGE', payload: modelMessage });
-        const historyWithoutLoading = [...state.chatHistory, userMessage, modelMessage];
-        dispatch({type: 'ADD_CHAT_MESSAGE', payload: { ...state, chatHistory: historyWithoutLoading }});
-
 
     } catch (err) {
         console.error("Chat error:", err);
         const errorMessage: ChatMessage = { role: 'model', message: 'متاسفانه در حال حاضر قادر به پاسخگویی نیستم. لطفاً دوباره تلاش کنید.' };
+        // Replace the loading message with the error message
         dispatch({ type: 'ADD_CHAT_MESSAGE', payload: errorMessage });
-        const historyWithoutLoading = [...state.chatHistory, userMessage, errorMessage];
-        dispatch({type: 'ADD_CHAT_MESSAGE', payload: { ...state, chatHistory: historyWithoutLoading }});
     }
   };
   
@@ -428,7 +508,7 @@ export default function App() {
     
     switch (state.status) {
       case AppStatus.IDLE:
-        return <HomePage onStart={handleStart} onLoad={handleLoadProgress} />;
+        return <HomePage onStart={handleStart} onLoad={handleLoadProgress} theme={state.theme} />;
       case AppStatus.LOADING:
         return <LoadingScreen message={state.loadingMessage || 'در حال پردازش...'} subMessage="این فرآیند ممکن است کمی طول بکشد." />;
       case AppStatus.GRADING_PRE_ASSESSMENT:
@@ -462,7 +542,7 @@ export default function App() {
                     </div>
                 )}
                 <div className="flex-grow overflow-auto">
-                    {currentView === 'learning' && <MindMap nodes={state.mindMap} progress={state.userProgress} onSelectNode={handleSelectNode} onTakeQuiz={handleStartQuiz} />}
+                    {currentView === 'learning' && <MindMap nodes={state.mindMap} progress={state.userProgress} suggestedPath={state.suggestedPath} onSelectNode={handleSelectNode} onTakeQuiz={handleStartQuiz} theme={state.theme} />}
                     {currentView === 'weaknesses' && <WeaknessTracker weaknesses={state.weaknesses} />}
                     {currentView === 'practice' && <PracticeZone />}
                 </div>
@@ -473,10 +553,15 @@ export default function App() {
         const currentIndex = orderedNodes.findIndex(n => n.id === state.activeNodeId);
         const prevNode = currentIndex > 0 ? orderedNodes[currentIndex - 1] : null;
         const nextNode = currentIndex < orderedNodes.length - 1 ? orderedNodes[currentIndex + 1] : null;
+        const content = state.streamingNodeContent ?? state.nodeContents[state.activeNodeId!];
+
+        if (!activeNode || !content) {
+             return <LoadingScreen message="در حال آماده‌سازی درس..." />;
+        }
         
         return <NodeView 
-                    node={activeNode!} 
-                    content={state.nodeContents[state.activeNodeId!]} 
+                    node={activeNode} 
+                    content={content} 
                     onBack={handleBackToPlan} 
                     onStartQuiz={() => handleStartQuiz(state.activeNodeId!)}
                     onNavigate={handleSelectNode}
@@ -537,7 +622,7 @@ export default function App() {
             <div className="flex items-center gap-4">
                 <div className="flex items-center p-1 space-x-1 rounded-lg bg-secondary">
                     <button onClick={() => dispatch({ type: 'SET_THEME', payload: 'light' })} className={`p-1.5 rounded-md ${state.theme === 'light' ? 'bg-card shadow-sm' : 'hover:bg-card/50'}`} aria-label="Light theme"><Sun className="w-5 h-5" /></button>
-                    <button onClick={() => dispatch({ type: 'SET_THEME', payload: 'balanced' })} className={`p-1.5 rounded-md ${state.theme === 'balanced' ? 'bg-card shadow-sm' : 'hover:bg-card/50'}`} aria-label="Balanced theme"><div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary to-gray-700"></div></button>
+                    <button onClick={() => dispatch({ type: 'SET_THEME', payload: 'balanced' })} className={`p-1.5 rounded-md ${state.theme === 'balanced' ? 'bg-card shadow-sm' : 'hover:bg-card/50'}`} aria-label="Balanced theme"><div className="w-5 h-5 rounded-full bg-gradient-to-br from-indigo-500 to-gray-700"></div></button>
                     <button onClick={() => dispatch({ type: 'SET_THEME', payload: 'dark' })} className={`p-1.5 rounded-md ${state.theme === 'dark' ? 'bg-card shadow-sm' : 'hover:bg-card/50'}`} aria-label="Dark theme"><Moon className="w-5 h-5" /></button>
                 </div>
                 {hasProgress && (
@@ -586,7 +671,7 @@ export default function App() {
   );
 }
 
-const HomePage: React.FC<{ onStart: (content: string, pageContents: string[] | null, images: {mimeType: string, data: string}[], preferences: LearningPreferences) => void; onLoad: (file: File) => void; }> = ({ onStart, onLoad }) => {
+const HomePage: React.FC<{ onStart: (content: string, pageContents: string[] | null, images: {mimeType: string, data: string}[], preferences: LearningPreferences) => void; onLoad: (file: File) => void; theme: AppState['theme'] }> = ({ onStart, onLoad, theme }) => {
     const [sourceContent, setSourceContent] = useState('');
     const [sourcePageContents, setSourcePageContents] = useState<string[] | null>(null);
     const [sourceImages, setSourceImages] = useState<{mimeType: string, data: string}[]>([]);
@@ -732,8 +817,9 @@ const HomePage: React.FC<{ onStart: (content: string, pageContents: string[] | n
     };
 
     return (
-        <div className="flex items-center justify-center min-h-full p-4 bg-gradient-to-br sm:p-6 md:p-8 from-primary/10 via-background to-secondary/20">
-            <div className="w-full max-w-3xl p-6 space-y-8 border rounded-xl shadow-lg md:p-8 bg-card">
+        <div className="relative flex items-center justify-center min-h-full p-4 sm:p-6 md:p-8">
+            <ParticleBackground theme={theme} />
+            <div className="w-full max-w-3xl p-6 space-y-8 border rounded-xl shadow-lg md:p-8 bg-card/80 backdrop-blur-sm border-border">
                 <div className="text-center">
                     <h2 className="text-3xl font-bold text-card-foreground">موضوع یادگیری خود را وارد کنید</h2>
                     <p className="mt-2 text-muted-foreground">متن خود را کپی کنید، یک PDF بارگذاری کنید، یا یک فایل پیشرفت را باز کنید.</p>

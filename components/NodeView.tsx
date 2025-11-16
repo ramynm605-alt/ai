@@ -13,15 +13,29 @@ interface NodeViewProps {
     onExplainRequest: (text: string) => void;
 }
 
+const LoadingSkeleton: React.FC = () => (
+    <div className="space-y-2 animate-pulse">
+        <div className="h-4 rounded bg-muted/20 w-3/4"></div>
+        <div className="h-4 rounded bg-muted/20 w-full"></div>
+        <div className="h-4 rounded bg-muted/20 w-5/6"></div>
+    </div>
+);
+
+
 const Section: React.FC<{ title: string; content: string }> = ({ title, content }) => (
     <div className="mb-6">
         <h3 className="pb-2 mb-3 text-xl font-semibold border-b-2 text-primary border-primary/30">{title}</h3>
-        <div className="node-content-section leading-relaxed text-card-foreground/90" dangerouslySetInnerHTML={{ __html: content }} />
+        {content ? (
+            <div className="node-content-section leading-relaxed text-card-foreground/90" dangerouslySetInnerHTML={{ __html: content }} />
+        ) : (
+            <LoadingSkeleton />
+        )}
     </div>
 );
 
 const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz, onNavigate, prevNode, nextNode, onExplainRequest }) => {
     const [selectionPopup, setSelectionPopup] = useState<{ x: number; y: number; text: string } | null>(null);
+    const [reminderPopup, setReminderPopup] = useState<{ x: number; y: number; content: string } | null>(null);
     const viewRef = useRef<HTMLDivElement>(null);
 
     const handleMouseUp = () => {
@@ -32,6 +46,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
             const rect = range.getBoundingClientRect();
             if (viewRef.current) {
                 const containerRect = viewRef.current.getBoundingClientRect();
+                setReminderPopup(null); // Close reminder popup if text is selected
                 setSelectionPopup({
                     x: rect.left - containerRect.left + rect.width / 2,
                     y: rect.top - containerRect.top - 10, // Position above the selection
@@ -45,19 +60,45 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            if (selectionPopup) {
-                setSelectionPopup(null);
-            }
+            // Close any open popups when clicking outside
+            if (selectionPopup) setSelectionPopup(null);
+            if (reminderPopup) setReminderPopup(null);
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => {
             document.removeEventListener('mousedown', handleClickOutside);
         };
-    }, [selectionPopup]);
+    }, [selectionPopup, reminderPopup]);
+
+    useEffect(() => {
+        const handleReminderClick = (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            if (target.classList.contains('reminder-trigger')) {
+                const reminderContent = target.dataset.reminderText;
+                if (reminderContent) {
+                    const rect = target.getBoundingClientRect();
+                    const containerRect = viewRef.current!.getBoundingClientRect();
+                    setSelectionPopup(null); // Close selection popup if a reminder is clicked
+                    setReminderPopup({
+                        content: reminderContent,
+                        x: rect.left - containerRect.left + rect.width / 2,
+                        y: rect.top - containerRect.top,
+                    });
+                    event.stopPropagation(); // Prevent document click listener from firing
+                }
+            }
+        };
+
+        const container = viewRef.current;
+        container?.addEventListener('click', handleReminderClick);
+        return () => {
+            container?.removeEventListener('click', handleReminderClick);
+        };
+    }, []);
 
 
     return (
-        <div className="max-w-4xl p-4 mx-auto sm:p-6 md:p-8" ref={viewRef}>
+        <div className="relative max-w-4xl p-4 mx-auto sm:p-6 md:p-8" ref={viewRef} onMouseUp={handleMouseUp}>
              {selectionPopup && (
                 <div
                     className="selection-popup"
@@ -72,11 +113,21 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                     <span>توضیح بیشتر</span>
                 </div>
             )}
+            {reminderPopup && (
+                 <div
+                    className="reminder-popup"
+                    style={{ left: reminderPopup.x, top: reminderPopup.y }}
+                    onMouseDown={(e) => e.stopPropagation()} // Prevent closing on click
+                >
+                    {reminderPopup.content}
+                </div>
+            )}
+
             <button onClick={onBack} className="flex items-center gap-2 mb-6 text-sm font-medium text-primary hover:underline">
                 <ArrowRight className="w-4 h-4 transform rotate-180" />
                 <span>بازگشت به نقشه ذهنی</span>
             </button>
-            <div className="p-6 border rounded-lg shadow-lg sm:p-8 bg-card border-border" onMouseUp={handleMouseUp}>
+            <div className="p-6 border rounded-lg shadow-lg sm:p-8 bg-card border-border">
                 <h2 className="mb-8 text-3xl font-bold text-center text-card-foreground">{node.title}</h2>
                 <Section title="مقدمه" content={content.introduction} />
                 <Section title="تئوری" content={content.theory} />

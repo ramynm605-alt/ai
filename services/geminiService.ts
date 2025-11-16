@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, PreAssessmentAnalysis, ChatMessage } from '../types';
 import { marked } from 'marked';
@@ -24,90 +25,54 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Pr
     }
 }
 
-
-const mindMapSchema = {
-    type: Type.OBJECT,
-    properties: {
-        mindMap: {
-            type: Type.ARRAY,
-            description: "آرایه‌ای از گره‌های نقشه ذهنی.",
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    id: { type: Type.STRING, description: "یک شناسه منحصر به فرد برای گره." },
-                    title: { type: Type.STRING, description: "عنوان گره یا مفهوم." },
-                    parentId: { type: Type.STRING, description: "شناسه گره والد. برای گره ریشه null است." },
-                    difficulty: { type: Type.NUMBER, description: "امتیاز سختی از 0.0 (آسان) تا 1.0 (دشوار)." },
-                    isExplanatory: { type: Type.BOOLEAN, description: "آیا این یک گره توضیحی اضافی است یا خیر." },
-                    sourcePages: { type: Type.ARRAY, items: { type: Type.INTEGER }, description: "شماره صفحاتی از منبع که این گره به آنها مربوط است." }
-                },
-                required: ["id", "title", "parentId", "difficulty", "isExplanatory", "sourcePages"]
-            }
-        },
-        preAssessment: {
-            type: Type.OBJECT,
-            description: "یک آزمون اولیه برای سنجش دانش کاربر.",
-            properties: {
-                questions: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            id: { type: Type.STRING },
-                            type: { type: Type.STRING, enum: ["multiple-choice", "short-answer"] },
-                            question: { type: Type.STRING },
-                            difficulty: { type: Type.STRING, enum: ['آسان', 'متوسط', 'سخت'] },
-                            points: { type: Type.INTEGER },
-                            // Multiple-choice specific
-                            mcOptions: { type: Type.ARRAY, items: { type: Type.STRING } },
-                            correctAnswerIndex: { type: Type.INTEGER },
-                            // Short-answer specific
-                            correctAnswer: { type: Type.STRING },
-                        },
-                        required: ["id", "type", "question", "difficulty", "points"]
-                    }
-                }
-            },
-            required: ["questions"]
-        }
-    },
-    required: ["mindMap", "preAssessment"]
-};
-
-export async function generateLearningPlan(content: string, pageContents: string[] | null, images: {mimeType: string, data: string}[], preferences: LearningPreferences): Promise<{ mindMap: MindMapNode[], preAssessment: Quiz }> {
+export async function generateLearningPlan(
+    content: string, 
+    pageContents: string[] | null, 
+    images: {mimeType: string, data: string}[], 
+    preferences: LearningPreferences,
+    onMindMapGenerated: (mindMap: MindMapNode[], suggestedPath: string[]) => void,
+    onQuestionStream: (question: QuizQuestion) => void
+): Promise<Quiz> { // Returns the final quiz, but streams questions along the way
     return withRetry(async () => {
         const customInstructions = preferences.customInstructions ? `دستورالعمل سفارشی کاربر: ${preferences.customInstructions}` : '';
+        // FIX: Combined broken line for 'addExplanatoryNodes' property access.
         const explanatoryInstruction = preferences.addExplanatoryNodes ? "اگر در متن به مفاهیم پیش‌نیاز اشاره شده که به خوبی توضیح داده نشده‌اند، گره‌های توضیحی اضافی برای آن‌ها ایجاد کن و isExplanatory را true قرار بده." : "";
         const learningGoalInstruction = preferences.learningGoal ? `مهم: هدف اصلی کاربر از یادگیری این موضوع '${preferences.learningGoal}' است. ساختار نقشه ذهنی و سوالات پیش‌آزمون را متناسب با این هدف طراحی کن.` : '';
 
         const pageContentForPrompt = pageContents
-            ? `محتوای زیر بر اساس صفحه تفکیک شده است. هنگام ایجاد گره‌ها، شماره صفحات مرتبط را در فیلد sourcePages مشخص کن.\n\n` + pageContents.map((text, i) => `--- صفحه ${i + 1} ---\n${text}`).join('\n\n')
+            ? `محتوای زیر بر اساس صفحه تفکک شده است. هنگام ایجاد گره‌ها، شماره صفحات مرتبط را در فیلد sourcePages مشخص کن.\n\n` + pageContents.map((text, i) => `--- صفحه ${i + 1} ---\n${text}`).join('\n\n')
             : `متن:\n---\n${content}\n---`;
+        
+        const prompt = `
+        **وظیفه اول: ایجاد نقشه ذهنی**
+        بر اساس محتوای زیر، یک طرح درس به صورت نقشه ذهنی سلسله مراتبی و **بسیار فشرده** ایجاد کن.
+        1.  ساختار باید به شکل زیر باشد:
+            -   **گره ریشه (Root Node):** اولین و تنها گره ریشه باید عنوانی مانند "مقدمه کلی" داشته باشد و یک نمای کلی از کل موضوع ارائه دهد. شناسه والد آن باید null باشد.
+            -   **گره‌های اصلی (Main Nodes):** مفاهیم اصلی را در گره‌های مجزا گروه‌بندی کن. هر مفهوم اصلی باید به طور کامل در یک گره پوشش داده شود تا از پراکندگی مطالب جلوگیری شود. یک مفهوم نباید در بیش از دو گره تکرار شود. اگر تکرار ضروری است، گره دوم باید یک "توضیح گسترده" یا "مقایسه" باشد.
+            -   **فشردگی:** تعداد کل گره‌ها را بین ۳ تا ۸ گره محدود کن تا نقشه ذهنی مختصر و مفید باقی بماند. هدف، درک عمیق مفاهیم کلیدی است، نه تقسیم‌بندی بیش از حد.
+        2.  برای هر گره، یک امتیاز سختی بین 0.0 (بسیار آسان) تا 1.0 (بسیار دشوار) بر اساس پیچیدگی مفهوم اختصاص بده.
+        3.  ${explanatoryInstruction}
 
-        const prompt = `بر اساس محتوای زیر، یک طرح درس به صورت نقشه ذهنی سلسله مراتبی ایجاد کن.
-    1.  مفاهیم اصلی و فرعی را شناسایی کن. بر اساس پیچیدگی و حجم متن، یک نقشه ذهنی با تعداد کل گره‌ها بین ۲ تا ۱۱ ایجاد کن. برای متون کوتاه‌تر و ساده‌تر، تعداد گره‌ها را به ۲ یا ۳ محدود کن. برای متون پیچیده و طولانی، تعداد را به سمت ۱۱ افزایش بده. هدف ایجاد یک مسیر یادگیری جامع و در عین حال مختصر است.
-    2.  برای هر گره، یک امتیاز سختی بین 0.0 (بسیار آسان) تا 1.0 (بسیار دشوار) بر اساس پیچیدگی مفهوم اختصاص بده.
-    3.  ${explanatoryInstruction}
-    4.  همچنین، یک پیش‌آزمون جامع با ۵ تا ۱۰ سوال برای سنجش دقیق دانش اولیه کاربر از کل متن طراحی کن. این آزمون باید **چالش‌برانگیز** باشد و شامل **ترکیب متنوعی** از انواع سوالات زیر باشد:
-        -   **چهارگزینه‌ای (multiple-choice):** سوالات مفهومی و تحلیلی.
-        -   **درست یا نادرست (true/false):** این نوع سوال را با فرمت \`multiple-choice\` بساز که گزینه‌ها فقط "درست" و "نادرست" باشند.
-        -   **تشریحی کوتاه (short-answer):** سوالاتی که نیازمند پاسخ کوتاه و دقیق برای سنجش درک مفهومی هستند.
-        -   **جای خالی (fill-in-the-blank):** این نوع سوال را با فرمت \`short-answer\` بساز و در متن سوال از \`____\` برای نشان دادن جای خالی استفاده کن.
+        **وظیفه دوم: ایجاد پیش‌آزمون**
+        یک پیش‌آزمون جامع با ۵ تا ۱۰ سوال برای سنجش دقیق دانش اولیه کاربر از کل متن طراحی کن. این آزمون باید **چالش‌برانگیز** باشد. سوالات باید **فقط و فقط** از انواع 'multiple-choice' و 'short-answer' باشند. در JSON خروجی برای هر سوال، فیلد 'type' باید دقیقا یکی از این دو رشته باشد. استفاده از هر نوع دیگری غیرمجاز است. قوانین طراحی سوالات (مفهومی بودن, بازنویسی کامل, گزینه‌های انحرافی فریبنده) که قبلاً ذکر شد را به دقت رعایت کن.
+        
+        **وظیفه سوم: ایجاد مسیر یادگیری پیشنهادی**
+        بر اساس هدف یادگیری کاربر، سختی گره‌ها و وابستگی‌های منطقی بین آنها، یک مسیر یادگیری پیشنهادی بهینه ارائه بده. این مسیر باید به صورت یک آرایه از شناسه‌های گره‌ها (node IDs) با نام suggestedPath باشد. این مسیر باید یک ترتیب منطقی برای مطالعه گره‌ها را مشخص کند.
 
-    5.  برای تمام سوالات، از **قوانین سختگیرانه** زیر پیروی کن:
-        - **سوالات کاملاً مفهومی و تحلیلی:** هر سوال باید یک سناریو، یک مقایسه، یا یک تحلیل علت و معلولی را مطرح کند. از سوالات ساده که پاسخشان مستقیماً در یک جمله از متن پیدا می‌شود، اکیداً خودداری کن.
-        - **بازنویسی کامل:** به هیچ وجه از جملات یا عبارات کلیدی متن اصلی در صورت سوال یا گزینه‌ها استفاده نکن. مفاهیم را با کلمات و ساختارهای کاملاً جدید بیان کن.
-        - **هنر طراحی گزینه‌های انحرافی (برای سوالات چندگزینه‌ای):** این بخش حیاتی است. گزینه‌های غلط باید به شدت فریبنده و قابل قبول به نظر برسند. هر گزینه غلط باید یکی از ویژگی‌های زیر را داشته باشد:
-            * **حقیقتی ناقص:** گزینه‌ای که بخشی از آن درست است اما در کل به دلیل یک کلمه یا عبارت کلیدی، غلط محسوب می‌شود.
-            * **صحیح اما بی‌ربط:** گزینه‌ای که یک عبارت کاملاً صحیح از متن است، اما پاسخ سوال مطرح شده نیست.
-            * **اشتباه رایج:** گزینه‌ای که یک تصور غلط یا اشتباه متداول در مورد موضوع را بیان می‌کند.
-            * **وارونه‌سازی ظریف:** گزینه‌ای که رابطه علت و معلولی را برعکس نشان می‌دهد یا یک مفهوم را به شکلی معکوس بیان می‌کند.
-            * **بسیار شبیه به پاسخ صحیح:** گزینه‌ای که فقط در یک کلمه یا جزئیات بسیار کوچک با پاسخ صحیح تفاوت دارد.
-        - **هدف نهایی:** کاربر پس از خواندن سوال و گزینه‌ها، باید دچار تردید جدی شود و برای انتخاب پاسخ صحیح، مجبور به فکر کردن عمیق و مراجعه به دانش مفهومی خود از متن گردد. گزینه‌ها نباید به سادگی قابل حذف باشند.
-    6.  ${learningGoalInstruction}
-    7.  خروجی باید یک شیء JSON با دو کلید mindMap و preAssessment باشد. برای هر گره در نقشه ذهنی یک id منحصر به فرد، title، parentId (برای گره ریشه null)، difficulty، isExplanatory و sourcePages (آرایه‌ای از شماره صفحات مرتبط) ارائه بده.
-
+        ${learningGoalInstruction}
         ${customInstructions}
+
+        **دستورالعمل خروجی (بسیار مهم):**
+        خروجی باید به صورت جریانی (stream) باشد.
+        1.  **ابتدا**، یک آبجکت JSON کامل و معتبر که شامل کل نقشه ذهنی (mindMap) و مسیر پیشنهادی (suggestedPath) است، محصور شده بین توکن‌های \`[MIND_MAP_START]\` و \`[MIND_MAP_END]\` ارسال کن.
+        2.  **سپس**، بلافاصله شروع به ارسال سوالات پیش‌آزمون کن. هر سوال باید به صورت یک آبجکت JSON معتبر در یک خط جدید و محصور شده بین توکن‌های \`[QUESTION_START]\` و \`[QUESTION_END]\` ارسال شود.
+        مثال برای فرمت سوالات:
+        [QUESTION_START]
+        {"id": "q1", "type": "multiple-choice", "question": "...", "options": ["...", "..."], "correctAnswerIndex": 0, "difficulty": "متوسط", "points": 10}
+        [QUESTION_END]
+        [QUESTION_START]
+        {"id": "q2", "type": "short-answer", "question": "...", "correctAnswer": "...", "difficulty": "آسان", "points": 5}
+        [QUESTION_END]
 
         محتوا:
         ---
@@ -116,39 +81,85 @@ export async function generateLearningPlan(content: string, pageContents: string
         `;
 
         const imageParts = images.map(img => ({ inlineData: { mimeType: img.mimeType, data: img.data } }));
-
-        const response = await ai.models.generateContent({
+        
+        const stream = await ai.models.generateContentStream({
             model: "gemini-2.5-pro",
             contents: { parts: [{ text: prompt }, ...imageParts] },
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: mindMapSchema,
-            },
         });
 
-        const resultText = response.text;
-        const resultJson = JSON.parse(resultText);
-
-        const mindMap = resultJson.mindMap.map((node: any) => ({
-            ...node,
-            parentId: node.parentId === 'null' || node.parentId === '' ? null : node.parentId,
-            sourcePages: node.sourcePages || [],
-        }));
+        let buffer = '';
+        const questions: QuizQuestion[] = [];
+        let mindMapGenerated = false;
         
-        const sanitizedQuestions = resultJson.preAssessment.questions.map((q: any) => {
-            const question = { ...q };
-            if (question.type === 'multiple-choice') {
-                question.options = Array.isArray(question.mcOptions) ? question.mcOptions : [];
-                delete question.mcOptions;
+        const mindMapStartToken = '[MIND_MAP_START]';
+        const mindMapEndToken = '[MIND_MAP_END]';
+        const questionStartToken = '[QUESTION_START]';
+        const questionEndToken = '[QUESTION_END]';
+
+        for await (const chunk of stream) {
+            buffer += chunk.text;
+
+            if (!mindMapGenerated) {
+                const startIndex = buffer.indexOf(mindMapStartToken);
+                const endIndex = buffer.indexOf(mindMapEndToken, startIndex);
+                if (startIndex !== -1 && endIndex !== -1) {
+                    const jsonStr = buffer.substring(startIndex + mindMapStartToken.length, endIndex).trim();
+                    try {
+                        const resultJson = JSON.parse(jsonStr);
+                        
+                        // FIX: The model might return mindMap as { nodes: [...] } or just an array
+                        const nodesArray = resultJson.mindMap?.nodes || resultJson.mindMap;
+
+                        if (!Array.isArray(nodesArray)) {
+                            console.error("Mind map nodes data is not an array:", nodesArray);
+                            throw new Error("Mind map nodes data is not an array.");
+                        }
+
+                        const mindMap: MindMapNode[] = nodesArray.map((node: any) => ({
+                            id: node.id,
+                            title: node.title || node.label, // The model sometimes uses 'label'
+                            parentId: node.parentId === 'null' || node.parentId === '' ? null : node.parentId,
+                            locked: false, // This will be set properly later
+                            difficulty: node.difficulty || 0.5,
+                            isExplanatory: node.isExplanatory || false,
+                            sourcePages: node.sourcePages || [],
+                        }));
+
+                        const suggestedPath = resultJson.suggestedPath || [];
+                        const unlockedMindMap = mindMap.map(node => ({ ...node, locked: !!node.parentId }));
+                        onMindMapGenerated(unlockedMindMap, suggestedPath);
+                        mindMapGenerated = true;
+                    } catch (e) {
+                        console.error("Failed to parse mind map JSON:", jsonStr, e);
+                    }
+                    buffer = buffer.substring(endIndex + mindMapEndToken.length);
+                }
             }
-            return question;
-        });
-        
-        const sanitizedPreAssessment = { ...resultJson.preAssessment, questions: sanitizedQuestions };
 
-        return { mindMap, preAssessment: sanitizedPreAssessment };
+            if (mindMapGenerated) {
+                let startIndex, endIndex;
+                while ((startIndex = buffer.indexOf(questionStartToken)) !== -1 && (endIndex = buffer.indexOf(questionEndToken, startIndex)) !== -1) {
+                    const jsonStr = buffer.substring(startIndex + questionStartToken.length, endIndex).trim();
+                    try {
+                        const q = JSON.parse(jsonStr);
+                        const question = { ...q };
+                        if (question.type === 'multiple-choice') {
+                           question.options = Array.isArray(question.options) ? question.options : [];
+                        }
+                        questions.push(question);
+                        onQuestionStream(question);
+                    } catch (e) {
+                        console.error("Failed to parse streamed pre-assessment question JSON:", jsonStr, e);
+                    }
+                    buffer = buffer.substring(endIndex + questionEndToken.length);
+                }
+            }
+        }
+        
+        return { questions };
     });
 }
+
 
 const preAssessmentAnalysisSchema = {
     type: Type.OBJECT,
@@ -206,20 +217,15 @@ export async function analyzePreAssessment(
     });
 }
 
-
-const nodeContentSchema = {
-    type: Type.OBJECT,
-    properties: {
-        introduction: { type: Type.STRING },
-        theory: { type: Type.STRING },
-        example: { type: Type.STRING },
-        connection: { type: Type.STRING },
-        conclusion: { type: Type.STRING }
-    },
-    required: ["introduction", "theory", "example", "connection", "conclusion"]
-};
-
-export async function generateNodeContent(nodeTitle: string, fullContent: string, images: {mimeType: string, data: string}[], style: LearningPreferences['style'], strengths: string[], weaknesses: string[]): Promise<NodeContent> {
+export async function generateNodeContent(
+    nodeTitle: string,
+    fullContent: string,
+    images: { mimeType: string; data: string }[],
+    style: LearningPreferences['style'],
+    strengths: string[],
+    weaknesses: string[],
+    onStreamUpdate: (partialContent: NodeContent) => void
+): Promise<NodeContent> {
     return withRetry(async () => {
         let adaptiveInstruction = '';
         const isWeakTopic = weaknesses.some(w => nodeTitle.includes(w) || w.includes(nodeTitle));
@@ -231,94 +237,125 @@ export async function generateNodeContent(nodeTitle: string, fullContent: string
             adaptiveInstruction = "مهم: کاربر در این موضوع تسلط دارد. توضیحات را به صورت خلاصه‌ای پیشرفته ارائه بده و بر روی نکات ظریف، کاربردهای خاص یا ارتباط آن با مفاهیم پیچیده‌تر تمرکز کن.";
         }
 
+        const prompt = `وظیفه شما استخراج و سازماندهی **تمام** اطلاعات مربوط به مفهوم "${nodeTitle}" از متن کامل و تصاویر ارائه‌شده است. از خلاصه‌سازی یا حذف هرگونه جزئیات خودداری کنید. محتوا را به صورت جامع و کامل در پنج بخش ساختاریافته ارائه دهید.
 
-        const prompt = `وظیفه شما استخراج و سازماندهی **تمام** اطلاعات مربوط به مفهوم "${nodeTitle}" از متن کامل و تصاویر ارائه‌شده است. از خلاصه‌سازی یا حذف هرگونه جزئیات خودداری کنید. محتوا را به صورت جامع و کامل در پنج بخش ساختاریافته ارائه دهید: مقدمه، تئوری، مثال، ارتباط و نتیجه‌گیری.
-        
         ${adaptiveInstruction}
         
-        ساختار توضیحات باید شامل پنج بخش باشد: مقدمه، تئوری، مثال، ارتباط (با مفاهیم دیگر) و نتیجه‌گیری.
+        خروجی باید در فرمت Markdown باشد و از هدرهای دقیق زیر برای جداسازی هر بخش استفاده کنید. هر هدر باید در یک خط جداگانه باشد:
+        ###INTRODUCTION###
+        ###THEORY###
+        ###EXAMPLE###
+        ###CONNECTION###
+        ###CONCLUSION###
 
-        مهم: در هر بخش، کلمات و عبارات کلیدی را با استفاده از Markdown به صورت **پررنگ** مشخص کن و مهم‌ترین جمله (فقط یک جمله) را با استفاده از Markdown به صورت *ایتالیک* مشخص کن.
+        در هر بخش، کلمات و عبارات کلیدی را با استفاده از Markdown به صورت **پررنگ** مشخص کن و مهم‌ترین جمله (فقط یک جمله) را با استفاده از Markdown به صورت *ایتالیک* مشخص کن.
+
+        در حین توضیح، اگر به یک مفهوم کلیدی که پیش‌نیاز این بخش است اشاره می‌کنید، از این فرمت خاص استفاده کنید: "همانطور که پیش‌تر اشاره شد[1](یادآوری: توضیح مختصری از مفهوم پیش‌نیاز در اینجا قرار دهید)، این موضوع ...". این فرمت به ما امکان می‌دهد یک یادآوری تعاملی برای کاربر ایجاد کنیم.
 
         متن کامل برای مرجع:
         ---
         ${fullContent}
         ---
         `;
-        
-        const imageParts = images.map(img => ({ inlineData: { mimeType: img.mimeType, data: img.data } }));
 
-        const response = await ai.models.generateContent({
+        const imageParts = images.map(img => ({ inlineData: { mimeType: img.mimeType, data: img.data } }));
+        const stream = await ai.models.generateContentStream({
             model: "gemini-2.5-pro",
             contents: { parts: [{ text: prompt }, ...imageParts] },
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: nodeContentSchema,
-            }
         });
 
-        const parsedJson = JSON.parse(response.text);
-
-        // Convert markdown to HTML for each section
-        const htmlContent: NodeContent = {
-            introduction: marked.parse(parsedJson.introduction) as string,
-            theory: marked.parse(parsedJson.theory) as string,
-            example: marked.parse(parsedJson.example) as string,
-            connection: marked.parse(parsedJson.connection) as string,
-            conclusion: marked.parse(parsedJson.conclusion) as string,
+        const processReminders = (text: string): string => {
+            if (!text) return '';
+            const regex = /\[(\d+)\]\(یادآوری:\s*([^)]+)\)/g;
+            return text.replace(regex, (_match, number, reminderText) => {
+                const sanitizedText = reminderText.replace(/"/g, '&quot;');
+                return `<button class="reminder-trigger" data-reminder-text="${sanitizedText}" aria-label="یادآوری شماره ${number}">${number}</button>`;
+            });
         };
 
-        return htmlContent;
+        let fullText = '';
+        const rawMarkdownContent: NodeContent = { introduction: '', theory: '', example: '', connection: '', conclusion: '' };
+        
+        for await (const chunk of stream) {
+            fullText += chunk.text;
+            
+            const sections: (keyof NodeContent)[] = ['introduction', 'theory', 'example', 'connection', 'conclusion'];
+            const headers = {
+                introduction: '###INTRODUCTION###',
+                theory: '###THEORY###',
+                example: '###EXAMPLE###',
+                connection: '###CONNECTION###',
+                conclusion: '###CONCLUSION###'
+            };
+
+            const headerKeys = Object.values(headers);
+            let tempText = fullText;
+            
+            // Default to introduction if no headers are present yet
+            if (!headerKeys.some(h => tempText.includes(h))) {
+                 rawMarkdownContent.introduction = tempText;
+            } else {
+                 for (let i = sections.length - 1; i >= 0; i--) {
+                    const currentSection = sections[i];
+                    const currentHeader = headers[currentSection];
+                    const headerIndex = tempText.lastIndexOf(currentHeader);
+        
+                    if (headerIndex !== -1) {
+                        const content = tempText.substring(headerIndex + currentHeader.length);
+                        rawMarkdownContent[currentSection] = content;
+                        tempText = tempText.substring(0, headerIndex);
+                    } else {
+                        // If a header is not found, clear its content to avoid stale data
+                        rawMarkdownContent[currentSection] = '';
+                    }
+                }
+            }
+            
+            const partialHtmlContent: NodeContent = {
+                introduction: marked.parse(processReminders(rawMarkdownContent.introduction)),
+                theory: marked.parse(processReminders(rawMarkdownContent.theory)),
+                example: marked.parse(processReminders(rawMarkdownContent.example)),
+                connection: marked.parse(processReminders(rawMarkdownContent.connection)),
+                conclusion: marked.parse(processReminders(rawMarkdownContent.conclusion)),
+            };
+            onStreamUpdate(partialHtmlContent);
+        }
+
+        const finalHtmlContent: NodeContent = {
+            introduction: marked.parse(processReminders(rawMarkdownContent.introduction)),
+            theory: marked.parse(processReminders(rawMarkdownContent.theory)),
+            example: marked.parse(processReminders(rawMarkdownContent.example)),
+            connection: marked.parse(processReminders(rawMarkdownContent.connection)),
+            conclusion: marked.parse(processReminders(rawMarkdownContent.conclusion)),
+        };
+
+        return finalHtmlContent;
     });
 }
 
-const quizSchema = {
-  type: Type.OBJECT,
-  properties: {
-    questions: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-            id: { type: Type.STRING },
-            type: { type: Type.STRING, enum: ["multiple-choice", "short-answer"] },
-            question: { type: Type.STRING },
-            difficulty: { type: Type.STRING, enum: ['آسان', 'متوسط', 'سخت'] },
-            points: { type: Type.INTEGER },
-            // Multiple-choice specific
-            mcOptions: { type: Type.ARRAY, items: { type: Type.STRING } },
-            correctAnswerIndex: { type: Type.INTEGER },
-            // Short-answer specific
-            correctAnswer: { type: Type.STRING },
-        },
-        required: ["id", "type", "question", "difficulty", "points"]
-      }
-    }
-  },
-  required: ["questions"]
-};
-
-export async function generateQuiz(nodeTitle: string, fullContent: string, images: {mimeType: string, data: string}[]): Promise<Quiz> {
+export async function generateQuiz(
+    nodeTitle: string,
+    fullContent: string,
+    images: { mimeType: string; data: string }[],
+    onQuestionStream: (question: QuizQuestion) => void
+): Promise<Quiz> {
     return withRetry(async () => {
-        const prompt = `برای سنجش تسلط بر مفهوم "${nodeTitle}"، یک آزمون متنوع با تعداد سوالات بین ۳ تا ۷ عدد طراحی کن. تعداد سوالات را بر اساس حجم و پیچیدگی مفهوم انتخاب کن. سوالات باید شامل ترکیبی از انواع 'multiple-choice' و 'short-answer' باشند.
+        const prompt = `برای سنجش تسلط بر مفهوم "${nodeTitle}"، یک آزمون متنوع با تعداد سوالات بین ۳ تا ۷ عدد طراحی کن. تعداد سوالات را بر اساس حجم و پیچیدگی مفهوم انتخاب کن. سوالات باید **فقط و فقط** شامل ترکیبی از انواع 'multiple-choice' و 'short-answer' باشند. فیلد 'type' در JSON باید دقیقا یکی از این دو رشته باشد.
         
-        برای هر سوال موارد زیر را مشخص کن:
-        -   یک id منحصر به فرد
-        -   نوع سوال (type)
-        -   متن سوال (question)
-        -   درجه سختی (difficulty: 'آسان', 'متوسط', 'سخت')
-        -   امتیاز (points: آسان=5, متوسط=10, سخت=15)
+        **خروجی را به صورت جریانی (stream) تولید کن.** هر سوال را به صورت یک آبجکت JSON معتبر در یک خط جدید و محصور شده بین توکن‌های [QUESTION_START] و [QUESTION_END] ارسال کن.
+        مثال:
+        [QUESTION_START]
+        {"id": "q1", "type": "multiple-choice", "question": "...", "options": ["...", "..."], "correctAnswerIndex": 0, "difficulty": "متوسط", "points": 10}
+        [QUESTION_END]
+        [QUESTION_START]
+        {"id": "q2", "type": "short-answer", "question": "...", "correctAnswer": "...", "difficulty": "آسان", "points": 5}
+        [QUESTION_END]
 
-        **قوانین سختگیرانه برای طراحی سوالات تستی (مخصوصا چندگزینه‌ای):**
+        **قوانین سختگیرانه برای طراحی سوالات:**
         - **سوالات کاملاً مفهومی:** هر سوال باید یک سناریو، یک مقایسه، یا یک تحلیل علت و معلولی را مطرح کند. از سوالات ساده که پاسخشان مستقیماً در یک جمله از متن پیدا می‌شود، اکیداً خودداری کن.
-        - **بازنویسی کامل:** به هیچ وجه از جملات یا عبارات کلیدی متن اصلی در صورت سوال یا گزینه‌ها استفاده نکن. مفاهیم را با کلمات و ساختارهای کاملاً جدید بیان کن.
-        - **هنر طراحی گزینه‌های انحرافی (Distractors):** این بخش حیاتی است. گزینه‌های غلط باید به شدت فریبنده و قابل قبول به نظر برسند. هر گزینه غلط باید یکی از ویژگی‌های زیر را داشته باشد:
-            * **حقیقتی ناقص:** گزینه‌ای که بخشی از آن درست است اما در کل به دلیل یک کلمه یا عبارت کلیدی، غلط محسوب می‌شود.
-            * **صحیح اما بی‌ربط:** گزینه‌ای که یک عبارت کاملاً صحیح از متن است، اما پاسخ سوال مطرح شده نیست.
-            * **اشتباه رایج:** گزینه‌ای که یک تصور غلط یا اشتباه متداول در مورد موضوع را بیان می‌کند.
-            * **وارونه‌سازی ظریف:** گزینه‌ای که رابطه علت و معلولی را برعکس نشان می‌دهد یا یک مفهوم را به شکلی معکوس بیان می‌کند.
-            * **بسیار شبیه به پاسخ صحیح:** گزینه‌ای که فقط در یک کلمه یا جزئیات بسیار کوچک با پاسخ صحیح تفاوت دارد.
-        - **هدف نهایی:** کاربر پس از خواندن سوال و گزینه‌ها، باید دچار تردید جدی شود و برای انتخاب پاسخ صحیح، مجبور به فکر کردن عمیق و مراجعه به دانش مفهومی خود از متن گردد. گزینه‌ها نباید به سادگی قابل حذف باشند.
+        - **بازنویسی کامل:** به هیچ وجه از جملات یا عبارات کلیدی متن اصلی در صورت سوال یا گزینه‌ها استفاده نکن.
+        - **هنر طراحی گزینه‌های انحرافی (Distractors):** گزینه‌های غلط باید به شدت فریبنده باشند و شامل موارد زیر باشند: حقیقتی ناقص، صحیح اما بی‌ربط، اشتباه رایج، یا بسیار شبیه به پاسخ صحیح.
+        - **هدف نهایی:** کاربر باید برای انتخاب پاسخ صحیح، مجبور به فکر کردن عمیق شود.
 
         سوالات باید مستقیماً از محتوای ارائه شده (شامل متن و تصاویر) استخراج شوند.
 
@@ -329,30 +366,40 @@ export async function generateQuiz(nodeTitle: string, fullContent: string, image
         `;
         
         const imageParts = images.map(img => ({ inlineData: { mimeType: img.mimeType, data: img.data } }));
-
-        const response = await ai.models.generateContent({
+        const stream = await ai.models.generateContentStream({
             model: "gemini-2.5-pro",
             contents: { parts: [{ text: prompt }, ...imageParts] },
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: quizSchema,
-            }
         });
 
-        const parsed = JSON.parse(response.text);
+        let buffer = '';
+        const questions: QuizQuestion[] = [];
+        const questionStartToken = '[QUESTION_START]';
+        const questionEndToken = '[QUESTION_END]';
+
+        for await (const chunk of stream) {
+            buffer += chunk.text;
+            let startIndex, endIndex;
+            while ((startIndex = buffer.indexOf(questionStartToken)) !== -1 && (endIndex = buffer.indexOf(questionEndToken, startIndex)) !== -1) {
+                const jsonStr = buffer.substring(startIndex + questionStartToken.length, endIndex).trim();
+                try {
+                    const q = JSON.parse(jsonStr);
+                    const question = { ...q };
+                    if (question.type === 'multiple-choice') {
+                       question.options = Array.isArray(question.options) ? question.options : [];
+                    }
+                    questions.push(question);
+                    onQuestionStream(question);
+                } catch (e) {
+                    console.error("Failed to parse streamed question JSON:", jsonStr, e);
+                }
+                buffer = buffer.substring(endIndex + questionEndToken.length);
+            }
+        }
         
-        const sanitizedQuestions = parsed.questions.map((q: any) => {
-            const question = { ...q };
-            if (question.type === 'multiple-choice') {
-                question.options = Array.isArray(question.mcOptions) ? question.mcOptions : [];
-                delete question.mcOptions;
-            }
-            return question;
-        });
-
-        return { ...parsed, questions: sanitizedQuestions };
+        return { questions };
     });
 }
+
 
 const gradingSchema = {
     type: Type.OBJECT,
@@ -420,9 +467,23 @@ export async function gradeAndAnalyzeQuiz(questions: QuizQuestion[], userAnswers
 }
 
 
-export async function generateFinalExam(fullContent: string, images: {mimeType: string, data: string}[], weaknessTopics: string): Promise<Quiz> {
+export async function generateFinalExam(
+    fullContent: string, 
+    images: {mimeType: string, data: string}[], 
+    weaknessTopics: string,
+    onQuestionStream: (question: QuizQuestion) => void
+): Promise<Quiz> {
     return withRetry(async () => {
-        const prompt = `بر اساس کل محتوای زیر (متن و تصاویر)، یک آزمون جامع نهایی با ۱۰ سوال متنوع (multiple-choice, short-answer) ایجاد کن. در طراحی سوالات، تمرکز ویژه‌ای بر روی این موضوعات که کاربر در آنها ضعف داشته، داشته باش: ${weaknessTopics}. برای هر سوال سختی و امتیاز تعریف کن.
+        const prompt = `بر اساس کل محتوای زیر (متن و تصاویر)، یک آزمون جامع نهایی با ۱۰ سوال متنوع ایجاد کن. سوالات باید **فقط و فقط** از انواع 'multiple-choice' و 'short-answer' باشند. در طراحی سوالات، تمرکز ویژه‌ای بر روی این موضوعات که کاربر در آنها ضعف داشته، داشته باش: ${weaknessTopics}. برای هر سوال سختی و امتیاز تعریف کن.
+
+        **خروجی را به صورت جریانی (stream) تولید کن.** هر سوال را به صورت یک آبجکت JSON معتبر در یک خط جدید و محصور شده بین توکن‌های [QUESTION_START] و [QUESTION_END] ارسال کن.
+        مثال فرمت خروجی:
+        [QUESTION_START]
+        {"id": "q1", "type": "multiple-choice", "question": "...", "options": ["...", "..."], "correctAnswerIndex": 0, "difficulty": "متوسط", "points": 10}
+        [QUESTION_END]
+        [QUESTION_START]
+        {"id": "q2", "type": "short-answer", "question": "...", "correctAnswer": "...", "difficulty": "آسان", "points": 5}
+        [QUESTION_END]
 
         **قوانین سختگیرانه برای طراحی سوالات تستی (مخصوصا چندگزینه‌ای):**
         - **سوالات کاملاً مفهومی:** هر سوال باید یک سناریو، یک مقایسه، یا یک تحلیل علت و معلولی را مطرح کند. از سوالات ساده که پاسخشان مستقیماً در یک جمله از متن پیدا می‌شود، اکیداً خودداری کن.
@@ -443,26 +504,37 @@ export async function generateFinalExam(fullContent: string, images: {mimeType: 
         
         const imageParts = images.map(img => ({ inlineData: { mimeType: img.mimeType, data: img.data } }));
 
-        const response = await ai.models.generateContent({
+        const stream = await ai.models.generateContentStream({
             model: "gemini-2.5-pro",
             contents: { parts: [{ text: prompt }, ...imageParts] },
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: quizSchema,
-            }
-        });
-        const parsed = JSON.parse(response.text);
-        
-        const sanitizedQuestions = parsed.questions.map((q: any) => {
-            const question = { ...q };
-            if (question.type === 'multiple-choice') {
-                question.options = Array.isArray(question.mcOptions) ? question.mcOptions : [];
-                delete question.mcOptions;
-            }
-            return question;
         });
 
-        return { ...parsed, questions: sanitizedQuestions };
+        let buffer = '';
+        const questions: QuizQuestion[] = [];
+        const questionStartToken = '[QUESTION_START]';
+        const questionEndToken = '[QUESTION_END]';
+
+        for await (const chunk of stream) {
+            buffer += chunk.text;
+            let startIndex, endIndex;
+            while ((startIndex = buffer.indexOf(questionStartToken)) !== -1 && (endIndex = buffer.indexOf(questionEndToken, startIndex)) !== -1) {
+                const jsonStr = buffer.substring(startIndex + questionStartToken.length, endIndex).trim();
+                try {
+                    const q = JSON.parse(jsonStr);
+                    const question = { ...q };
+                    if (question.type === 'multiple-choice') {
+                       question.options = Array.isArray(question.options) ? question.options : [];
+                    }
+                    questions.push(question);
+                    onQuestionStream(question);
+                } catch (e) {
+                    console.error("Failed to parse streamed final exam question JSON:", jsonStr, e);
+                }
+                buffer = buffer.substring(endIndex + questionEndToken.length);
+            }
+        }
+        
+        return { questions };
     });
 }
 
@@ -514,7 +586,7 @@ export async function generateChatResponse(history: ChatMessage[], question: str
             ? `کاربر در حال مطالعه درسی با عنوان "${nodeTitle}" است. برای پاسخ به سوالات به این موضوع و محتوای کلی زیر توجه کن.`
             : `کاربر در حال بررسی نقشه ذهنی کلی است.`;
 
-        const prompt = `شما یک مربی یادگیری هوشمند، صمیمی و آگاه به نام "مربی هوشمند" هستید. وظیفه شما کمک به کاربر برای درک بهتر مطالب درسی است. بر اساس متن درس و تاریخچه گفتگو به سوال کاربر پاسخ دهید. پاسخ‌های خود را به صورت Markdown ارائه دهید.
+        const prompt = `شما یک مربی یادگیری هوشمند, صمیمی و آگاه به نام "مربی هوشمند" هستید. وظیفه شما کمک به کاربر برای درک بهتر مطالب درسی است. بر اساس متن درس و تاریخچه گفتگو به سوال کاربر پاسخ دهید. پاسخ‌های خود را به صورت Markdown ارائه دهید.
 
         ${contextPrompt}
         

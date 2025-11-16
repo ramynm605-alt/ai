@@ -42,6 +42,7 @@ export interface MindMapNode {
 
   export interface Quiz {
     questions: QuizQuestion[];
+    isStreaming?: boolean;
   }
   
   export interface Weakness {
@@ -107,12 +108,14 @@ export interface MindMapNode {
     sourceImages: { mimeType: string, data: string }[];
     preferences: LearningPreferences;
     mindMap: MindMapNode[];
+    suggestedPath: string[] | null;
     preAssessment: Quiz | null;
     preAssessmentAnswers: Record<string, UserAnswer> | null;
     preAssessmentAnalysis: PreAssessmentAnalysis | null;
     activeQuiz: Quiz | null;
     activeNodeId: string | null;
     nodeContents: { [key: string]: NodeContent };
+    streamingNodeContent: NodeContent | null;
     userProgress: { [key: string]: 'completed' | 'failed' | 'in_progress' };
     weaknesses: Weakness[];
     finalExam: Quiz | null;
@@ -133,6 +136,7 @@ export interface MindMapNode {
     sourceImages: { mimeType: string, data: string }[];
     preferences: LearningPreferences;
     mindMap: MindMapNode[];
+    suggestedPath: string[] | null;
     preAssessmentAnalysis: PreAssessmentAnalysis | null;
     nodeContents: { [key: string]: NodeContent };
     userProgress: { [key: string]: 'completed' | 'failed' | 'in_progress' };

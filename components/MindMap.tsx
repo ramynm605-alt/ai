@@ -1,14 +1,16 @@
 
-
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { MindMapNode as MindMapNodeType } from '../types';
-import { CheckCircle } from './icons';
+import { CheckCircle, Sparkles } from './icons';
+import ParticleBackground from './ParticleBackground';
 
 interface MindMapProps {
     nodes: MindMapNodeType[];
     progress: { [key: string]: 'completed' | 'failed' | 'in_progress' };
+    suggestedPath: string[] | null;
     onSelectNode: (id: string) => void;
     onTakeQuiz: (id: string) => void;
+    theme: 'light' | 'balanced' | 'dark';
 }
 
 const NODE_WIDTH = 160;
@@ -47,40 +49,42 @@ const MindMapNode: React.FC<{
     progress: MindMapProps['progress'];
     onSelectNode: MindMapProps['onSelectNode'];
     style: React.CSSProperties;
-}> = ({ node, progress, onSelectNode, style }) => {
+    isOnSuggestedPath: boolean;
+}> = ({ node, progress, onSelectNode, style, isOnSuggestedPath }) => {
     
     const isCompleted = progress[node.id] === 'completed';
     const isLocked = node.locked && !isCompleted;
 
     const pageInfo = formatPageNumbers(node.sourcePages);
 
-    // Determine styles based on node state
-    let baseClasses = 'w-[160px] min-h-[70px] p-2 rounded-2xl flex flex-col items-center justify-center text-white text-sm font-semibold relative transition-all duration-300 border-2 select-none shadow-md';
+    let baseClasses = 'w-[160px] min-h-[70px] p-2 rounded-2xl flex flex-col items-center justify-center text-card-foreground text-sm font-semibold relative transition-all duration-300 border-2 select-none shadow-md bg-card';
     let borderClasses = '';
     let glowClasses = '';
 
     if (isLocked) {
-        baseClasses += ' bg-slate-800 border-gray-700 opacity-40 grayscale cursor-not-allowed';
+        baseClasses += ' opacity-50 grayscale cursor-not-allowed';
+        borderClasses = 'border-muted';
     } else {
-        baseClasses += ' cursor-pointer';
-        if (isCompleted) {
-            baseClasses += ' bg-green-800';
-            borderClasses = 'border-green-500';
-            glowClasses = 'hover:shadow-[0_0_15px_theme(colors.green.500)]';
+        baseClasses += ' cursor-pointer hover:scale-105';
+        if (isOnSuggestedPath) {
+            borderClasses = 'border-primary';
+            glowClasses = 'shadow-[0_0_15px_rgb(var(--primary))]';
+        } else if (isCompleted) {
+            borderClasses = 'border-success';
+            glowClasses = 'hover:shadow-[0_0_15px_rgb(var(--success))]';
         } else {
-            baseClasses += ' bg-slate-800';
             if (node.isExplanatory) {
-                borderClasses = 'border-purple-500';
-                glowClasses = 'hover:shadow-[0_0_15px_theme(colors.purple.500)]';
+                borderClasses = 'border-accent';
+                glowClasses = 'hover:shadow-[0_0_15px_rgb(var(--accent))]';
             } else if (node.difficulty < 0.4) {
-                borderClasses = 'border-indigo-600';
-                glowClasses = 'hover:shadow-[0_0_15px_theme(colors.indigo.600)]';
+                borderClasses = 'border-border';
+                glowClasses = 'hover:shadow-[0_0_15px_rgb(var(--foreground)_/_0.5)]';
             } else if (node.difficulty < 0.7) {
-                borderClasses = 'border-gray-500';
-                glowClasses = 'hover:shadow-[0_0_15px_theme(colors.gray.500)]';
+                borderClasses = 'border-muted';
+                glowClasses = 'hover:shadow-[0_0_15px_rgb(var(--muted))]';
             } else {
-                borderClasses = 'border-red-600';
-                glowClasses = 'hover:shadow-[0_0_15px_theme(colors.red.600)]';
+                borderClasses = 'border-destructive';
+                glowClasses = 'hover:shadow-[0_0_15px_rgb(var(--destructive))]';
             }
         }
     }
@@ -93,15 +97,15 @@ const MindMapNode: React.FC<{
 
     return (
         <div style={style} className={`${baseClasses} ${borderClasses} ${glowClasses}`} onClick={handleClick}>
-             {isCompleted && <CheckCircle className="absolute w-6 h-6 p-0.5 text-green-400 bg-gray-900 rounded-full -top-2 -right-2" />}
+             {isCompleted && <CheckCircle className="absolute w-6 h-6 p-0.5 text-success bg-card rounded-full -top-2 -right-2" />}
             <span className="text-center">{node.title}</span>
-            {pageInfo && <span className="mt-1 text-xs font-normal text-gray-400">{pageInfo}</span>}
+            {pageInfo && <span className="mt-1 text-xs font-normal text-muted-foreground">{pageInfo}</span>}
         </div>
     );
 };
 
 // Main MindMap component
-const MindMap: React.FC<MindMapProps> = ({ nodes, progress, onSelectNode }) => {
+const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSelectNode, theme }) => {
 
     const { positions, width, height } = useMemo(() => {
         if (nodes.length === 0) {
@@ -185,23 +189,40 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, onSelectNode }) => {
     const pinchStartDist = useRef(0);
     const containerRef = useRef<HTMLDivElement>(null);
 
+    const [showSuggestedPath, setShowSuggestedPath] = useState(false);
+    const suggestedPathSet = useMemo(() => new Set(suggestedPath || []), [suggestedPath]);
+
+
     useEffect(() => {
-        if (width > 0 && height > 0 && containerRef.current) {
-            const containerEl = containerRef.current;
-            const containerWidth = containerEl.clientWidth;
-            const containerHeight = containerEl.clientHeight;
+        const container = containerRef.current;
+        if (!container || width === 0 || height === 0) {
+            return;
+        }
+
+        const centerAndFit = () => {
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
 
             if (containerWidth === 0 || containerHeight === 0) return;
 
             const scaleX = containerWidth / (width + H_GAP);
             const scaleY = containerHeight / (height + V_GAP);
-            const initialScale = Math.min(scaleX, scaleY, 1) * 0.9;
+            const initialScale = Math.min(scaleX, scaleY) * 0.9;
 
             const initialX = (containerWidth - width * initialScale) / 2;
             const initialY = (containerHeight - height * initialScale) / 2;
 
             setView({ x: initialX, y: initialY, scale: initialScale });
-        }
+        };
+
+        const observer = new ResizeObserver(centerAndFit);
+        observer.observe(container);
+
+        centerAndFit();
+
+        return () => {
+            observer.disconnect();
+        };
     }, [width, height]);
     
     const getTouchDistance = (touches: React.TouchList | TouchList) => {
@@ -233,7 +254,7 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, onSelectNode }) => {
         e.preventDefault();
         const zoomFactor = 1.1;
         const newScale = e.deltaY < 0 ? viewRef.current.scale * zoomFactor : viewRef.current.scale / zoomFactor;
-        const clampedScale = Math.max(0.2, Math.min(2, newScale));
+        const clampedScale = Math.max(0.2, newScale);
 
         const rect = containerRef.current!.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
@@ -274,7 +295,7 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, onSelectNode }) => {
             pinchStartDist.current = currentDist;
             
             const newScale = viewRef.current.scale * scaleChange;
-            const clampedScale = Math.max(0.2, Math.min(2, newScale));
+            const clampedScale = Math.max(0.2, newScale);
 
             const rect = containerRef.current!.getBoundingClientRect();
             const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
@@ -304,70 +325,93 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, onSelectNode }) => {
     if (nodes.length === 0) return null;
 
     return (
-        <div 
-            ref={containerRef}
-            className={`w-full h-full overflow-hidden bg-background ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUpOrLeave}
-            onMouseLeave={handleMouseUpOrLeave}
-            onWheel={handleWheel}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-        >
-            <div
-                className="relative"
-                style={{
-                    width,
-                    height,
-                    transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
-                    transformOrigin: '0 0',
-                }}
+        <div className="relative w-full h-full">
+            {suggestedPath && suggestedPath.length > 0 && (
+                <button
+                    onClick={() => setShowSuggestedPath(prev => !prev)}
+                    title="نمایش مسیر پیشنهادی هوش مصنوعی"
+                    className={`absolute top-4 right-4 z-10 flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-all shadow-md ${showSuggestedPath ? 'bg-primary text-primary-foreground' : 'bg-card text-card-foreground hover:bg-accent'}`}
+                >
+                    <Sparkles className="w-5 h-5" />
+                    مسیر پیشنهادی
+                </button>
+            )}
+            <div 
+                ref={containerRef}
+                className={`w-full h-full overflow-hidden bg-background ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUpOrLeave}
+                onMouseLeave={handleMouseUpOrLeave}
+                onWheel={handleWheel}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
             >
-                <svg width={width} height={height} className="absolute top-0 left-0" style={{ pointerEvents: 'none' }}>
+                <ParticleBackground theme={theme} />
+                <div
+                    className="relative"
+                    style={{
+                        width,
+                        height,
+                        transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
+                        transformOrigin: '0 0',
+                    }}
+                >
+                    <svg width={width} height={height} className="absolute top-0 left-0" style={{ pointerEvents: 'none' }}>
+                        {nodes.map(node => {
+                            if (!node.parentId || !positions[node.id] || !positions[node.parentId]) return null;
+                            
+                            const parentPos = positions[node.parentId];
+                            const childPos = positions[node.id];
+                            const startX = parentPos.x + NODE_WIDTH / 2;
+                            const startY = parentPos.y + NODE_HEIGHT;
+                            const endX = childPos.x + NODE_WIDTH / 2;
+                            const endY = childPos.y;
+                            
+                            const pathData = `M ${startX} ${startY} C ${startX} ${startY + V_GAP / 2}, ${endX} ${endY - V_GAP / 2}, ${endX} ${endY}`;
+                            
+                            const isConsecutivePathConnection = showSuggestedPath && suggestedPath && (
+                                (suggestedPath.indexOf(node.id) === suggestedPath.indexOf(node.parentId) + 1) ||
+                                (suggestedPath.indexOf(node.parentId) === suggestedPath.indexOf(node.id) + 1)
+                            );
+
+                            const strokeColor = isConsecutivePathConnection ? 'rgb(var(--primary))' : 'rgb(var(--muted) / 0.5)';
+                            const strokeWidth = isConsecutivePathConnection ? "3" : "2";
+                            const style = isConsecutivePathConnection ? { filter: 'drop-shadow(0 0 3px rgb(var(--primary) / 0.7))' } : {};
+                            
+                            return (
+                                <path
+                                    key={`${node.parentId}-${node.id}`}
+                                    d={pathData}
+                                    stroke={strokeColor}
+                                    strokeWidth={strokeWidth}
+                                    fill="none"
+                                    className="transition-all duration-500"
+                                    style={style}
+                                />
+                            );
+                        })}
+                    </svg>
                     {nodes.map(node => {
-                        if (!node.parentId || !positions[node.id] || !positions[node.parentId]) return null;
-                        
-                        const parentPos = positions[node.parentId];
-                        const childPos = positions[node.id];
-                        const startX = parentPos.x + NODE_WIDTH / 2;
-                        const startY = parentPos.y + NODE_HEIGHT;
-                        const endX = childPos.x + NODE_WIDTH / 2;
-                        const endY = childPos.y;
-                        
-                        const pathData = `M ${startX} ${startY} C ${startX} ${startY + V_GAP / 2}, ${endX} ${endY - V_GAP / 2}, ${endX} ${endY}`;
-                        const isParentCompleted = progress[node.parentId] === 'completed';
-                        
+                        const pos = positions[node.id];
+                        if (!pos) return null;
                         return (
-                            <path
-                                key={`${node.parentId}-${node.id}`}
-                                d={pathData}
-                                stroke={isParentCompleted ? 'rgb(var(--primary))' : 'rgb(var(--muted))'}
-                                strokeWidth="2"
-                                fill="none"
-                                className="transition-all duration-500"
+                            <MindMapNode
+                                key={node.id}
+                                node={node}
+                                progress={progress}
+                                onSelectNode={onSelectNode}
+                                style={{
+                                    position: 'absolute',
+                                    left: pos.x,
+                                    top: pos.y,
+                                }}
+                                isOnSuggestedPath={showSuggestedPath && suggestedPathSet.has(node.id)}
                             />
                         );
                     })}
-                </svg>
-                {nodes.map(node => {
-                    const pos = positions[node.id];
-                    if (!pos) return null;
-                    return (
-                        <MindMapNode
-                            key={node.id}
-                            node={node}
-                            progress={progress}
-                            onSelectNode={onSelectNode}
-                            style={{
-                                position: 'absolute',
-                                left: pos.x,
-                                top: pos.y,
-                            }}
-                        />
-                    );
-                })}
+                </div>
             </div>
         </div>
     );

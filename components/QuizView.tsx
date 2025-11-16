@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { Quiz, QuizQuestion, MultipleChoiceQuestion, ShortAnswerQuestion, UserAnswer } from '../types';
 
@@ -48,6 +49,13 @@ const ShortAnswerRenderer: React.FC<{ question: ShortAnswerQuestion; answer: str
 const QuizView: React.FC<QuizViewProps> = ({ title, quiz, onSubmit }) => {
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [answers, setAnswers] = useState<Record<string, UserAnswer>>({});
+    
+    useEffect(() => {
+        // If a new question is streamed in and we are on the "waiting" screen, move to it
+        if (quiz.questions.length > 0 && currentQuestionIndex >= quiz.questions.length) {
+            setCurrentQuestionIndex(quiz.questions.length - 1);
+        }
+    }, [quiz.questions.length, currentQuestionIndex]);
 
     const handleAnswer = (questionId: string, answer: UserAnswer) => {
         setAnswers(prev => ({ ...prev, [questionId]: answer }));
@@ -55,6 +63,9 @@ const QuizView: React.FC<QuizViewProps> = ({ title, quiz, onSubmit }) => {
 
     const handleNext = () => {
         if (currentQuestionIndex < quiz.questions.length - 1) {
+            setCurrentQuestionIndex(currentQuestionIndex + 1);
+        } else if (quiz.isStreaming) {
+            // Move to a "waiting for next question" state
             setCurrentQuestionIndex(currentQuestionIndex + 1);
         }
     };
@@ -65,8 +76,21 @@ const QuizView: React.FC<QuizViewProps> = ({ title, quiz, onSubmit }) => {
         }
     };
     
-    const currentQuestion = quiz.questions[currentQuestionIndex];
-    const currentAnswer = answers[currentQuestion.id];
+    if (quiz.questions.length === 0 && quiz.isStreaming) {
+        return (
+             <div className="flex items-center justify-center min-h-full p-4 sm:p-6 bg-background">
+                <div className="w-full max-w-3xl p-6 text-center border rounded-lg shadow-xl sm:p-8 bg-card">
+                     <h2 className="text-2xl font-bold text-card-foreground">{title}</h2>
+                     <p className="mt-4 text-muted-foreground">در حال آماده‌سازی سوالات آزمون...</p>
+                </div>
+            </div>
+        )
+    }
+
+    const isWaitingForQuestion = currentQuestionIndex >= quiz.questions.length;
+
+    const currentQuestion = !isWaitingForQuestion ? quiz.questions[currentQuestionIndex] : null;
+    const currentAnswer = currentQuestion ? answers[currentQuestion.id] : undefined;
     const isAnswered = currentAnswer !== undefined && (typeof currentAnswer !== 'string' || currentAnswer.trim() !== '');
 
     const renderQuestion = (question: QuizQuestion) => {
@@ -85,28 +109,37 @@ const QuizView: React.FC<QuizViewProps> = ({ title, quiz, onSubmit }) => {
             <div className="w-full max-w-3xl p-6 border rounded-lg shadow-xl sm:p-8 bg-card">
                 <div className="flex items-center justify-between mb-2">
                     <h2 className="text-2xl font-bold text-card-foreground">{title}</h2>
-                    <p className="text-sm text-muted-foreground">سوال {currentQuestionIndex + 1} از {quiz.questions.length}</p>
+                    <p className="text-sm text-muted-foreground">
+                        {quiz.isStreaming && quiz.questions.length === 0 ? '...' : `سوال ${currentQuestionIndex + 1} از ${quiz.questions.length}${quiz.isStreaming ? '+' : ''}`}
+                    </p>
                 </div>
 
-                <div className="flex items-center justify-between mb-8">
-                     <div className="flex items-center gap-2">
-                        {getDifficultyChip(currentQuestion.difficulty)}
-                        <span className="text-sm font-semibold text-primary">{currentQuestion.points} امتیاز</span>
-                     </div>
-                </div>
-                
-                <div className="mb-8">
-                    <p className="text-lg font-semibold leading-relaxed text-card-foreground/90">{currentQuestion.question}</p>
-                </div>
-                
-                {renderQuestion(currentQuestion)}
+                {isWaitingForQuestion ? (
+                    <div className="py-20 text-center text-muted-foreground">در حال ایجاد سوال بعدی...</div>
+                ) : (
+                    <>
+                        <div className="flex items-center justify-between mb-8">
+                             <div className="flex items-center gap-2">
+                                {getDifficultyChip(currentQuestion!.difficulty)}
+                                <span className="text-sm font-semibold text-primary">{currentQuestion!.points} امتیاز</span>
+                             </div>
+                        </div>
+                        
+                        <div className="mb-8">
+                            <p className="text-lg font-semibold leading-relaxed text-card-foreground/90">{currentQuestion!.question}</p>
+                        </div>
+                        
+                        {renderQuestion(currentQuestion!)}
+                    </>
+                )}
+
 
                 <div className="flex justify-between mt-8">
                     <button onClick={handlePrev} disabled={currentQuestionIndex === 0} className="px-6 py-2 font-semibold rounded-md text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50">قبلی</button>
-                    {currentQuestionIndex === quiz.questions.length - 1 ? (
+                    {currentQuestionIndex === quiz.questions.length - 1 && !quiz.isStreaming ? (
                         <button onClick={() => onSubmit(answers)} disabled={!isAnswered} className="px-6 py-2 font-semibold text-white rounded-md bg-success hover:bg-success/90 disabled:opacity-50">ثبت آزمون</button>
                     ) : (
-                        <button onClick={handleNext} disabled={!isAnswered} className="px-6 py-2 font-semibold text-white rounded-md bg-primary hover:bg-primary-hover disabled:opacity-50">بعدی</button>
+                        <button onClick={handleNext} disabled={!isAnswered || isWaitingForQuestion} className="px-6 py-2 font-semibold text-white rounded-md bg-primary hover:bg-primary-hover disabled:opacity-50">بعدی</button>
                     )}
                 </div>
             </div>
