@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { MindMapNode as MindMapNodeType } from '../types';
 import { CheckCircle, Lock, FileQuestion } from './icons';
@@ -40,7 +39,7 @@ const formatPageNumbers = (pages: number[]): string => {
         }
     }
     
-    return `صفحات: ${ranges.join(', ')}`;
+    return `ص: ${ranges.join(', ')}`;
 };
 
 const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSelectNode, onTakeQuiz, theme, activeNodeId, showSuggestedPath }) => {
@@ -70,17 +69,33 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
         };
     }, []);
 
-    const { positionedNodes, lines, width, height, isPortrait } = useMemo(() => {
+    const { positionedNodes, lines, width, height, isPortrait, nodeWidth, nodeHeight } = useMemo(() => {
         if (nodes.length === 0 || containerSize.width === 0) {
-            return { positionedNodes: [], lines: [], width: 0, height: 0, isPortrait: false };
+            return { positionedNodes: [], lines: [], width: 0, height: 0, isPortrait: false, nodeWidth: 0, nodeHeight: 0 };
         }
 
         const isPortraitLayout = containerSize.width < 768;
 
-        const R_NODE_WIDTH = isPortraitLayout ? 180 : 160;
-        const R_NODE_HEIGHT = isPortraitLayout ? 80 : 70; // Increased height for mobile
-        const R_H_GAP = isPortraitLayout ? 80 : 50;
-        const R_V_GAP = isPortraitLayout ? 40 : 90;
+        // Dynamic sizing for portrait mode to better fit content on smaller screens.
+        let nodeScaleFactor = 1.0;
+        let gapScaleFactor = 1.0;
+        
+        // Only apply scaling in portrait mode when there are more than 5 nodes.
+        if (isPortraitLayout && nodes.length > 5) {
+            // Reduce node size by 10% for every 2 nodes above the baseline of 5.
+            // Cap the scaling at 70% of the original size to maintain readability.
+            nodeScaleFactor = Math.max(0.7, 1 - Math.floor((nodes.length - 5) / 2) * 0.1);
+            
+            // Scale gaps less aggressively to prevent crowding.
+            gapScaleFactor = Math.max(0.85, 1 - Math.floor((nodes.length - 5) / 2) * 0.05);
+        }
+
+        // Base sizes are reduced for portrait mode, and then scaled.
+        const R_NODE_WIDTH = isPortraitLayout ? 120 * nodeScaleFactor : 160;
+        const R_NODE_HEIGHT = isPortraitLayout ? 60 * nodeScaleFactor : 70;
+        const R_H_GAP = isPortraitLayout ? 45 * gapScaleFactor : 50;
+        const R_V_GAP = isPortraitLayout ? 45 * gapScaleFactor : 90; // Increased base V gap
+
 
         type NodeWithChildren = MindMapNodeType & { children: NodeWithChildren[], level: number, x: number, y: number };
         const nodeMap = new Map<string, NodeWithChildren>(nodes.map(n => [n.id, { ...n, children: [], level: 0, x: 0, y: 0 }]));
@@ -195,7 +210,7 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
                 line.y2 = line.y2 - minY + PADDING;
             });
 
-            return { positionedNodes: Array.from(positionedNodesMap.values()), lines, width: finalWidth, height: finalHeight, isPortrait: isPortraitLayout };
+            return { positionedNodes: Array.from(positionedNodesMap.values()), lines, width: finalWidth, height: finalHeight, isPortrait: isPortraitLayout, nodeWidth: R_NODE_WIDTH, nodeHeight: R_NODE_HEIGHT };
 
         } else {
             // Horizontal Layout Logic
@@ -234,7 +249,7 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
         positionedNodesList.forEach(n => { n.x += PADDING; n.y += PADDING; });
         lines.forEach(l => { l.x1 += PADDING; l.x2 += PADDING; l.y1 += PADDING; l.y2 += PADDING; });
 
-        return { positionedNodes: positionedNodesList, lines, width: finalWidth, height: finalHeight, isPortrait: isPortraitLayout };
+        return { positionedNodes: positionedNodesList, lines, width: finalWidth, height: finalHeight, isPortrait: isPortraitLayout, nodeWidth: R_NODE_WIDTH, nodeHeight: R_NODE_HEIGHT };
 
     }, [nodes, containerSize]);
 
@@ -249,9 +264,6 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
         const isSuggestedAndIncomplete = showSuggestedPath && suggestedPath?.includes(node.id) && status !== 'completed';
         const suggestedIndex = showSuggestedPath && suggestedPath ? suggestedPath.indexOf(node.id) : -1;
         const isActive = activeNodeId === node.id;
-
-        const R_NODE_WIDTH = isPortrait ? 180 : 160;
-        const R_NODE_HEIGHT = isPortrait ? 80 : 70;
 
         let borderClass = 'border-border';
         if (status === 'completed') borderClass = 'border-success';
@@ -276,12 +288,12 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
 
         return (
             <div
-                className={`mindmap-node ${isVisible ? 'mindmap-node-visible' : ''} ${isActive ? 'active-node' : ''} ${isSuggestedAndIncomplete ? 'suggested-node' : ''} absolute flex flex-col items-center justify-center p-3 text-center border-2 rounded-lg shadow-lg cursor-pointer bg-card text-card-foreground ${borderClass}`}
+                className={`mindmap-node ${isVisible ? 'mindmap-node-visible' : ''} ${isActive ? 'active-node' : ''} ${isSuggestedAndIncomplete ? 'suggested-node' : ''} absolute flex flex-col justify-between p-1.5 text-center border-2 rounded-lg shadow-lg cursor-pointer bg-card text-card-foreground ${borderClass}`}
                 style={{
                     left: node.x,
                     top: node.y,
-                    width: R_NODE_WIDTH,
-                    height: R_NODE_HEIGHT,
+                    width: nodeWidth,
+                    height: nodeHeight,
                     transitionDelay: `${index * 50}ms`
                 }}
                 onClick={handleNodeClick}
@@ -289,43 +301,40 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
                 role="button"
                 tabIndex={isLocked ? -1 : 0}
             >
-                {isLocked && <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/70 backdrop-blur-sm"><Lock className="w-6 h-6 text-muted-foreground" /></div>}
+                {isLocked && <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/70 backdrop-blur-sm"><Lock className="w-5 h-5 text-muted-foreground" /></div>}
                 
-                {/* Difficulty Badge - Bottom Left */}
-                <div 
-                    className={`absolute bottom-2 left-2 w-3 h-3 rounded-full ${difficultyColorClass}`}
-                    title={`سطح دشواری: ${difficultyLevelText}`}
-                />
-
-                {/* Suggested Path Step Number */}
                 {isSuggestedAndIncomplete && suggestedIndex !== -1 && (
-                    <div className="absolute flex items-center justify-center w-6 h-6 font-bold rounded-full -top-2 -right-2 bg-primary text-primary-foreground text-xs ring-2 ring-background">
+                    <div className="absolute flex items-center justify-center w-5 h-5 font-bold rounded-full -top-2 -right-2 bg-primary text-primary-foreground text-xs ring-2 ring-background">
                         {suggestedIndex + 1}
                     </div>
                 )}
 
-                <div className="flex flex-col items-center justify-center flex-grow">
-                    <h3 className="text-sm font-bold">{node.title}</h3>
+                <div className="w-full">
+                    <h3 className={`${isPortrait ? 'text-xs' : 'text-sm'} font-bold leading-tight`}>{node.title}</h3>
                     {node.sourcePages && node.sourcePages.length > 0 && 
-                        <p className="mt-1 text-xs text-muted-foreground">{formatPageNumbers(node.sourcePages)}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{formatPageNumbers(node.sourcePages)}</p>
                     }
                 </div>
                 
-                {/* Quiz Icon Button - Bottom Right */}
-                {status !== 'completed' && !isLocked && !isIntroNode && (
-                    <button 
-                        onClick={handleQuizClick} 
-                        className="absolute bottom-2 right-2 flex items-center justify-center w-7 h-7 rounded-full text-primary-foreground bg-primary hover:bg-primary-hover active:scale-95 transition-transform"
-                        title="شروع آزمون"
-                    >
-                        <FileQuestion className="w-4 h-4" />
-                    </button>
-                )}
+                <div className="flex items-center justify-between w-full">
+                    <div 
+                        className={`w-2.5 h-2.5 rounded-full ${difficultyColorClass}`}
+                        title={`سطح دشواری: ${difficultyLevelText}`}
+                    />
+                    {status !== 'completed' && !isLocked && !isIntroNode && (
+                        <button 
+                            onClick={handleQuizClick} 
+                            className="flex items-center justify-center w-5 h-5 rounded-full text-primary-foreground bg-primary hover:bg-primary-hover active:scale-95 transition-transform"
+                            title="شروع آزمون"
+                        >
+                            <FileQuestion className="w-2.5 h-2.5" />
+                        </button>
+                    )}
+                </div>
 
-                {/* Completion Check - Bottom Center */}
                 {status === 'completed' && (
-                    <div className="absolute flex items-center justify-center w-6 h-6 rounded-full -bottom-3 bg-success">
-                        <CheckCircle className="w-4 h-4 text-white" />
+                    <div className="absolute flex items-center justify-center w-5 h-5 rounded-full -bottom-2.5 bg-success">
+                        <CheckCircle className="w-3.5 h-3.5 text-white" />
                     </div>
                 )}
             </div>
@@ -345,8 +354,8 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
                     {lines.map((line, i) => {
                          const isActive = activeNodeId === line.parentId || activeNodeId === line.childId;
                          const isSuggested = showSuggestedPath && suggestedNodeIds.has(line.parentId) && suggestedNodeIds.has(line.childId);
-                         const R_H_GAP = isPortrait ? 80 : 50;
-                         const R_V_GAP = isPortrait ? 40 : 90;
+                         const R_H_GAP = isPortrait ? 30 : 50;
+                         const R_V_GAP = isPortrait ? 25 : 90;
                          const path = isPortrait
                             ? `M${line.x1},${line.y1} C${line.x1 + R_H_GAP / 2},${line.y1} ${line.x2 - R_H_GAP / 2},${line.y2} ${line.x2},${line.y2}`
                             : `M${line.x1},${line.y1} C${line.x1},${line.y1 + R_V_GAP / 2} ${line.x2},${line.y2 - R_V_GAP / 2} ${line.x2},${line.y2}`;

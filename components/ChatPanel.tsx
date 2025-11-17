@@ -56,9 +56,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         }
     };
 
-    const panelClasses = `fixed z-[1000] flex flex-col transition-all duration-300 ease-in-out shadow-2xl bg-card border border-border
+    const panelClasses = `chat-panel fixed z-[1000] flex flex-col transition-all duration-300 ease-in-out shadow-2xl bg-card border border-border
     ${isFullScreen 
-        ? 'inset-0 w-full h-full rounded-none' 
+        ? 'fullscreen inset-0 w-full h-full rounded-none' 
         : 'bottom-6 right-6 w-[400px] h-[550px] max-w-[90vw] max-h-[80vh] rounded-2xl'
     }`;
 

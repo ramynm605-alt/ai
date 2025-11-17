@@ -239,6 +239,13 @@ const TabButton: React.FC<{ active: boolean; onClick: () => void; icon: React.Re
     </button>
 );
 
+const BottomNavItem: React.FC<{ active: boolean; onClick: () => void; icon: React.ReactNode; label: string }> = ({ active, onClick, icon, label }) => (
+    <button onClick={onClick} className={`bottom-nav-item ${active ? 'active' : ''}`}>
+        <div className="w-6 h-6">{icon}</div>
+        <span>{label}</span>
+    </button>
+);
+
 
 export default function App() {
   const [state, dispatch] = useReducer(appReducer, initialState);
@@ -560,7 +567,7 @@ export default function App() {
                 <div className="flex flex-col items-center gap-4 mb-6 md:flex-row md:justify-between">
                     <h1 className="text-2xl font-bold text-foreground">نقشه راه یادگیری شما</h1>
                     <div className="flex flex-col items-stretch gap-2 sm:items-center sm:flex-row">
-                        <div className="flex items-center justify-center gap-2 p-1 bg-secondary rounded-xl">
+                        <div className="hidden sm:flex items-center justify-center gap-2 p-1 bg-secondary rounded-xl">
                             <TabButton active={currentView === 'learning'} onClick={() => setCurrentView('learning')} icon={<BrainCircuit />}>نقشه ذهنی</TabButton>
                             <TabButton active={currentView === 'weaknesses'} onClick={() => setCurrentView('weaknesses')} icon={<XCircle />}>نقاط ضعف</TabButton>
                             <TabButton active={currentView === 'practice'} onClick={() => setCurrentView('practice')} icon={<ClipboardList />}>تمرین</TabButton>
@@ -647,14 +654,15 @@ export default function App() {
   }
 
   const hasProgress = state.status !== AppStatus.IDLE && state.status !== AppStatus.LOADING;
+  const showBottomNav = hasProgress && (state.status === AppStatus.LEARNING || state.status === AppStatus.ALL_NODES_COMPLETED);
 
   if (showStartupScreen) {
     return <StartupScreen onAnimationEnd={() => setShowStartupScreen(false)} />;
   }
 
   return (
-    <div className="flex flex-col w-full min-h-screen transition-colors duration-300 bg-background text-foreground">
-        <header className="flex items-center justify-between p-4 border-b shadow-sm bg-card border-border">
+    <div className="flex flex-col w-full h-screen transition-colors duration-300 bg-background text-foreground">
+        <header className="flex items-center justify-between p-4 border-b shadow-sm bg-card border-border shrink-0">
              <div className="flex items-center gap-3">
                 <div className="flex items-center justify-center w-10 h-10 rounded-full text-primary-foreground bg-primary">
                     <Brain className="w-6 h-6" />
@@ -681,14 +689,24 @@ export default function App() {
                 )}
             </div>
         </header>
-        <main className="flex-grow overflow-auto">
+        <main className="flex-grow overflow-auto main-content">
             {renderContent()}
         </main>
+
+        {showBottomNav && (
+            <nav className="bottom-nav sm:hidden">
+                <BottomNavItem icon={<BrainCircuit />} label="نقشه ذهنی" active={currentView === 'learning'} onClick={() => setCurrentView('learning')} />
+                <BottomNavItem icon={<XCircle />} label="نقاط ضعف" active={currentView === 'weaknesses'} onClick={() => setCurrentView('weaknesses')} />
+                <BottomNavItem icon={<ClipboardList />} label="تمرین" active={currentView === 'practice'} onClick={() => setCurrentView('practice')} />
+            </nav>
+        )}
+
         {hasProgress && (
             <>
                 <button 
                     onClick={() => dispatch({ type: 'OPEN_CHAT' })} 
-                    className="fixed z-50 flex items-center justify-center w-16 h-16 transition-transform duration-200 transform rounded-full shadow-lg bottom-6 right-6 bg-primary text-primary-foreground hover:bg-primary-hover hover:scale-110 active:scale-100"
+                    className="fixed z-50 flex items-center justify-center w-16 h-16 transition-transform duration-200 transform rounded-full shadow-lg bottom-6 right-6 sm:bottom-6 bg-primary text-primary-foreground hover:bg-primary-hover hover:scale-110 active:scale-100"
+                    style={{ bottom: showBottomNav ? '80px' : '24px' }}
                     aria-label="Open chat"
                 >
                     <MessageSquare className="w-8 h-8" />
@@ -706,7 +724,7 @@ export default function App() {
                 )}
             </>
         )}
-        <footer className="p-4 text-sm text-center border-t text-muted-foreground bg-card border-border">
+        <footer className="p-4 text-sm text-center border-t main-footer text-muted-foreground bg-card border-border shrink-0">
             © {new Date().getFullYear()} ذهن گاه. تمام حقوق محفوظ است.
         </footer>
     </div>
