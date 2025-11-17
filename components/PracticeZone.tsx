@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { generatePracticeResponse } from '../services/geminiService';
 import Spinner from './Spinner';
@@ -59,7 +58,7 @@ const PracticeZone: React.FC = () => {
                     </div>
                     {error && <p className="text-sm text-destructive">{error}</p>}
                     <button type="submit" disabled={isLoading} className="flex items-center justify-center w-full px-4 py-2 font-semibold text-white transition-colors rounded-md bg-primary hover:bg-primary-hover disabled:bg-primary/70">
-                        {isLoading ? <Spinner /> : 'ارسال'}
+                        {isLoading ? <Spinner size={24} /> : 'ارسال'}
                     </button>
                 </form>
             </div>

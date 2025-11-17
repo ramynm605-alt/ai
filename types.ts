@@ -52,7 +52,10 @@ export interface MindMapNode {
   }
   
   export interface LearningPreferences {
-    style: 'faithful' | 'balanced' | 'creative';
+    explanationStyle: 'faithful' | 'balanced' | 'creative';
+    knowledgeLevel: 'beginner' | 'intermediate' | 'expert';
+    learningFocus: 'theoretical' | 'practical' | 'analogies';
+    tone: 'academic' | 'conversational';
     addExplanatoryNodes: boolean;
     customInstructions: string;
     learningGoal: string;

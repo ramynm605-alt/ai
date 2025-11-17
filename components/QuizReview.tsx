@@ -56,7 +56,7 @@ const QuestionReviewCard: React.FC<{ result: QuizResult }> = ({ result }) => {
     }
 
     return (
-        <div className={`p-4 border-l-4 rounded-md shadow-sm bg-card ${isCorrect ? 'border-success' : 'border-destructive'}`}>
+        <div className={`p-4 border-l-4 rounded-lg shadow-sm ${isCorrect ? 'bg-success/10 border-success' : 'bg-destructive/10 border-destructive'}`}>
             <div className="flex items-center justify-between">
                 <p className="font-semibold text-card-foreground">{question.question}</p>
                 <span className={`font-bold ${isCorrect ? 'text-success' : 'text-destructive'}`}>
@@ -77,17 +77,26 @@ const QuizReview: React.FC<QuizReviewProps> = ({ results, onFinish }) => {
     const totalScore = results.reduce((sum, r) => sum + r.score, 0);
     const maxScore = results.reduce((sum, r) => sum + r.question.points, 0);
     const percentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
+    const passed = percentage >= 70;
 
     return (
         <div className="max-w-4xl p-4 mx-auto sm:p-6 md:p-8">
             <div className="p-6 mb-8 text-center border rounded-lg shadow-lg bg-card">
                 <h1 className="mb-2 text-3xl font-bold text-foreground">نتایج آزمون</h1>
-                <p className="text-muted-foreground">امتیاز شما: <span className="font-bold text-primary">{totalScore}</span> از <span className="font-bold">{maxScore}</span></p>
+                <p className="text-muted-foreground">امتیاز شما: <span className={`font-bold ${passed ? 'text-success' : 'text-destructive'}`}>{totalScore}</span> از <span className="font-bold">{maxScore}</span></p>
                  <div className="w-full h-4 mx-auto mt-4 rounded-full bg-secondary max-w-sm">
-                    <div className="h-full text-center text-white rounded-full bg-primary" style={{ width: `${percentage}%` }}>
+                    <div 
+                        className={`h-full text-center text-white rounded-full transition-all duration-500 ease-out ${passed ? 'bg-gradient-to-r from-green-500 to-green-600' : 'bg-gradient-to-r from-red-500 to-red-600'}`} 
+                        style={{ width: `${percentage}%` }}
+                    >
                     </div>
                 </div>
-                <p className="mt-2 text-lg font-semibold text-primary">{percentage}%</p>
+                <p className={`mt-2 text-lg font-semibold ${passed ? 'text-success' : 'text-destructive'}`}>{percentage}%</p>
+                {passed ? (
+                    <p className="mt-2 text-green-600">عالی! شما این بخش را با موفقیت پشت سر گذاشتید.</p>
+                ) : (
+                    <p className="mt-2 text-red-600">نیاز به مرور بیشتر دارید. نقاط ضعف شما ثبت شد.</p>
+                )}
             </div>
 
             <div className="space-y-6">

@@ -1,9 +1,8 @@
 
-
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef } from 'react';
 import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse } from './services/geminiService';
-import { ArrowRight, BookOpen, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize } from './components/icons';
+import { ArrowRight, BookOpen, Brain, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize, SlidersHorizontal, ChevronDown, Sparkles } from './components/icons';
 import MindMap from './components/MindMap';
 import NodeView from './components/NodeView';
 import QuizView from './components/QuizView';
@@ -27,7 +26,10 @@ const initialState: AppState = {
   sourcePageContents: null,
   sourceImages: [],
   preferences: {
-    style: 'balanced',
+    explanationStyle: 'balanced',
+    knowledgeLevel: 'intermediate',
+    learningFocus: 'practical',
+    tone: 'conversational',
     addExplanatoryNodes: false,
     customInstructions: '',
     learningGoal: '',
@@ -61,7 +63,7 @@ function appReducer(state: AppState, action: any): AppState {
     case 'START_GENERATION':
       return { ...initialState, theme: state.theme, status: AppStatus.LOADING, sourceContent: action.payload.sourceContent, sourcePageContents: action.payload.sourcePageContents, sourceImages: action.payload.sourceImages, preferences: action.payload.preferences, loadingMessage: 'در حال تحلیل محتوای شما و ساخت نقشه ذهنی...' };
     case 'MIND_MAP_GENERATED': {
-        const welcomeMessage: ChatMessage = { role: 'model', message: 'سلام! من مربی هوشمند شما هستم. هر سوالی در مورد این طرح درس دارید، از من بپرسید.' };
+        const welcomeMessage: ChatMessage = { role: 'model', message: 'سلام! من مربی ذهن گاه شما هستم. هر سوالی در مورد این طرح درس دارید، از من بپرسید.' };
         return { 
             ...state, 
             status: AppStatus.PRE_ASSESSMENT, 
@@ -203,7 +205,7 @@ function appReducer(state: AppState, action: any): AppState {
             status: status,
             loadingMessage: null,
             error: null,
-            chatHistory: loadedState.chatHistory || [{ role: 'model', message: 'سلام! من مربی هوشمند شما هستم. از سرگیری یادگیری شما خوشحالم.' }]
+            chatHistory: loadedState.chatHistory || [{ role: 'model', message: 'سلام! من مربی ذهن گاه شما هستم. از سرگیری یادگیری شما خوشحالم.' }]
         };
     case 'RESET':
       return { ...initialState, theme: state.theme };
@@ -231,7 +233,7 @@ function appReducer(state: AppState, action: any): AppState {
 }
 
 const TabButton: React.FC<{ active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }> = ({ active, onClick, icon, children }) => (
-    <button onClick={onClick} className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${active ? 'bg-primary text-primary-foreground' : 'text-secondary-foreground hover:bg-accent'}`}>
+    <button onClick={onClick} className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${active ? 'bg-primary text-primary-foreground shadow-md' : 'text-secondary-foreground hover:bg-accent hover:text-accent-foreground hover:-translate-y-0.5'}`}>
         {icon}
         {children}
     </button>
@@ -241,6 +243,7 @@ const TabButton: React.FC<{ active: boolean; onClick: () => void; icon: React.Re
 export default function App() {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [currentView, setCurrentView] = useState<'learning' | 'weaknesses' | 'practice'>('learning');
+  const [showSuggestedPath, setShowSuggestedPath] = useState(true);
   const [showStartupScreen, setShowStartupScreen] = useState(true);
   const [chatInitialMessage, setChatInitialMessage] = useState('');
 
@@ -306,7 +309,7 @@ export default function App() {
             state.mindMap.find(n => n.id === nodeId)!.title,
             state.sourceContent,
             state.sourceImages,
-            state.preferences.style,
+            state.preferences,
             strengths,
             weaknesses,
             isIntroNode,
@@ -319,7 +322,7 @@ export default function App() {
         console.error(err);
         dispatch({ type: 'ERROR', payload: 'خطا در بارگذاری محتوای درس.' });
     }
-}, [state.mindMap, state.sourceContent, state.sourceImages, state.preferences.style, state.nodeContents, state.preAssessmentAnalysis]);
+}, [state.mindMap, state.sourceContent, state.sourceImages, state.preferences, state.nodeContents, state.preAssessmentAnalysis]);
 
 
   const handleStartQuiz = useCallback(async (nodeId: string) => {
@@ -428,7 +431,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `smart-learner-progress-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `zehn-gah-progress-${new Date().toISOString().split('T')[0]}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -553,13 +556,19 @@ export default function App() {
       case AppStatus.ALL_NODES_COMPLETED:
         const allNodesCompleted = state.mindMap.length > 0 && state.mindMap.every(node => state.userProgress[node.id] === 'completed');
         return (
-            <div className="p-4 sm:p-6 md:p-8 flex flex-col h-full">
-                <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+            <div className="flex flex-col h-full p-4 sm:p-6 md:p-8">
+                <div className="flex flex-col items-center gap-4 mb-6 md:flex-row md:justify-between">
                     <h1 className="text-2xl font-bold text-foreground">نقشه راه یادگیری شما</h1>
-                    <div className="flex items-center gap-2 p-1 bg-secondary rounded-lg">
-                        <TabButton active={currentView === 'learning'} onClick={() => setCurrentView('learning')} icon={<BrainCircuit />}>نقشه ذهنی</TabButton>
-                        <TabButton active={currentView === 'weaknesses'} onClick={() => setCurrentView('weaknesses')} icon={<XCircle />}>نقاط ضعف</TabButton>
-                        <TabButton active={currentView === 'practice'} onClick={() => setCurrentView('practice')} icon={<ClipboardList />}>تمرین</TabButton>
+                    <div className="flex flex-col items-stretch gap-2 sm:items-center sm:flex-row">
+                        <div className="flex items-center justify-center gap-2 p-1 bg-secondary rounded-xl">
+                            <TabButton active={currentView === 'learning'} onClick={() => setCurrentView('learning')} icon={<BrainCircuit />}>نقشه ذهنی</TabButton>
+                            <TabButton active={currentView === 'weaknesses'} onClick={() => setCurrentView('weaknesses')} icon={<XCircle />}>نقاط ضعف</TabButton>
+                            <TabButton active={currentView === 'practice'} onClick={() => setCurrentView('practice')} icon={<ClipboardList />}>تمرین</TabButton>
+                        </div>
+                        <button onClick={() => setShowSuggestedPath(!showSuggestedPath)} className={`flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${showSuggestedPath ? 'bg-primary text-primary-foreground shadow-md' : 'text-secondary-foreground hover:bg-accent hover:text-accent-foreground hover:-translate-y-0.5'}`}>
+                            <Sparkles className="w-5 h-5" />
+                            <span>مسیر پیشنهادی</span>
+                        </button>
                     </div>
                 </div>
                 {allNodesCompleted && (
@@ -571,8 +580,8 @@ export default function App() {
                         </button>
                     </div>
                 )}
-                <div className="flex-grow overflow-auto min-h-0">
-                    {currentView === 'learning' && <MindMap nodes={state.mindMap} progress={state.userProgress} suggestedPath={state.suggestedPath} onSelectNode={handleSelectNode} onTakeQuiz={handleStartQuiz} theme={state.theme} activeNodeId={state.activeNodeId} />}
+                <div className="flex-grow min-h-0 overflow-auto">
+                    {currentView === 'learning' && <MindMap nodes={state.mindMap} progress={state.userProgress} suggestedPath={state.suggestedPath} onSelectNode={handleSelectNode} onTakeQuiz={handleStartQuiz} theme={state.theme} activeNodeId={state.activeNodeId} showSuggestedPath={showSuggestedPath} />}
                     {currentView === 'weaknesses' && <WeaknessTracker weaknesses={state.weaknesses} />}
                     {currentView === 'practice' && <PracticeZone />}
                 </div>
@@ -647,24 +656,24 @@ export default function App() {
     <div className="flex flex-col w-full min-h-screen transition-colors duration-300 bg-background text-foreground">
         <header className="flex items-center justify-between p-4 border-b shadow-sm bg-card border-border">
              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-full text-primary-foreground bg-primary">
-                    <BookOpen className="w-6 h-6" />
+                <div className="flex items-center justify-center w-10 h-10 rounded-full text-primary-foreground bg-primary">
+                    <Brain className="w-6 h-6" />
                 </div>
-                <h1 className="text-xl font-bold text-primary">یادگیرنده هوشمند</h1>
+                <h1 className="hidden text-xl font-bold sm:block text-primary">ذهن گاه</h1>
             </div>
             <div className="flex items-center gap-4">
                 <div className="flex items-center p-1 space-x-1 rounded-lg bg-secondary">
-                    <button onClick={() => dispatch({ type: 'SET_THEME', payload: 'light' })} className={`p-1.5 rounded-md ${state.theme === 'light' ? 'bg-card shadow-sm' : 'hover:bg-card/50'}`} aria-label="Light theme"><Sun className="w-5 h-5" /></button>
-                    <button onClick={() => dispatch({ type: 'SET_THEME', payload: 'balanced' })} className={`p-1.5 rounded-md ${state.theme === 'balanced' ? 'bg-card shadow-sm' : 'hover:bg-card/50'}`} aria-label="Balanced theme"><div className="w-5 h-5 rounded-full bg-gradient-to-br from-indigo-500 to-gray-700"></div></button>
-                    <button onClick={() => dispatch({ type: 'SET_THEME', payload: 'dark' })} className={`p-1.5 rounded-md ${state.theme === 'dark' ? 'bg-card shadow-sm' : 'hover:bg-card/50'}`} aria-label="Dark theme"><Moon className="w-5 h-5" /></button>
+                    <button onClick={() => dispatch({ type: 'SET_THEME', payload: 'light' })} className={`p-1.5 rounded-md transition-all ${state.theme === 'light' ? 'bg-card shadow-sm ring-1 ring-inset ring-border' : 'hover:bg-card/50'}`} aria-label="Light theme"><Sun className="w-5 h-5" /></button>
+                    <button onClick={() => dispatch({ type: 'SET_THEME', payload: 'balanced' })} className={`p-1.5 rounded-md transition-all ${state.theme === 'balanced' ? 'bg-card shadow-sm ring-1 ring-inset ring-border' : 'hover:bg-card/50'}`} aria-label="Balanced theme"><div className="w-5 h-5 bg-slate-500 rounded-full"></div></button>
+                    <button onClick={() => dispatch({ type: 'SET_THEME', payload: 'dark' })} className={`p-1.5 rounded-md transition-all ${state.theme === 'dark' ? 'bg-card shadow-sm ring-1 ring-inset ring-border' : 'hover:bg-card/50'}`} aria-label="Dark theme"><Moon className="w-5 h-5" /></button>
                 </div>
                 {hasProgress && (
                     <>
-                        <button onClick={handleSaveProgress} className="flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors rounded-md sm:px-4 text-secondary-foreground bg-secondary hover:bg-accent" title="ذخیره پیشرفت">
+                        <button onClick={handleSaveProgress} className="flex items-center gap-2 px-3 py-2 text-sm font-medium transition-all duration-200 rounded-lg sm:px-4 text-secondary-foreground bg-secondary hover:bg-accent hover:-translate-y-0.5 active:scale-95" title="ذخیره پیشرفت">
                             <Save className="w-4 h-4" />
                             <span className="hidden sm:inline">ذخیره</span>
                         </button>
-                        <button onClick={() => dispatch({type: 'RESET'})} className="flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors rounded-md sm:px-4 text-secondary-foreground bg-secondary hover:bg-accent" title="شروع مجدد">
+                        <button onClick={() => dispatch({type: 'RESET'})} className="flex items-center gap-2 px-3 py-2 text-sm font-medium transition-all duration-200 rounded-lg sm:px-4 text-secondary-foreground bg-secondary hover:bg-accent hover:-translate-y-0.5 active:scale-95" title="شروع مجدد">
                             <Home className="w-4 h-4" />
                             <span className="hidden sm:inline">شروع مجدد</span>
                         </button>
@@ -679,7 +688,7 @@ export default function App() {
             <>
                 <button 
                     onClick={() => dispatch({ type: 'OPEN_CHAT' })} 
-                    className="fixed bottom-6 right-6 z-50 flex items-center justify-center w-16 h-16 rounded-full shadow-lg bg-primary text-primary-foreground hover:bg-primary-hover transition-transform transform hover:scale-110"
+                    className="fixed z-50 flex items-center justify-center w-16 h-16 transition-transform duration-200 transform rounded-full shadow-lg bottom-6 right-6 bg-primary text-primary-foreground hover:bg-primary-hover hover:scale-110 active:scale-100"
                     aria-label="Open chat"
                 >
                     <MessageSquare className="w-8 h-8" />
@@ -698,24 +707,209 @@ export default function App() {
             </>
         )}
         <footer className="p-4 text-sm text-center border-t text-muted-foreground bg-card border-border">
-            © {new Date().getFullYear()} پایه های چهار پایه. تمام حقوق محفوظ است.
+            © {new Date().getFullYear()} ذهن گاه. تمام حقوق محفوظ است.
         </footer>
     </div>
   );
 }
+
+const personalizationSteps = [
+    {
+        name: 'learningGoal',
+        title: 'هدف شما از یادگیری چیست؟',
+        placeholder: 'مثال: برای امتحان آماده می‌شوم...',
+        type: 'text',
+        icon: Target,
+    },
+    {
+        name: 'knowledgeLevel',
+        title: 'سطح دانش فعلی شما چیست؟',
+        type: 'radio',
+        icon: BrainCircuit,
+        options: [
+            { value: 'beginner', label: 'مبتدی' },
+            { value: 'intermediate', label: 'متوسط' },
+            { value: 'expert', label: 'پیشرفته' },
+        ]
+    },
+    {
+        name: 'learningFocus',
+        title: 'ترجیح می‌دهید روی چه چیزی تمرکز کنید؟',
+        type: 'radio',
+        icon: BrainCircuit,
+        options: [
+            { value: 'theoretical', label: 'عمق تئوری' },
+            { value: 'practical', label: 'مثال‌های عملی' },
+            { value: 'analogies', label: 'تشبیه‌ها و مثال‌های ساده' },
+        ]
+    },
+    {
+        name: 'tone',
+        title: 'لحن توضیحات چگونه باشد؟',
+        type: 'radio',
+        icon: BrainCircuit,
+        options: [
+            { value: 'conversational', label: 'دوستانه و محاوره‌ای' },
+            { value: 'academic', label: 'آکادمیک و رسمی' },
+        ]
+    },
+    {
+        name: 'explanationStyle',
+        title: 'سبک توضیحات چگونه باشد؟',
+        type: 'radio',
+        icon: BrainCircuit,
+        options: [
+           { value: 'faithful', label: 'وفادار به متن' },
+           { value: 'balanced', label: 'متعادل' },
+           { value: 'creative', label: 'خلاقانه و گسترده' },
+       ]
+    },
+    {
+        name: 'final',
+        title: 'تنظیمات نهایی',
+        type: 'final',
+        icon: CheckCircle,
+    }
+];
+
+const PersonalizationWizard: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    preferences: LearningPreferences;
+    onPreferencesChange: (newPrefs: LearningPreferences) => void;
+}> = ({ isOpen, onClose, preferences, onPreferencesChange }) => {
+    const [currentStep, setCurrentStep] = useState(0);
+    const goalInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            setCurrentStep(0);
+            setTimeout(() => goalInputRef.current?.focus(), 300);
+        }
+    }, [isOpen]);
+
+    const handleNext = () => {
+        if (currentStep < personalizationSteps.length - 1) {
+            setCurrentStep(currentStep + 1);
+        }
+    };
+    
+    const handlePrev = () => {
+        if (currentStep > 0) {
+            setCurrentStep(currentStep - 1);
+        }
+    }
+
+    const handleSelectOption = (name: keyof LearningPreferences, value: any) => {
+        onPreferencesChange({ ...preferences, [name]: value });
+        setTimeout(() => handleNext(), 300);
+    };
+    
+    if (!isOpen) return null;
+
+    return (
+        <div className={`wizard-overlay ${isOpen ? 'open' : ''}`} onClick={onClose}>
+            <div className="wizard-container" onClick={e => e.stopPropagation()}>
+                <div className="wizard-steps-wrapper">
+                    <div className="wizard-steps" style={{ transform: `translateX(${currentStep * 100}%)` }}>
+                        {personalizationSteps.map((step, index) => (
+                            <div key={index} className="wizard-step">
+                                <div className="flex items-center justify-center w-16 h-16 mx-auto mb-6 rounded-full bg-primary/10 text-primary shrink-0">
+                                    <step.icon className="w-8 h-8" />
+                                </div>
+                                <h3 className="mb-6 text-xl font-bold text-card-foreground shrink-0">{step.title}</h3>
+                                <div className="wizard-step-content">
+                                    {step.type === 'text' && (
+                                        <input
+                                            ref={goalInputRef}
+                                            type="text"
+                                            value={preferences[step.name as keyof LearningPreferences] as string}
+                                            onChange={e => onPreferencesChange({ ...preferences, [step.name]: e.target.value })}
+                                            className="w-full max-w-sm p-3 text-center border rounded-md bg-background border-border focus:ring-2 focus:ring-ring focus:border-primary"
+                                            placeholder={step.placeholder}
+                                        />
+                                    )}
+                                    {step.type === 'radio' && (
+                                        <div className="w-full max-w-lg wizard-radio-group">
+                                            {step.options?.map(option => (
+                                                <div key={option.value}>
+                                                    <input
+                                                        type="radio"
+                                                        id={`${step.name}-${option.value}`}
+                                                        name={step.name}
+                                                        value={option.value}
+                                                        checked={preferences[step.name as keyof LearningPreferences] === option.value}
+                                                        onChange={() => handleSelectOption(step.name as keyof LearningPreferences, option.value)}
+                                                        className="wizard-radio-input"
+                                                    />
+                                                    <label htmlFor={`${step.name}-${option.value}`} className="wizard-radio-label">{option.label}</label>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {step.type === 'final' && (
+                                        <div className="w-full max-w-md space-y-4">
+                                        <div>
+                                            <label htmlFor="customInstructions" className="block mb-2 text-sm font-medium text-secondary-foreground">دستورالعمل‌های سفارشی (اختیاری)</label>
+                                            <input 
+                                                type="text" 
+                                                id="customInstructions"
+                                                value={preferences.customInstructions} 
+                                                onChange={e => onPreferencesChange({...preferences, customInstructions: e.target.value})} 
+                                                className="w-full p-2 border rounded-md bg-background border-border focus:ring-2 focus:ring-ring focus:border-primary" 
+                                                placeholder="مثال: روی جنبه تاریخی تمرکز کن"/>
+                                        </div>
+                                        <div className="flex items-center justify-center pt-2 space-x-2 space-x-reverse">
+                                                <input
+                                                    type="checkbox"
+                                                    id="addExplanatoryNodes"
+                                                    checked={preferences.addExplanatoryNodes}
+                                                    onChange={e => onPreferencesChange({...preferences, addExplanatoryNodes: e.target.checked})}
+                                                    className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                                                />
+                                                <label htmlFor="addExplanatoryNodes" className="text-sm font-medium text-secondary-foreground">افزودن گره‌های توضیحی برای مفاهیم پیش‌نیاز</label>
+                                        </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <div className="p-4 border-t border-border">
+                     <div className="flex items-center justify-between">
+                        <button onClick={handlePrev} disabled={currentStep === 0} className="px-4 py-2 font-semibold rounded-md text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 active:scale-95">قبلی</button>
+                        {currentStep < personalizationSteps.length - 1 ? (
+                             <button onClick={handleNext} className="px-4 py-2 font-semibold rounded-md text-primary-foreground bg-primary hover:bg-primary-hover active:scale-95">بعدی</button>
+                        ) : (
+                             <button onClick={onClose} className="px-4 py-2 font-semibold rounded-md text-primary-foreground bg-success hover:bg-success/90 active:scale-95">ذخیره و بستن</button>
+                        )}
+                     </div>
+                     <div className="w-full h-1 mt-4 rounded-full bg-muted">
+                        <div className="h-1 rounded-full bg-primary" style={{ width: `${((currentStep + 1) / personalizationSteps.length) * 100}%`, transition: 'width 0.3s ease' }} />
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const HomePage: React.FC<{ onStart: (content: string, pageContents: string[] | null, images: {mimeType: string, data: string}[], preferences: LearningPreferences) => void; onLoad: (file: File) => void; theme: AppState['theme'] }> = ({ onStart, onLoad, theme }) => {
     const [sourceContent, setSourceContent] = useState('');
     const [sourcePageContents, setSourcePageContents] = useState<string[] | null>(null);
     const [sourceImages, setSourceImages] = useState<{mimeType: string, data: string}[]>([]);
     const [preferences, setPreferences] = useState<LearningPreferences>({
-        style: 'balanced',
+        explanationStyle: 'balanced',
+        knowledgeLevel: 'intermediate',
+        learningFocus: 'practical',
+        tone: 'conversational',
         addExplanatoryNodes: false,
         customInstructions: '',
         learningGoal: '',
     });
     const [isParsingPdf, setIsParsingPdf] = useState(false);
     const [pdfProgress, setPdfProgress] = useState('');
+    const [isWizardOpen, setIsWizardOpen] = useState(false);
     const jsonInputRef = useRef<HTMLInputElement>(null);
     const pdfInputRef = useRef<HTMLInputElement>(null);
 
@@ -850,79 +1044,53 @@ const HomePage: React.FC<{ onStart: (content: string, pageContents: string[] | n
     };
 
     return (
-        <div className="relative flex items-center justify-center min-h-full p-4 sm:p-6 md:p-8">
+        <div className="relative flex flex-col items-center justify-center min-h-full p-4 sm:p-6 md:p-8">
             <ParticleBackground theme={theme} />
-            <div className="w-full max-w-3xl p-6 space-y-8 border rounded-xl shadow-lg md:p-8 bg-card/80 backdrop-blur-sm border-border">
+             <PersonalizationWizard 
+                isOpen={isWizardOpen}
+                onClose={() => setIsWizardOpen(false)}
+                preferences={preferences}
+                onPreferencesChange={setPreferences}
+            />
+            <div className="relative z-10 w-full max-w-3xl p-6 space-y-8 md:p-8">
                 <div className="text-center">
-                    <h2 className="text-3xl font-bold text-card-foreground">موضوع یادگیری خود را وارد کنید</h2>
+                    <h2 className="text-3xl font-bold text-foreground">موضوع یادگیری خود را وارد کنید</h2>
                     <p className="mt-2 text-muted-foreground">متن خود را کپی کنید، یک PDF بارگذاری کنید، یا یک فایل پیشرفت را باز کنید.</p>
                 </div>
                 <form onSubmit={handleSubmit} className="space-y-6">
-                    <div>
+                    <div className="stylish-textarea-wrapper">
+                         <FileText className="absolute w-6 h-6 top-4 right-4 text-muted-foreground/50" />
                         <textarea
                             value={sourceContent}
                             onChange={(e) => setSourceContent(e.target.value)}
-                            className="w-full px-3 py-2 transition-colors duration-200 border rounded-md shadow-sm h-60 bg-background text-foreground border-border focus:ring-ring focus:border-primary disabled:bg-muted/50"
-                            placeholder="مثال: فصل اول کتاب تاریخ خود را اینجا قرار دهید یا یک فایل PDF بارگذاری کنید..."
+                            className="w-full px-4 py-4 pr-12 transition-all duration-200 border-none rounded-lg shadow-sm h-60 bg-transparent text-foreground focus:ring-0 disabled:bg-muted/50 placeholder:text-muted-foreground"
+                            placeholder="محتوای آموزشی خود را اینجا جای‌گذاری کنید..."
                             disabled={isParsingPdf}
                         />
                          {isParsingPdf && <div className="py-2 text-sm text-center text-muted-foreground">{pdfProgress}</div>}
                     </div>
                     
-                    <div className="p-4 border rounded-md bg-secondary/50 border-border">
-                      <h3 className="mb-4 font-semibold text-secondary-foreground">شخصی‌سازی یادگیری</h3>
-                        <div>
-                          <label htmlFor="learningGoal" className="block mb-2 text-sm font-medium text-secondary-foreground">هدف شما از یادگیری چیست؟</label>
-                          <input 
-                            type="text" 
-                            id="learningGoal"
-                            value={preferences.learningGoal} 
-                            onChange={e => setPreferences({...preferences, learningGoal: e.target.value})} 
-                            className="w-full p-2 border rounded-md bg-background border-border focus:ring-ring focus:border-primary" 
-                            placeholder="مثال: برای امتحان آماده می‌شوم، فقط از روی کنجکاوی، ..."/>
-                        </div>
-                      <div className="grid grid-cols-1 gap-6 mt-4 md:grid-cols-2">
-                        <div>
-                          <label className="block mb-2 text-sm font-medium text-secondary-foreground">سبک توضیحات</label>
-                           <select value={preferences.style} onChange={e => setPreferences({...preferences, style: e.target.value as any})} className="w-full p-2 border rounded-md bg-background border-border focus:ring-ring focus:border-primary">
-                               <option value="faithful">وفادار به متن</option>
-                               <option value="balanced">متعادل</option>
-                               <option value="creative">خلاقانه و گسترده</option>
-                           </select>
-                        </div>
-                         <div>
-                          <label className="block mb-2 text-sm font-medium text-secondary-foreground">دستورالعمل‌های سفارشی (اختیاری)</label>
-                          <input type="text" value={preferences.customInstructions} onChange={e => setPreferences({...preferences, customInstructions: e.target.value})} className="w-full p-2 border rounded-md bg-background border-border focus:ring-ring focus:border-primary" placeholder="مثال: روی جنبه تاریخی تمرکز کن"/>
-                        </div>
-                      </div>
-                      <div className="flex items-center mt-4 space-x-2 space-x-reverse">
-                        <input
-                            type="checkbox"
-                            id="addExplanatoryNodes"
-                            checked={preferences.addExplanatoryNodes}
-                            onChange={e => setPreferences({...preferences, addExplanatoryNodes: e.target.checked})}
-                            className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
-                        />
-                        <label htmlFor="addExplanatoryNodes" className="text-sm font-medium text-secondary-foreground">افزودن گره‌های توضیحی برای مفاهیم پیش‌نیاز</label>
-                      </div>
-                    </div>
-
                     <div className="flex flex-col gap-4 sm:flex-row">
                         <button type="submit" className="flex items-center justify-center flex-grow w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md text-primary-foreground bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring active:scale-95 disabled:bg-primary/70" disabled={!sourceContent.trim() || isParsingPdf}>
                             <span>ایجاد طرح یادگیری</span>
                             <ArrowRight className="w-5 h-5" />
                         </button>
-                        <div className="flex gap-4">
-                            <input type="file" ref={pdfInputRef} onChange={handlePdfFileChange} accept=".pdf" className="hidden" />
-                            <button type="button" onClick={() => pdfInputRef.current?.click()} disabled={isParsingPdf} className="flex items-center justify-center w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent active:scale-95 disabled:opacity-70">
-                                {isParsingPdf ? <><Spinner /><span>در حال پردازش...</span></> : <><FileText className="w-5 h-5" /><span>بارگذاری PDF</span></>}
-                            </button>
-                            <input type="file" ref={jsonInputRef} onChange={handleJsonFileChange} accept=".json" className="hidden" />
-                            <button type="button" onClick={() => jsonInputRef.current?.click()} className="flex items-center justify-center w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent active:scale-95">
-                                 <Upload className="w-5 h-5" />
-                                <span>بارگذاری پیشرفت</span>
-                            </button>
-                        </div>
+                        <button type="button" onClick={() => setIsWizardOpen(true)} className="flex items-center justify-center w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent active:scale-95">
+                             <Sparkles className="w-5 h-5 text-primary" />
+                            <span>شخصی‌سازی</span>
+                        </button>
+                    </div>
+
+                     <div className="flex justify-center gap-4">
+                        <input type="file" ref={pdfInputRef} onChange={handlePdfFileChange} accept=".pdf" className="hidden" />
+                        <button type="button" onClick={() => pdfInputRef.current?.click()} disabled={isParsingPdf} className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold transition-transform duration-200 rounded-md text-secondary-foreground bg-secondary/70 hover:bg-accent active:scale-95 disabled:opacity-70">
+                            {isParsingPdf ? <><Spinner /><span>در حال پردازش...</span></> : <><FileText className="w-4 h-4" /><span>بارگذاری PDF</span></>}
+                        </button>
+                        <input type="file" ref={jsonInputRef} onChange={handleJsonFileChange} accept=".json" className="hidden" />
+                        <button type="button" onClick={() => jsonInputRef.current?.click()} className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold transition-transform duration-200 rounded-md text-secondary-foreground bg-secondary/70 hover:bg-accent active:scale-95">
+                             <Upload className="w-4 h-4" />
+                            <span>بارگذاری پیشرفت</span>
+                        </button>
                     </div>
                 </form>
             </div>

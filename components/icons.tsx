@@ -137,10 +137,49 @@ export const Minimize: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
 
 export const Sparkles: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-        <path d="m12 3-1.9 4.8-4.8 1.9 4.8 1.9L12 16l1.9-4.8 4.8-1.9-4.8-1.9L12 3z" />
-        <path d="M5 8v4" />
-        <path d="M19 8v4" />
-        <path d="M8 5h4" />
-        <path d="M8 19h4" />
+        <path d="M12 3-1.9 4.8-4.8 1.9 4.8 1.9L12 16l1.9-4.8 4.8-1.9-4.8-1.9L12 3z" />
+        <path d="m5 8 4 4" />
+        <path d="m15 8-4 4" />
+        <path d="m8 5 4-2 4 2" />
+        <path d="m8 19 4 2 4-2" />
+    </svg>
+);
+
+export const SlidersHorizontal: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <line x1="21" y1="4" x2="14" y2="4" />
+    <line x1="10" y1="4" x2="3" y2="4" />
+    <line x1="21" y1="12" x2="12" y2="12" />
+    <line x1="8" y1="12" x2="3" y2="12" />
+    <line x1="21" y1="20" x2="16" y2="20" />
+    <line x1="12" y1="20" x2="3" y2="20" />
+    <line x1="14" y1="2" x2="14" y2="6" />
+    <line x1="8" y1="10" x2="8" y2="14" />
+    <line x1="16" y1="18" x2="16" y2="22" />
+  </svg>
+);
+
+export const ChevronDown: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+        <polyline points="6 9 12 15 18 9"></polyline>
+    </svg>
+);
+
+export const FileQuestion: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+        <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+        <path d="M10 10.3c.2-.4.5-.8.9-1a2.1 2.1 0 0 1 2.6.4c.3.4.5.8.5 1.3 0 1.3-2 2-2 2"></path>
+        <path d="M12 17h.01"></path>
+    </svg>
+);
+
+export const Brain: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+        <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v0A2.5 2.5 0 0 1 9.5 7h-3A2.5 2.5 0 0 1 4 4.5v0A2.5 2.5 0 0 1 6.5 2Z"/>
+        <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v0A2.5 2.5 0 0 0 14.5 7h3A2.5 2.5 0 0 0 20 4.5v0A2.5 2.5 0 0 0 17.5 2Z"/>
+        <path d="M4.2 7.5A2.5 2.5 0 0 0 6.5 10h.06a2.5 2.5 0 0 1 2.4 2.06C9.2 14.3 8.3 16.5 7.2 18c-2.3 3-5.2 4.5-5.2 4.5"/>
+        <path d="M19.8 7.5A2.5 2.5 0 0 1 17.5 10h-.06a2.5 2.5 0 0 0-2.4 2.06c-.3 2.2.6 4.4 1.7 6 2.3 3 5.2 4.5 5.2 4.5"/>
+        <path d="M12 10a2.5 2.5 0 0 0-2.5 2.5v.06a2.5 2.5 0 0 1-2.06 2.4C5.2 15.2 3 17.3 3 20"/>
+        <path d="M12 10a2.5 2.5 0 0 1 2.5 2.5v.06a2.5 2.5 0 0 0 2.06 2.4c2.3.3 4.5 2.4 4.5 5"/>
     </svg>
 );

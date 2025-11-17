@@ -159,7 +159,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                             <button 
                                 onClick={() => prevNode && onNavigate(prevNode.id)} 
                                 disabled={!prevNode}
-                                className="w-full px-6 py-2 font-semibold rounded-md sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed">
+                                className="w-full px-6 py-2 font-semibold transition-all duration-200 rounded-lg sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed hover:disabled:-translate-y-0 active:scale-95 hover:-translate-y-0.5">
                                 درس قبلی
                             </button>
                             <button onClick={onStartQuiz} className="order-first w-full px-8 py-3 font-bold text-white transition-transform duration-200 rounded-lg sm:order-none sm:w-auto bg-primary hover:bg-primary-hover active:scale-95">
@@ -168,7 +168,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                             <button 
                                 onClick={() => nextNode && onNavigate(nextNode.id)} 
                                 disabled={!nextNode || nextNode.locked}
-                                className="w-full px-6 py-2 font-semibold rounded-md sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="w-full px-6 py-2 font-semibold transition-all duration-200 rounded-lg sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed hover:disabled:-translate-y-0 active:scale-95 hover:-translate-y-0.5"
                                 title={nextNode?.locked ? 'ابتدا باید درس فعلی را کامل کنید' : ''}
                                 >
                                 درس بعدی

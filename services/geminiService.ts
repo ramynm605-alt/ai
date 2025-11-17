@@ -25,6 +25,37 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Pr
     }
 }
 
+const getPreferenceInstructions = (preferences: LearningPreferences): string => {
+    const translations = {
+        knowledgeLevel: {
+            beginner: 'مبتدی',
+            intermediate: 'متوسط',
+            expert: 'پیشرفته'
+        },
+        learningFocus: {
+            theoretical: 'عمق تئوری',
+            practical: 'مثال‌های عملی',
+            analogies: 'تشبیه‌ها و مثال‌های ساده'
+        },
+        tone: {
+            academic: 'آکادمیک و رسمی',
+            conversational: 'دوستانه و محاوره‌ای'
+        }
+    };
+
+    const instructions = [
+        preferences.learningGoal ? `مهم: هدف اصلی کاربر از یادگیری این موضوع '${preferences.learningGoal}' است. ساختار نقشه ذهنی و سوالات پیش‌آزمون را متناسب با این هدف طراحی کن.` : '',
+        `سطح دانش کاربر: ${translations.knowledgeLevel[preferences.knowledgeLevel]}. توضیحات و سوالات را متناسب با این سطح تنظیم کن.`,
+        `تمرکز یادگیری کاربر بر ${translations.learningFocus[preferences.learningFocus]} است. در ساختار نقشه ذهنی این موضوع را در اولویت قرار بده.`,
+        `لحن توضیحات باید ${translations.tone[preferences.tone]} باشد.`,
+        preferences.addExplanatoryNodes ? "اگر در متن به مفاهیم پیش‌نیاز اشاره شده که به خوبی توضیح داده نشده‌اند، گره‌های توضیحی اضافی برای آن‌ها ایجاد کن و isExplanatory را true قرار بده." : "",
+        preferences.customInstructions ? `دستورالعمل سفارشی کاربر: ${preferences.customInstructions}` : ''
+    ].filter(Boolean).join('\n');
+
+    return instructions;
+};
+
+
 export async function generateLearningPlan(
     content: string, 
     pageContents: string[] | null, 
@@ -34,33 +65,31 @@ export async function generateLearningPlan(
     onQuestionStream: (question: QuizQuestion) => void
 ): Promise<Quiz> { // Returns the final quiz, but streams questions along the way
     return withRetry(async () => {
-        const customInstructions = preferences.customInstructions ? `دستورالعمل سفارشی کاربر: ${preferences.customInstructions}` : '';
-        // FIX: Combined broken line for 'addExplanatoryNodes' property access.
-        const explanatoryInstruction = preferences.addExplanatoryNodes ? "اگر در متن به مفاهیم پیش‌نیاز اشاره شده که به خوبی توضیح داده نشده‌اند، گره‌های توضیحی اضافی برای آن‌ها ایجاد کن و isExplanatory را true قرار بده." : "";
-        const learningGoalInstruction = preferences.learningGoal ? `مهم: هدف اصلی کاربر از یادگیری این موضوع '${preferences.learningGoal}' است. ساختار نقشه ذهنی و سوالات پیش‌آزمون را متناسب با این هدف طراحی کن.` : '';
-
+        const preferenceInstructions = getPreferenceInstructions(preferences);
+        
         const pageContentForPrompt = pageContents
             ? `محتوای زیر بر اساس صفحه تفکک شده است. هنگام ایجاد گره‌ها، شماره صفحات مرتبط را در فیلد sourcePages مشخص کن.\n\n` + pageContents.map((text, i) => `--- صفحه ${i + 1} ---\n${text}`).join('\n\n')
             : `متن:\n---\n${content}\n---`;
         
         const prompt = `
         **وظیفه اول: ایجاد نقشه ذهنی**
-        بر اساس محتوای زیر، یک طرح درس به صورت نقشه ذهنی سلسله مراتبی و **بسیار فشرده** ایجاد کن.
+        بر اساس محتوای زیر و اولویت‌های کاربر، یک طرح درس به صورت نقشه ذهنی سلسله مراتبی و **بسیار فشرده** ایجاد کن.
         1.  ساختار باید به شکل زیر باشد:
             -   **گره ریشه (Root Node):** اولین و تنها گره ریشه باید عنوانی مانند "مقدمه کلی" داشته باشد و یک نمای کلی از کل موضوع ارائه دهد. شناسه والد آن باید null باشد.
             -   **گره‌های اصلی (Main Nodes):** مفاهیم اصلی را در گره‌های مجزا و **متمایز** گروه‌بندی کن. هر مفهوم اصلی باید به طور کامل در یک گره پوشش داده شود تا از پراکندگی مطالب جلوگیری شود. **قانون عدم تکرار (بسیار مهم):** یک مفهوم نباید به طور مفصل در بیش از یک گره توضیح داده شود. اگر یک مفهوم در گره دیگری ذکر می‌شود، باید فقط به عنوان یک **مرجع کوتاه** برای نشان دادن ارتباط باشد. تنها استثنای مجاز برای تکرار جزئیات، زمانی است که یک دیدگاه جدید (مانند مقایسه یا تحلیل عمیق‌تر) ارائه می‌شود و این استثنا نباید بیش از یک بار برای یک مفهوم اتفاق بیفتد.
             -   **فشردگی:** تعداد کل گره‌ها را بین ۳ تا ۸ گره محدود کن تا نقشه ذهنی مختصر و مفید باقی بماند. هدف، درک عمیق مفاهیم کلیدی است، نه تقسیم‌بندی بیش از حد.
         2.  برای هر گره، یک امتیاز سختی بین 0.0 (بسیار آسان) تا 1.0 (بسیار دشوار) بر اساس پیچیدگی مفهوم اختصاص بده.
-        3.  ${explanatoryInstruction}
 
         **وظیفه دوم: ایجاد پیش‌آزمون**
-        یک پیش‌آزمون جامع با ۵ تا ۱۰ سوال برای سنجش دقیق دانش اولیه کاربر از کل متن طراحی کن. این آزمون باید **چالش‌برانگیز** باشد. سوالات باید **فقط و فقط** از انواع 'multiple-choice' و 'short-answer' باشند. در JSON خروجی برای هر سوال، فیلد 'type' باید دقیقا یکی از این دو رشته باشد. استفاده از هر نوع دیگری غیرمجاز است. قوانین طراحی سوالات (مفهومی بودن, بازنویسی کامل, گزینه‌های انحرافی فریبنده) که قبلاً ذکر شد را به دقت رعایت کن.
+        یک پیش‌آزمون جامع با ۵ تا ۱۰ سوال برای سنجش دقیق دانش اولیه کاربر از کل متن طراحی کن. این آزمون باید **چالش‌برانگیز** باشد و با سطح دانش کاربر هماهنگ باشد. سوالات باید **فقط و فقط** از انواع 'multiple-choice' و 'short-answer' باشند. در JSON خروجی برای هر سوال، فیلد 'type' باید دقیقا یکی از این دو رشته باشد. استفاده از هر نوع دیگری غیرمجاز است. قوانین طراحی سوالات (مفهومی بودن, بازنویسی کامل, گزینه‌های انحرافی فریبنده) که قبلاً ذکر شد را به دقت رعایت کن.
         
         **وظیفه سوم: ایجاد مسیر یادگیری پیشنهادی**
         بر اساس هدف یادگیری کاربر، سختی گره‌ها و وابستگی‌های منطقی بین آنها، یک مسیر یادگیری پیشنهادی بهینه ارائه بده. این مسیر باید به صورت یک آرایه از شناسه‌های گره‌ها (node IDs) با نام suggestedPath باشد. این مسیر باید یک ترتیب منطقی برای مطالعه گره‌ها را مشخص کند.
 
-        ${learningGoalInstruction}
-        ${customInstructions}
+        **اولویت‌های شخصی‌سازی کاربر:**
+        ---
+        ${preferenceInstructions}
+        ---
 
         **دستورالعمل خروجی (بسیار مهم):**
         خروجی باید به صورت جریانی (stream) باشد.
@@ -221,7 +250,7 @@ export async function generateNodeContent(
     nodeTitle: string,
     fullContent: string,
     images: { mimeType: string; data: string }[],
-    style: LearningPreferences['style'],
+    preferences: LearningPreferences,
     strengths: string[],
     weaknesses: string[],
     isIntroNode: boolean,
@@ -229,6 +258,7 @@ export async function generateNodeContent(
 ): Promise<NodeContent> {
     return withRetry(async () => {
         let prompt = '';
+        const preferenceInstructions = getPreferenceInstructions(preferences);
 
         if (isIntroNode) {
             prompt = `شما یک دستیار آموزشی هستید. وظیفه شما ایجاد یک مقدمه جامع و کلی برای کل محتوای ارائه شده است. این مقدمه باید به تمام مفاهیم اصلی و غیرجزئی که در ادامه پوشش داده می‌شوند، اشاره کند.
@@ -237,6 +267,8 @@ export async function generateNodeContent(
             1.  **جامع باشید:** هیچ مفهوم کلیدی را حذف نکنید. یک نمای کلی از کل مسیر یادگیری ارائه دهید.
             2.  **ساختار ساده:** خروجی باید فقط یک متن یکپارچه باشد. از ایجاد بخش‌های مجزا مانند "تئوری"، "مثال" یا "ارتباط با سایر مفاهیم" خودداری کنید.
             3.  **روان و واضح:** متن باید به صورت روان و قابل فهم نوشته شود تا کاربر دید کلی خوبی نسبت به مطالب پیدا کند.
+            4.  **شخصی‌سازی:** لحن و سبک نگارش را با اولویت‌های کاربر تطبیق دهید:
+                ${preferenceInstructions}
             
             خروجی باید در فرمت Markdown باشد. کلمات و عبارات کلیدی را با استفاده از Markdown به صورت **پررنگ** مشخص کن.
 
@@ -256,8 +288,13 @@ export async function generateNodeContent(
                 adaptiveInstruction = "مهم: کاربر در این موضوع تسلط دارد. توضیحات را به صورت خلاصه‌ای پیشرفته ارائه بده و بر روی نکات ظریف، کاربردهای خاص یا ارتباط آن با مفاهیم پیچیده‌تر تمرکز کن.";
             }
 
-            prompt = `وظیفه شما استخراج و سازماندهی **تمام** اطلاعات مربوط به مفهوم "${nodeTitle}" از متن کامل و تصاویر ارائه‌شده است. از خلاصه‌سازی یا حذف هرگونه جزئیات خودداری کنید. محتوا را به صورت جامع و کامل در پنج بخش ساختاریافته ارائه دهید.
+            prompt = `وظیفه شما استخراج و سازماندهی **تمام** اطلاعات مربوط به مفهوم "${nodeTitle}" از متن کامل و تصاویر ارائه‌شده است. از خلاصه‌سازی یا حذف هرگونه جزئیات خودداری کنید. محتوا را به صورت جامع و کامل در پنج بخش ساختاریافته و **بر اساس اولویت‌های کاربر** ارائه دهید.
 
+            **اولویت‌های شخصی‌سازی کاربر:**
+            ---
+            ${preferenceInstructions}
+            ---
+            
             ${adaptiveInstruction}
             
             خروجی باید در فرمت Markdown باشد و از هدرهای دقیق زیر برای جداسازی هر بخش استفاده کنید. هر هدر باید در یک خط جداگانه باشد:
@@ -609,7 +646,7 @@ export async function generateChatResponse(history: ChatMessage[], question: str
             ? `کاربر در حال مطالعه درسی با عنوان "${nodeTitle}" است. برای پاسخ به سوالات به این موضوع و محتوای کلی زیر توجه کن.`
             : `کاربر در حال بررسی نقشه ذهنی کلی است.`;
 
-        const prompt = `شما یک مربی یادگیری هوشمند, صمیمی و آگاه به نام "مربی هوشمند" هستید. وظیفه شما کمک به کاربر برای درک بهتر مطالب درسی است. بر اساس متن درس و تاریخچه گفتگو به سوال کاربر پاسخ دهید. پاسخ‌های خود را به صورت Markdown ارائه دهید.
+        const prompt = `شما یک مربی یادگیری هوشمند, صمیمی و آگاه به نام "مربی ذهن گاه" هستید. وظیفه شما کمک به کاربر برای درک بهتر مطالب درسی است. بر اساس متن درس و تاریخچه گفتگو به سوال کاربر پاسخ دهید. پاسخ‌های خود را به صورت Markdown ارائه دهید.
 
         ${contextPrompt}
         

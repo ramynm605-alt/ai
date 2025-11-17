@@ -11,11 +11,18 @@ interface QuizViewProps {
 
 const getDifficultyChip = (difficulty: 'آسان' | 'متوسط' | 'سخت') => {
     const styles = {
-        'آسان': 'bg-green-100 text-green-800',
-        'متوسط': 'bg-yellow-100 text-yellow-800',
-        'سخت': 'bg-red-100 text-red-800',
+        'آسان': 'bg-success/20 text-success',
+        'متوسط': 'bg-yellow-400/20 text-yellow-600',
+        'سخت': 'bg-destructive/20 text-destructive',
     };
-    return <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${styles[difficulty]}`}>{difficulty}</span>;
+    // A little hacky, but need to adjust for dark mode text colors
+    const darkStyles = {
+        'آسان': 'dark:text-green-300',
+        'متوسط': 'dark:text-yellow-300',
+        'سخت': 'dark:text-red-300'
+    }
+
+    return <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${styles[difficulty]} ${darkStyles[difficulty]}`}>{difficulty}</span>;
 }
 
 
@@ -25,8 +32,8 @@ const MultipleChoiceRenderer: React.FC<{ question: MultipleChoiceQuestion; answe
             <button
                 key={index}
                 onClick={() => onAnswer(index)}
-                className={`block w-full p-4 text-right border-2 rounded-lg transition-all duration-200 ${
-                    answer === index ? 'bg-primary/20 border-primary text-primary font-semibold' : 'bg-background border-border hover:border-primary'
+                className={`block w-full p-4 text-right border-2 rounded-lg transition-all duration-200 text-foreground ${
+                    answer === index ? 'bg-primary/20 border-primary font-semibold scale-[1.01]' : 'bg-background border-border hover:border-primary/70 hover:bg-accent hover:-translate-y-1'
                 }`}
             >
                 {option}
@@ -40,7 +47,7 @@ const ShortAnswerRenderer: React.FC<{ question: ShortAnswerQuestion; answer: str
         <textarea
             value={answer}
             onChange={(e) => onAnswer(e.target.value)}
-            className="w-full p-3 transition-colors duration-200 border rounded-md shadow-sm h-36 bg-background text-foreground border-border focus:ring-ring focus:border-primary"
+            className="w-full p-3 transition-colors duration-200 border rounded-md shadow-sm h-36 bg-background text-foreground border-border focus:ring-2 focus:ring-ring focus:border-primary"
             placeholder="پاسخ خود را اینجا بنویسید..."
         />
     </div>
@@ -135,11 +142,11 @@ const QuizView: React.FC<QuizViewProps> = ({ title, quiz, onSubmit }) => {
 
 
                 <div className="flex justify-between mt-8">
-                    <button onClick={handlePrev} disabled={currentQuestionIndex === 0} className="px-6 py-2 font-semibold rounded-md text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50">قبلی</button>
+                    <button onClick={handlePrev} disabled={currentQuestionIndex === 0} className="px-6 py-2 font-semibold rounded-md text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 active:scale-95">قبلی</button>
                     {currentQuestionIndex === quiz.questions.length - 1 && !quiz.isStreaming ? (
-                        <button onClick={() => onSubmit(answers)} disabled={!isAnswered} className="px-6 py-2 font-semibold text-white rounded-md bg-success hover:bg-success/90 disabled:opacity-50">ثبت آزمون</button>
+                        <button onClick={() => onSubmit(answers)} disabled={!isAnswered} className="px-6 py-2 font-semibold text-white rounded-md bg-success hover:bg-success/90 disabled:opacity-50 active:scale-95">ثبت آزمون</button>
                     ) : (
-                        <button onClick={handleNext} disabled={!isAnswered || isWaitingForQuestion} className="px-6 py-2 font-semibold text-white rounded-md bg-primary hover:bg-primary-hover disabled:opacity-50">بعدی</button>
+                        <button onClick={handleNext} disabled={!isAnswered || isWaitingForQuestion} className="px-6 py-2 font-semibold text-white rounded-md bg-primary hover:bg-primary-hover disabled:opacity-50 active:scale-95">بعدی</button>
                     )}
                 </div>
             </div>

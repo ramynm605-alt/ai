@@ -1,41 +1,120 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 
-const Spinner: React.FC = () => {
-  return (
-    <div className="brain-spinner">
-      <svg viewBox="0 0 100 100" className="brain-svg">
-        {/* Neural network paths */}
-        <g className="neural-paths">
-          <path d="M50 25 Q 40 32, 30 40" />
-          <path d="M50 25 Q 60 32, 70 40" />
-          <path d="M30 40 Q 38 48, 45 55" />
-          <path d="M70 40 Q 62 48, 55 55" />
-          <path d="M45 55 Q 35 60, 28 65" />
-          <path d="M55 55 Q 65 60, 72 65" />
-          <path d="M28 65 Q 35 70, 40 75" />
-          <path d="M72 65 Q 65 70, 60 75" />
-          <path d="M40 75 Q 45 80, 50 85" />
-          <path d="M60 75 Q 55 80, 50 85" />
-          <path d="M45 55 Q 50 55, 55 55" />
-          <path d="M30 40 Q 40 60, 28 65" />
-          <path d="M70 40 Q 60 60, 72 65" />
-        </g>
-        {/* Neural nodes */}
-        <g className="neural-nodes">
-          <circle cx="50" cy="25" r="3" />
-          <circle cx="30" cy="40" r="3" />
-          <circle cx="70" cy="40" r="3" />
-          <circle cx="45" cy="55" r="3" />
-          <circle cx="55" cy="55" r="3" />
-          <circle cx="28" cy="65" r="3" />
-          <circle cx="72" cy="65" r="3" />
-          <circle cx="40" cy="75" r="3" />
-          <circle cx="60" cy="75" r="3" />
-          <circle cx="50" cy="85" r="3" />
-        </g>
-      </svg>
-    </div>
-  );
+interface SpinnerProps {
+    size?: number;
+}
+
+const Spinner: React.FC<SpinnerProps> = ({ size = 150 }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        let animationFrameId: number;
+
+        canvas.width = size;
+        canvas.height = size;
+
+        const NODE_COUNT = Math.max(5, Math.floor(size / 12));
+        const MAX_DIST = size * 0.6;
+
+        const nodes: any[] = [];
+        
+        const getCssVar = (varName: string) => getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+        
+        let nodeColor: string;
+        let lineRgb: string;
+
+        // Function to update colors based on CSS variables
+        const updateColors = () => {
+            const theme = document.documentElement.getAttribute('data-theme') || 'balanced';
+            const primaryColor = getCssVar('--primary');
+            nodeColor = `rgb(${primaryColor})`;
+
+            if (theme === 'dark') {
+                lineRgb = '255, 215, 0'; // Pale Gold for dark theme
+            } else {
+                // For light and balanced themes, a muted color works well.
+                lineRgb = getCssVar('--muted-foreground'); 
+            }
+        };
+
+        updateColors();
+
+        for (let i = 0; i < NODE_COUNT; i++) {
+            nodes.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                vx: (Math.random() - 0.5) * 0.8,
+                vy: (Math.random() - 0.5) * 0.8,
+                radius: Math.random() * (size / 100) + 1,
+            });
+        }
+
+        const draw = () => {
+            if (!ctx) return;
+            // Update colors on each frame in case theme changes while loading
+            updateColors();
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Lines
+            for (let i = 0; i < NODE_COUNT; i++) {
+                for (let j = i + 1; j < NODE_COUNT; j++) {
+                    let dx = nodes[i].x - nodes[j].x;
+                    let dy = nodes[i].y - nodes[j].y;
+                    let dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < MAX_DIST) {
+                        ctx.strokeStyle = `rgba(${lineRgb}, ${1 - dist / MAX_DIST})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.beginPath();
+                        ctx.moveTo(nodes[i].x, nodes[i].y);
+                        ctx.lineTo(nodes[j].x, nodes[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            // Nodes
+            nodes.forEach(node => {
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+                ctx.fillStyle = nodeColor;
+                ctx.shadowColor = nodeColor;
+                ctx.shadowBlur = 6;
+                ctx.fill();
+            });
+            ctx.shadowBlur = 0;
+
+            // Move
+            nodes.forEach(node => {
+                node.x += node.vx;
+                node.y += node.vy;
+
+                if (node.x - node.radius < 0) { node.x = node.radius; node.vx *= -1; }
+                if (node.x + node.radius > canvas.width) { node.x = canvas.width - node.radius; node.vx *= -1; }
+                if (node.y - node.radius < 0) { node.y = node.radius; node.vy *= -1; }
+                if (node.y + node.radius > canvas.height) { node.y = canvas.height - node.radius; node.vy *= -1; }
+            });
+
+            animationFrameId = requestAnimationFrame(draw);
+        };
+
+        draw();
+
+        return () => {
+            cancelAnimationFrame(animationFrameId);
+        };
+    }, [size]);
+
+    return (
+        <div className="flex items-center justify-center" style={{ width: `${size}px`, height: `${size}px` }}>
+             <canvas ref={canvasRef} />
+        </div>
+    );
 };
 
 export default Spinner;

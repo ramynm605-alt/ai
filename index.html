@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>یادگیرنده هوشمند</title>
+    <title>ذهن گاه</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,157 +15,97 @@
       }
       
       /* Theme Variables */
-      :root { /* Balanced Theme (Default) */
-        --background: 249 250 251; /* gray-50 */
-        --foreground: 17 24 39; /* gray-900 */
-        --card: 255 255 255; /* white */
-        --card-foreground: 17 24 39; /* gray-900 */
-        --popover: 255 255 255; /* white */
-        --popover-foreground: 17 24 39; /* gray-900 */
-        --primary: 79 70 229; /* indigo-600 */
-        --primary-foreground: 238 242 255; /* indigo-50 */
-        --primary-hover: 67 56 202; /* indigo-700 */
-        --secondary: 243 244 246; /* gray-100 */
-        --secondary-foreground: 55 65 81; /* gray-700 */
-        --muted: 229 231 235; /* gray-200 */
-        --muted-foreground: 107 114 128; /* gray-500 */
-        --accent: 243 244 246; /* gray-100 */
-        --accent-foreground: 17 24 39; /* gray-900 */
-        --destructive: 220 38 38; /* red-600 */
+      :root { /* Balanced Theme (Default) - Professional Slate */
+        --background: 248 250 252; /* slate-50 */
+        --foreground: 15 23 42;    /* slate-900 */
+        --card: 255 255 255;       /* white */
+        --card-foreground: 15 23 42; /* slate-900 */
+        --popover: 255 255 255;      /* white */
+        --popover-foreground: 15 23 42; /* slate-900 */
+        --primary: 71 85 105;        /* slate-600 */
+        --primary-foreground: 248 250 252; /* slate-50 */
+        --primary-hover: 51 65 85;       /* slate-700 */
+        --secondary: 241 245 249;    /* slate-100 */
+        --secondary-foreground: 51 65 85; /* slate-700 */
+        --muted: 226 232 240;        /* slate-200 */
+        --muted-foreground: 100 116 139; /* slate-500 */
+        --accent: 241 245 249;       /* slate-100 */
+        --accent-foreground: 15 23 42; /* slate-900 */
+        --destructive: 220 38 38;      /* red-600 */
         --destructive-foreground: 254 242 242; /* red-50 */
-        --success: 22 163 74; /* green-600 */
+        --success: 22 163 74;        /* green-600 */
         --success-foreground: 240 253 244; /* green-50 */
-        --border: 229 231 235; /* gray-200 */
-        --input: 229 231 235; /* gray-200 */
-        --ring: 79 70 229; /* indigo-600 */
+        --border: 226 232 240;       /* slate-200 */
+        --input: 226 232 240;        /* slate-200 */
+        --ring: 71 85 105;           /* slate-600 */
       }
 
       /* Luxury Night Mode – Deep Professional */
       [data-theme="dark"] {
-        --background: 14 15 19; /* Deep Charcoal Black: #0E0F13 */
-        --foreground: 230 231 234; /* Soft Platinum White: #E6E7EA */
-        --card: 26 29 38; /* Graphite Blue-Grey: #1A1D26 */
-        --card-foreground: 230 231 234; /* Soft Platinum White: #E6E7EA */
-        --popover: 26 29 38; /* Graphite Blue-Grey: #1A1D26 */
-        --popover-foreground: 230 231 234; /* Soft Platinum White: #E6E7EA */
-        --primary: 216 179 106; /* Soft Royal Gold: #D8B36A */
-        --primary-foreground: 14 15 19; /* Deep Charcoal Black: #0E0F13 */
-        --primary-hover: 199 162 86; /* Darker Gold */
-        --secondary: 19 23 34; /* Deep Navy Overlay: #131722 */
-        --secondary-foreground: 230 231 234; /* Soft Platinum White: #E6E7EA */
-        --muted: 111 115 122; /* Disabled Grey: #6F737A */
-        --muted-foreground: 156 163 175; /* Lighter Grey */
-        --accent: 16 19 28; /* Shadow Indigo: #10131C */
-        --accent-foreground: 230 231 234; /* Soft Platinum White: #E6E7EA */
-        --destructive: 185 28 28; /* red-700 */
-        --destructive-foreground: 249 250 251; /* gray-50 */
-        --success: 74 182 212; /* Cyan Steel: #4AB6D4 */
-        --success-foreground: 14 15 19; /* Deep Charcoal Black: #0E0F13 */
-        --border: 26 29 38; /* Graphite Blue-Grey: #1A1D26 */
-        --input: 26 29 38; /* Graphite Blue-Grey: #1A1D26 */
-        --ring: 216 179 106; /* Soft Royal Gold: #D8B36A */
+        --background: 10 10 15;      /* Deeper Blueish Black */
+        --foreground: 230 231 234;   /* Soft Platinum White */
+        --card: 18 19 26;            /* Slightly Darker Card */
+        --card-foreground: 230 231 234;
+        --popover: 26 29 38;
+        --popover-foreground: 230 231 234;
+        --primary: 200 160 90;       /* Bronze Gold */
+        --primary-foreground: 10 10 15;
+        --primary-hover: 180 145 80;  /* Darker Bronze */
+        --secondary: 19 23 34;       /* Deep Navy Overlay */
+        --secondary-foreground: 230 231 234;
+        --muted: 51 57 71;           /* Muted Grey */
+        --muted-foreground: 156 163 175;
+        --accent: 28 32 44;
+        --accent-foreground: 230 231 234;
+        --destructive: 185 28 28;
+        --destructive-foreground: 249 250 251;
+        --success: 29 185 159;       /* Teal */
+        --success-foreground: 10 10 15;
+        --border: 36 41 53;          /* Subtle Dark Border */
+        --input: 36 41 53;
+        --ring: 200 160 90;
       }
 
       /* Luxury Day Mode – Bright Precision */
       [data-theme="light"] {
-        --background: 247 247 244; /* Misty Porcelain White: #F7F7F4 */
-        --foreground: 26 26 31; /* Carbon Black: #1A1A1F */
-        --card: 255 255 255; /* White */
-        --card-foreground: 26 26 31; /* Carbon Black: #1A1A1F */
-        --popover: 255 255 255; /* White */
-        --popover-foreground: 26 26 31; /* Carbon Black: #1A1A1F */
-        --primary: 201 164 94; /* Satin Gold: #C9A45E */
-        --primary-foreground: 255 255 255; /* White */
-        --primary-hover: 184 147 75; /* Darker Satin Gold */
-        --secondary: 227 228 230; /* Soft Marble Grey: #E3E4E6 */
-        --secondary-foreground: 26 26 31; /* Carbon Black: #1A1A1F */
-        --muted: 227 228 230; /* Soft Marble Grey: #E3E4E6 */
-        --muted-foreground: 94 97 103; /* Mid-Grey: #5E6167 */
-        --accent: 227 228 230; /* Soft Marble Grey: #E3E4E6 */
-        --accent-foreground: 26 26 31; /* Carbon Black: #1A1A1F */
-        --destructive: 239 68 68; /* red-500 */
-        --destructive-foreground: 255 255 255; /* white */
-        --success: 74 144 194; /* Cerulean Clean Blue: #4A90C2 */
-        --success-foreground: 255 255 255; /* white */
-        --border: 214 215 219; /* Frosted Silver: #D6D7DB */
-        --input: 214 215 219; /* Frosted Silver: #D6D7DB */
-        --ring: 201 164 94; /* Satin Gold: #C9A45E */
+        --background: 249 250 251;   /* Clean Off-White */
+        --foreground: 20 20 25;      /* Softer Carbon Black */
+        --card: 255 255 255;         /* White */
+        --card-foreground: 20 20 25;
+        --popover: 255 255 255;
+        --popover-foreground: 20 20 25;
+        --primary: 80 95 125;        /* Cadet Blue */
+        --primary-foreground: 255 255 255;
+        --primary-hover: 70 85 110;  /* Darker Cadet Blue */
+        --secondary: 241 245 249;    /* Soft Marble Grey */
+        --secondary-foreground: 20 20 25;
+        --muted: 229 231 235;
+        --muted-foreground: 94 97 103;
+        --accent: 241 245 249;
+        --accent-foreground: 20 20 25;
+        --destructive: 239 68 68;
+        --destructive-foreground: 255 255 255;
+        --success: 22 163 74;        /* Standard Green */
+        --success-foreground: 255 255 255;
+        --border: 229 231 235;       /* Frosted Silver */
+        --input: 229 231 235;
+        --ring: 80 95 125;
       }
-
-      /* Brain Spinner */
-      .brain-spinner {
-        width: 120px;
-        height: 120px;
+      
+      /* Global Interaction Styles */
+      *:focus-visible {
+        outline: 2px solid rgb(var(--ring) / 0.8);
+        outline-offset: 2px;
+        border-radius: 6px;
       }
-
-      .brain-svg {
-        width: 100%;
-        height: 100%;
-        overflow: visible; /* To see glows outside the viewbox */
+      button, a, [role="button"], input[type="checkbox"], select {
+        transition-property: color, background-color, border-color, box-shadow, transform;
+        transition-timing-function: ease-in-out;
+        transition-duration: 200ms;
       }
-
-      .neural-paths path {
-        fill: none;
-        stroke: rgb(var(--muted) / 0.5);
-        stroke-width: 0.75;
-        stroke-linecap: round;
-        stroke-dasharray: 100;
-        stroke-dashoffset: 100;
-        animation: draw-path 4s infinite ease-in-out;
-      }
-
-      /* Stagger path animations */
-      .neural-paths path:nth-child(2) { animation-delay: 0.2s; }
-      .neural-paths path:nth-child(3) { animation-delay: 0.4s; }
-      .neural-paths path:nth-child(4) { animation-delay: 0.6s; }
-      .neural-paths path:nth-child(5) { animation-delay: 0.8s; }
-      .neural-paths path:nth-child(6) { animation-delay: 1.0s; }
-      .neural-paths path:nth-child(7) { animation-delay: 1.2s; }
-      .neural-paths path:nth-child(8) { animation-delay: 1.4s; }
-      .neural-paths path:nth-child(9) { animation-delay: 1.6s; }
-      .neural-paths path:nth-child(10) { animation-delay: 1.8s; }
-      .neural-paths path:nth-child(11) { animation-delay: 2.0s; }
-      .neural-paths path:nth-child(12) { animation-delay: 2.2s; }
-      .neural-paths path:nth-child(13) { animation-delay: 2.4s; }
-
-      .neural-nodes circle {
-        fill: rgb(var(--primary));
-        animation: pulse-node 2s infinite ease-in-out;
-        filter: drop-shadow(0 0 2px rgb(var(--primary)));
-      }
-
-      /* Stagger node animations */
-      .neural-nodes circle:nth-child(2) { animation-delay: 0.1s; }
-      .neural-nodes circle:nth-child(3) { animation-delay: 0.2s; }
-      .neural-nodes circle:nth-child(4) { animation-delay: 0.3s; }
-      .neural-nodes circle:nth-child(5) { animation-delay: 0.4s; }
-      .neural-nodes circle:nth-child(6) { animation-delay: 0.5s; }
-      .neural-nodes circle:nth-child(7) { animation-delay: 0.6s; }
-      .neural-nodes circle:nth-child(8) { animation-delay: 0.7s; }
-      .neural-nodes circle:nth-child(9) { animation-delay: 0.8s; }
-      .neural-nodes circle:nth-child(10) { animation-delay: 0.9s; }
-
-      @keyframes pulse-node {
-        0%, 100% {
-          transform: scale(1);
-          opacity: 1;
-        }
-        50% {
-          transform: scale(1.3);
-          opacity: 0.7;
-        }
-      }
-
-      @keyframes draw-path {
-        0% {
-          stroke-dashoffset: 100;
-        }
-        50% {
-          stroke-dashoffset: 0;
-        }
-        100% {
-          stroke-dashoffset: -100;
-        }
+      button:active, a:active, [role="button"]:active {
+        transform: scale(0.97);
+        transition-duration: 100ms;
       }
      
       /* For Startup Screen */
@@ -247,6 +187,9 @@
         align-items: center;
         gap: 6px;
       }
+      .selection-popup:hover {
+        background-color: rgb(var(--accent));
+      }
 
       /* Reminder footnote styles */
       .reminder-trigger {
@@ -286,16 +229,35 @@
         transition: opacity 0.2s, transform 0.2s;
       }
 
-      /* Mind Map Animations */
+      /* Mind Map Animations & Styles */
       .mindmap-node {
         opacity: 0;
         transform: scale(0.5) translateY(20px);
         transition: opacity 0.4s ease-out, transform 0.4s ease-out, border-color 0.4s, box-shadow 0.4s;
       }
+      .mindmap-node:hover {
+        transform: translateY(-4px) scale(1.02);
+        box-shadow: 0 10px 20px rgb(var(--foreground) / 0.07), 0 4px 6px rgb(var(--foreground) / 0.05);
+      }
+      .mindmap-node.active-node {
+        border-color: rgb(var(--primary));
+        box-shadow: 0 0 15px -3px rgb(var(--primary)), 0 4px 6px -4px rgb(var(--primary));
+      }
       .mindmap-node-visible {
         opacity: 1;
         transform: scale(1) translateY(0);
       }
+      .mindmap-node.suggested-node {
+        box-shadow: 0 0 12px -2px rgb(var(--primary) / 0.7);
+        animation: pulse-suggested 2.5s infinite;
+      }
+
+      @keyframes pulse-suggested {
+        50% {
+          box-shadow: 0 0 20px 0px rgb(var(--primary) / 0.7);
+        }
+      }
+
       .mindmap-line {
         stroke-dasharray: 500;
         stroke-dashoffset: 500;
@@ -304,10 +266,131 @@
       .mindmap-line-visible {
         stroke-dashoffset: 0;
       }
-      .mindmap-line-active {
+      .mindmap-line-active, .mindmap-line.suggested-line {
           stroke: rgb(var(--primary));
           stroke-width: 3;
       }
+      
+      /* Stylish Textarea for HomePage */
+      .stylish-textarea-wrapper {
+        position: relative;
+        background-color: rgb(var(--card) / 0.6);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border-radius: 12px;
+        border: 1px solid rgb(var(--border));
+        transition: border-color 0.3s, box-shadow 0.3s;
+      }
+      .stylish-textarea-wrapper:focus-within {
+        border-color: rgb(var(--primary));
+        box-shadow: 0 0 0 3px rgb(var(--primary) / 0.2);
+      }
+      
+      /* Personalization Wizard */
+      .wizard-overlay {
+        position: fixed;
+        inset: 0;
+        background-color: rgb(var(--background) / 0.8);
+        backdrop-filter: blur(4px);
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.3s ease-in-out;
+      }
+      .wizard-overlay.open {
+        opacity: 1;
+      }
+      .wizard-container {
+        background-color: rgb(var(--card));
+        width: 90vw;
+        max-width: 600px;
+        border-radius: 16px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        transform: scale(0.95);
+        transition: transform 0.3s ease-in-out;
+        display: flex;
+        flex-direction: column;
+        height: 80vh;
+        max-height: 550px;
+      }
+      .wizard-overlay.open .wizard-container {
+        transform: scale(1);
+      }
+      .wizard-steps-wrapper {
+        flex-grow: 1;
+        overflow: hidden;
+      }
+      .wizard-steps {
+        display: flex;
+        height: 100%;
+        transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .wizard-step {
+        width: 100%;
+        flex-shrink: 0;
+        padding: 1.5rem 2rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+      .wizard-step-content {
+        width: 100%;
+        overflow-y: auto;
+        padding: 0 0.5rem;
+        margin: 0 -0.5rem;
+      }
+      .wizard-progress-bar {
+        width: 100%;
+        height: 4px;
+        background-color: rgb(var(--muted));
+      }
+      .wizard-progress-bar div {
+        height: 100%;
+        background-color: rgb(var(--primary));
+        transition: width 0.4s ease-in-out;
+      }
+      
+      .wizard-radio-group {
+        display: inline-flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 1rem;
+      }
+      .wizard-radio-group > div {
+        flex: 0 1 150px;
+      }
+      .wizard-radio-label {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        min-height: 60px;
+        padding: 1rem;
+        border: 2px solid rgb(var(--border));
+        background-color: rgb(var(--foreground) / 0.05);
+        border-radius: 8px;
+        cursor: pointer;
+        transition: border-color 0.2s, background-color 0.2s, transform 0.2s;
+        text-align: center;
+      }
+      .wizard-radio-label:hover {
+        border-color: rgb(var(--primary) / 0.5);
+        background-color: rgb(var(--accent));
+        transform: translateY(-2px);
+      }
+      .wizard-radio-input:checked + .wizard-radio-label {
+        border-color: rgb(var(--primary));
+        background-color: rgb(var(--primary) / 0.1);
+        font-weight: 600;
+      }
+      .wizard-radio-input {
+        display: none;
+      }
+
     </style>
   <script type="importmap">
 {
