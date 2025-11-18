@@ -1,6 +1,8 @@
+
+
 import React, { useState, useRef, useEffect } from 'react';
 import { MindMapNode, NodeContent } from '../types';
-import { ArrowRight, MessageSquare } from './icons';
+import { ArrowRight, MessageSquare, Sparkles } from './icons';
 
 interface NodeViewProps {
     node: MindMapNode;
@@ -27,7 +29,7 @@ const Section: React.FC<{ title: string; content: string }> = ({ title, content 
     <div className="mb-6">
         <h3 className="pb-2 mb-3 text-xl font-semibold border-b-2 text-primary border-primary/30">{title}</h3>
         {content ? (
-            <div className="node-content-section leading-relaxed text-card-foreground/90" dangerouslySetInnerHTML={{ __html: content }} />
+            <div className="node-content-section markdown-content leading-relaxed text-card-foreground/90" dangerouslySetInnerHTML={{ __html: content }} />
         ) : (
             <LoadingSkeleton />
         )}
@@ -47,10 +49,10 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
             const rect = range.getBoundingClientRect();
             if (viewRef.current) {
                 const containerRect = viewRef.current.getBoundingClientRect();
-                setReminderPopup(null); // Close reminder popup if text is selected
+                setReminderPopup(null); 
                 setSelectionPopup({
                     x: rect.left - containerRect.left + rect.width / 2,
-                    y: rect.top - containerRect.top - 10, // Position above the selection
+                    y: rect.top - containerRect.top - 10, 
                     text: text,
                 });
             }
@@ -61,7 +63,6 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            // Close any open popups when clicking outside
             if (selectionPopup) setSelectionPopup(null);
             if (reminderPopup) setReminderPopup(null);
         };
@@ -71,6 +72,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
         };
     }, [selectionPopup, reminderPopup]);
 
+    // Reminder handling logic remains the same
     useEffect(() => {
         const handleReminderClick = (event: MouseEvent) => {
             const target = event.target as HTMLElement;
@@ -79,17 +81,16 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                 if (reminderContent) {
                     const rect = target.getBoundingClientRect();
                     const containerRect = viewRef.current!.getBoundingClientRect();
-                    setSelectionPopup(null); // Close selection popup if a reminder is clicked
+                    setSelectionPopup(null);
                     setReminderPopup({
                         content: reminderContent,
                         x: rect.left - containerRect.left + rect.width / 2,
                         y: rect.top - containerRect.top,
                     });
-                    event.stopPropagation(); // Prevent document click listener from firing
+                    event.stopPropagation(); 
                 }
             }
         };
-
         const container = viewRef.current;
         container?.addEventListener('click', handleReminderClick);
         return () => {
@@ -104,7 +105,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                 <div
                     className="selection-popup"
                     style={{ left: selectionPopup.x, top: selectionPopup.y, transform: 'translateX(-50%) translateY(-100%)' }}
-                    onMouseDown={(e) => e.stopPropagation()} // Prevent hiding when clicking the popup itself
+                    onMouseDown={(e) => e.stopPropagation()}
                     onClick={() => {
                         onExplainRequest(selectionPopup.text);
                         setSelectionPopup(null);
@@ -118,7 +119,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                  <div
                     className="reminder-popup"
                     style={{ left: reminderPopup.x, top: reminderPopup.y }}
-                    onMouseDown={(e) => e.stopPropagation()} // Prevent closing on click
+                    onMouseDown={(e) => e.stopPropagation()}
                 >
                     {reminderPopup.content}
                 </div>
@@ -132,7 +133,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                 <h2 className="mb-8 text-3xl font-bold text-center text-card-foreground">{node.title}</h2>
                 {isIntroNode ? (
                     content.introduction ? (
-                         <div className="node-content-section leading-relaxed text-card-foreground/90" dangerouslySetInnerHTML={{ __html: content.introduction }} />
+                         <div className="node-content-section markdown-content leading-relaxed text-card-foreground/90" dangerouslySetInnerHTML={{ __html: content.introduction }} />
                     ) : (
                         <LoadingSkeleton />
                     )
@@ -140,12 +141,32 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                     <>
                         {content.introduction && <Section title="مقدمه" content={content.introduction} />}
                         {content.theory && <Section title="تئوری" content={content.theory} />}
-                        {content.example && <Section title="مثال" content={content.example} />}
+                        {content.example && <Section title="مثال کاربردی" content={content.example} />}
                         {content.connection && <Section title="ارتباط با سایر مفاهیم" content={content.connection} />}
                         {content.conclusion && <Section title="نتیجه‌گیری" content={content.conclusion} />}
                     </>
                 )}
                 
+                {content.suggestedQuestions && content.suggestedQuestions.length > 0 && (
+                    <div className="mt-8 mb-6">
+                        <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-muted-foreground">
+                            <Sparkles className="w-4 h-4 text-primary" />
+                            <span>سؤالات پیشنهادی (از مربی بپرسید):</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            {content.suggestedQuestions.map((q, i) => (
+                                <button 
+                                    key={i} 
+                                    onClick={() => onExplainRequest(q)}
+                                    className="px-3 py-1.5 text-sm text-left bg-secondary/50 hover:bg-secondary text-secondary-foreground rounded-full transition-colors border border-transparent hover:border-primary/30"
+                                >
+                                    {q}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 <div className={`flex flex-col items-center gap-4 pt-6 mt-8 border-t border-border sm:flex-row ${isIntroNode ? 'sm:justify-center' : 'sm:justify-between'}`}>
                     {isIntroNode ? (
                          <button 

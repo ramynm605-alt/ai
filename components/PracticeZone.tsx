@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { generatePracticeResponse } from '../services/geminiService';
 import Spinner from './Spinner';
@@ -69,7 +70,7 @@ const PracticeZone: React.FC = () => {
                         <MessageSquare className="w-5 h-5 text-primary" />
                         پاسخ هوشمند
                     </h3>
-                    <div className="prose max-w-none text-card-foreground" dangerouslySetInnerHTML={{ __html: response }} />
+                    <div className="markdown-content max-w-none text-card-foreground" dangerouslySetInnerHTML={{ __html: response }} />
                 </div>
             )}
         </div>

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatMessage } from '../types';
 import { XCircle, Maximize, Minimize, ArrowRight, BrainCircuit } from './icons';
@@ -87,7 +88,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
                     {history.map((msg, index) => (
                         <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                             <div
-                                className={`chat-message-bubble ${msg.role}`}
+                                className={`chat-message-bubble ${msg.role} markdown-content`}
                                 dangerouslySetInnerHTML={{ __html: msg.message }}
                             />
                         </div>

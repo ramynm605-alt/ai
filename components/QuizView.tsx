@@ -26,21 +26,32 @@ const getDifficultyChip = (difficulty: 'آسان' | 'متوسط' | 'سخت') => 
 }
 
 
-const MultipleChoiceRenderer: React.FC<{ question: MultipleChoiceQuestion; answer: number | null; onAnswer: (answer: number) => void; }> = ({ question, answer, onAnswer }) => (
-    <div className="space-y-3">
-        {question.options.map((option, index) => (
-            <button
-                key={index}
-                onClick={() => onAnswer(index)}
-                className={`block w-full p-4 text-right border-2 rounded-lg transition-all duration-200 text-foreground ${
-                    answer === index ? 'bg-primary/20 border-primary font-semibold scale-[1.01]' : 'bg-background border-border hover:border-primary/70 hover:bg-accent hover:-translate-y-1'
-                }`}
-            >
-                {option}
-            </button>
-        ))}
-    </div>
-);
+const MultipleChoiceRenderer: React.FC<{ question: MultipleChoiceQuestion; answer: number | null; onAnswer: (answer: number) => void; }> = ({ question, answer, onAnswer }) => {
+    if (!question.options || question.options.length === 0) {
+        return (
+            <div className="p-4 text-yellow-600 border border-yellow-200 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 dark:text-yellow-400 dark:border-yellow-800">
+                <p className="font-semibold">خطا در نمایش گزینه‌ها</p>
+                <p className="text-sm opacity-80">لطفاً این سوال را رد کنید یا صفحه را رفرش کنید.</p>
+            </div>
+        );
+    }
+    
+    return (
+        <div className="space-y-3">
+            {question.options.map((option, index) => (
+                <button
+                    key={index}
+                    onClick={() => onAnswer(index)}
+                    className={`block w-full p-4 text-right border-2 rounded-lg transition-all duration-200 text-foreground ${
+                        answer === index ? 'bg-primary/20 border-primary font-semibold scale-[1.01]' : 'bg-background border-border hover:border-primary/70 hover:bg-accent hover:-translate-y-1'
+                    }`}
+                >
+                    {option}
+                </button>
+            ))}
+        </div>
+    );
+};
 
 const ShortAnswerRenderer: React.FC<{ question: ShortAnswerQuestion; answer: string; onAnswer: (answer: string) => void; }> = ({ question, answer, onAnswer }) => (
     <div>

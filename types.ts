@@ -67,6 +67,7 @@ export interface MindMapNode {
     example: string;
     connection: string;
     conclusion:string;
+    suggestedQuestions: string[];
   }
 
   export interface PreAssessmentAnalysis {
@@ -79,6 +80,7 @@ export interface MindMapNode {
   export enum AppStatus {
     IDLE = 'IDLE',
     LOADING = 'LOADING',
+    PLAN_REVIEW = 'PLAN_REVIEW',
     PRE_ASSESSMENT = 'PRE_ASSESSMENT',
     GRADING_PRE_ASSESSMENT = 'GRADING_PRE_ASSESSMENT',
     PRE_ASSESSMENT_REVIEW = 'PRE_ASSESSMENT_REVIEW',
@@ -103,6 +105,18 @@ export interface MindMapNode {
     analysis: string;
   }
   
+  export interface GradingResult {
+    questionId: string;
+    isCorrect: boolean;
+    score: number;
+    analysis: string;
+  }
+  
+  export interface NodeProgress {
+      status: 'completed' | 'failed' | 'in_progress';
+      attempts: number;
+  }
+
   export interface AppState {
     theme: 'light' | 'balanced' | 'dark';
     status: AppStatus;
@@ -119,7 +133,7 @@ export interface MindMapNode {
     activeNodeId: string | null;
     nodeContents: { [key: string]: NodeContent };
     streamingNodeContent: NodeContent | null;
-    userProgress: { [key: string]: 'completed' | 'failed' | 'in_progress' };
+    userProgress: { [key: string]: NodeProgress };
     weaknesses: Weakness[];
     finalExam: Quiz | null;
     quizResults: QuizResult[] | null;
@@ -142,6 +156,6 @@ export interface MindMapNode {
     suggestedPath: string[] | null;
     preAssessmentAnalysis: PreAssessmentAnalysis | null;
     nodeContents: { [key: string]: NodeContent };
-    userProgress: { [key: string]: 'completed' | 'failed' | 'in_progress' };
+    userProgress: { [key: string]: NodeProgress };
     weaknesses: Weakness[];
   }

@@ -1,6 +1,7 @@
-import React, { useMemo, useState, useRef, useEffect } from 'react';
+
+import React, { useMemo, useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { MindMapNode as MindMapNodeType } from '../types';
-import { CheckCircle, Lock, FileQuestion } from './icons';
+import { CheckCircle, Lock, FileQuestion, Target } from './icons';
 
 interface MindMapProps {
     nodes: MindMapNodeType[];
@@ -46,6 +47,7 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
     const [isVisible, setIsVisible] = useState(false);
+    const hasCenteredRef = useRef(false);
 
     useEffect(() => {
         const timer = setTimeout(() => setIsVisible(true), 100); // Delay for animation
@@ -56,7 +58,11 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
         const resizeObserver = new ResizeObserver(entries => {
             if (entries[0]) {
                 const { width, height } = entries[0].contentRect;
-                setContainerSize({ width, height });
+                // Only update if dimensions actually changed significantly to prevent jitter
+                setContainerSize(prev => {
+                    if (Math.abs(prev.width - width) < 10 && Math.abs(prev.height - height) < 50) return prev;
+                    return { width, height };
+                });
             }
         });
 
@@ -76,31 +82,24 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
 
         const isPortraitLayout = containerSize.width < 768;
 
-        // Dynamic sizing for portrait mode to better fit content on smaller screens.
+        // Dynamic sizing adjustments for Mobile
         let nodeScaleFactor = 1.0;
-        let gapScaleFactor = 1.0;
-        
-        // Only apply scaling in portrait mode when there are more than 5 nodes.
-        if (isPortraitLayout && nodes.length > 5) {
-            // Reduce node size by 10% for every 2 nodes above the baseline of 5.
-            // Cap the scaling at 70% of the original size to maintain readability.
-            nodeScaleFactor = Math.max(0.7, 1 - Math.floor((nodes.length - 5) / 2) * 0.1);
-            
-            // Scale gaps less aggressively to prevent crowding.
-            gapScaleFactor = Math.max(0.85, 1 - Math.floor((nodes.length - 5) / 2) * 0.05);
+        if (isPortraitLayout) {
+             nodeScaleFactor = 0.9; 
         }
 
-        // Base sizes are reduced for portrait mode, and then scaled.
-        const R_NODE_WIDTH = isPortraitLayout ? 120 * nodeScaleFactor : 160;
-        const R_NODE_HEIGHT = isPortraitLayout ? 60 * nodeScaleFactor : 70;
-        const R_H_GAP = isPortraitLayout ? 45 * gapScaleFactor : 50;
-        const R_V_GAP = isPortraitLayout ? 45 * gapScaleFactor : 90; // Increased base V gap
+        // Reduced gaps for tighter mobile packing
+        const R_NODE_WIDTH = isPortraitLayout ? 130 * nodeScaleFactor : 160;
+        const R_NODE_HEIGHT = isPortraitLayout ? 70 * nodeScaleFactor : 70;
+        const R_H_GAP = isPortraitLayout ? 15 : 50; 
+        const R_V_GAP = isPortraitLayout ? 60 : 90; 
 
 
         type NodeWithChildren = MindMapNodeType & { children: NodeWithChildren[], level: number, x: number, y: number };
         const nodeMap = new Map<string, NodeWithChildren>(nodes.map(n => [n.id, { ...n, children: [], level: 0, x: 0, y: 0 }]));
         const roots: NodeWithChildren[] = [];
 
+        // Build Tree Structure
         nodes.forEach(node => {
             if (node.parentId && nodeMap.has(node.parentId)) {
                 nodeMap.get(node.parentId)!.children.push(nodeMap.get(node.id)!);
@@ -109,18 +108,26 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
             }
         });
 
+        // Defensive: If no roots found (circular or broken), force first node as root
+        if (roots.length === 0 && nodes.length > 0) {
+             roots.push(nodeMap.get(nodes[0].id)!);
+        }
+
         const levels: NodeWithChildren[][] = [];
         
         function assignLevels(node: MindMapNodeType, level: number) {
             const positionedNode = nodeMap.get(node.id)!;
-            if(positionedNode.level > 0 && positionedNode.level !== level) return;
-            if(positionedNode.level > 0) return;
-            
-            positionedNode.level = level;
+            // Prevent infinite recursion in cyclic graphs
+            if(positionedNode.level > 0 && positionedNode.level !== level) return; 
+            if(positionedNode.level > 0 && level > positionedNode.level) positionedNode.level = level; 
+            if(positionedNode.level === 0) positionedNode.level = level;
+
             if (!levels[level]) {
                 levels[level] = [];
             }
-            levels[level].push(positionedNode);
+            if (!levels[level].includes(positionedNode)) {
+                levels[level].push(positionedNode);
+            }
             positionedNode.children.forEach(child => assignLevels(child, level + 1));
         }
 
@@ -128,134 +135,139 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
         
         const positionedNodesList: NodeWithChildren[] = [];
         const lines: { x1: number, y1: number, x2: number, y2: number, parentId: string, childId: string }[] = [];
+        // Increased padding to prevent cut-off on mobile
+        const PADDING = 100;
         let finalWidth = 0;
         let finalHeight = 0;
-        const PADDING = 30;
 
         if (isPortraitLayout) {
-            // Vertical Layout Logic
-            let yOffset = 0;
-            levels.forEach((levelNodes, level) => {
-                let xOffset = level * (R_NODE_WIDTH + R_H_GAP);
-                levelNodes.forEach((node, i) => {
-                    node.x = xOffset;
-                    node.y = yOffset + i * (R_NODE_HEIGHT + R_V_GAP);
-                    positionedNodesList.push(node);
-                });
-            });
-
-            const positionedNodesMap = new Map<string, NodeWithChildren>(positionedNodesList.map(n => [n.id, n]));
+            // --- Vertical Tree Layout (Top-to-Bottom) for Mobile ---
             
-            let minY = Infinity, maxY = -Infinity, minX = Infinity, maxX = -Infinity;
+            let currentLeafX = 0;
 
-            const calculateTreeLayout = (node: NodeWithChildren, level: number, yPos: number): number => {
-                node.x = level * (R_NODE_WIDTH + R_H_GAP);
-                
+            const layoutVerticalNode = (node: NodeWithChildren) => {
+                node.children.forEach(layoutVerticalNode);
+
                 if (node.children.length === 0) {
-                    node.y = yPos;
-                    minY = Math.min(minY, node.y);
-                    maxY = Math.max(maxY, node.y + R_NODE_HEIGHT);
-                    minX = Math.min(minX, node.x);
-                    maxX = Math.max(maxX, node.x + R_NODE_WIDTH);
-                    return yPos + R_NODE_HEIGHT + R_V_GAP;
+                    node.x = currentLeafX;
+                    currentLeafX += R_NODE_WIDTH + R_H_GAP;
+                } else {
+                    const firstChild = node.children[0];
+                    const lastChild = node.children[node.children.length - 1];
+                    node.x = (firstChild.x + lastChild.x) / 2;
                 }
-                
-                let currentY = yPos;
-                const childYPositions: number[] = [];
-                node.children.forEach(child => {
-                    const childNode = positionedNodesMap.get(child.id)!;
-                    childYPositions.push(currentY + (childNode.children.length > 0 ? (R_NODE_HEIGHT / 2) : 0));
-                    currentY = calculateTreeLayout(childNode, level + 1, currentY);
-                });
-                
-                const firstChildY = positionedNodesMap.get(node.children[0].id)!.y;
-                const lastChildY = positionedNodesMap.get(node.children[node.children.length - 1].id)!.y;
-                node.y = firstChildY + (lastChildY - firstChildY) / 2;
 
-                minY = Math.min(minY, node.y);
-                maxY = Math.max(maxY, node.y + R_NODE_HEIGHT);
-                minX = Math.min(minX, node.x);
-                maxX = Math.max(maxX, node.x + R_NODE_WIDTH);
+                node.y = node.level * (R_NODE_HEIGHT + R_V_GAP);
+                positionedNodesList.push(node);
+            };
 
-                return currentY;
-            }
-
-            calculateTreeLayout(roots[0], 0, 0);
-
-            positionedNodesMap.forEach(node => {
-                if(node.parentId) {
-                    const parent = positionedNodesMap.get(node.parentId)!;
-                     lines.push({
-                        x1: parent.x + R_NODE_WIDTH,
-                        y1: parent.y + R_NODE_HEIGHT / 2,
-                        x2: node.x,
-                        y2: node.y + R_NODE_HEIGHT / 2,
-                        parentId: parent.id,
-                        childId: node.id,
-                    });
-                }
-            });
-
-            finalWidth = maxX - minX + PADDING * 2;
-            finalHeight = maxY - minY + PADDING * 2;
-
-            positionedNodesMap.forEach(node => {
-                node.x = node.x - minX + PADDING;
-                node.y = node.y - minY + PADDING;
-            });
-            lines.forEach(line => {
-                line.x1 = line.x1 - minX + PADDING;
-                line.y1 = line.y1 - minY + PADDING;
-                line.x2 = line.x2 - minX + PADDING;
-                line.y2 = line.y2 - minY + PADDING;
-            });
-
-            return { positionedNodes: Array.from(positionedNodesMap.values()), lines, width: finalWidth, height: finalHeight, isPortrait: isPortraitLayout, nodeWidth: R_NODE_WIDTH, nodeHeight: R_NODE_HEIGHT };
+            roots.forEach(root => layoutVerticalNode(root));
 
         } else {
-            // Horizontal Layout Logic
-            const maxWidth = (Math.max(...levels.map(level => level.length)) * (R_NODE_WIDTH + R_H_GAP));
-            levels.forEach((levelNodes, level) => {
-                const levelWidth = levelNodes.length * (R_NODE_WIDTH + R_H_GAP);
-                const startX = (maxWidth - levelWidth) / 2;
-                levelNodes.forEach((node, i) => {
-                    node.x = startX + i * (R_NODE_WIDTH + R_H_GAP);
-                    node.y = level * (R_NODE_HEIGHT + R_V_GAP);
-                    positionedNodesList.push(node);
-                });
-            });
-            
-            const positionedNodesMap = new Map<string, NodeWithChildren>(positionedNodesList.map(n => [n.id, n]));
-            positionedNodesList.forEach(node => {
-                node.children.forEach(child => {
-                     const childNode = positionedNodesMap.get(child.id);
-                     if(childNode) {
-                        lines.push({
-                            x1: node.x + R_NODE_WIDTH / 2,
-                            y1: node.y + R_NODE_HEIGHT,
-                            x2: childNode.x + R_NODE_WIDTH / 2,
-                            y2: childNode.y,
-                            parentId: node.id,
-                            childId: child.id,
-                        });
-                     }
-                });
-            });
-            
-            finalWidth = maxWidth + PADDING * 2;
-            finalHeight = (levels.length * (R_NODE_HEIGHT + R_V_GAP)) - R_V_GAP + PADDING * 2;
+            // --- Standard Layout for Desktop (still Top-to-Bottom for Org Chart style) ---
+             let currentLeafX = 0;
+             const layoutVerticalNode = (node: NodeWithChildren) => {
+                node.children.forEach(layoutVerticalNode);
+                if (node.children.length === 0) {
+                    node.x = currentLeafX;
+                    currentLeafX += R_NODE_WIDTH + R_H_GAP;
+                } else {
+                    const firstChild = node.children[0];
+                    const lastChild = node.children[node.children.length - 1];
+                    node.x = (firstChild.x + lastChild.x) / 2;
+                }
+                node.y = node.level * (R_NODE_HEIGHT + R_V_GAP);
+                positionedNodesList.push(node);
+            };
+            roots.forEach(root => layoutVerticalNode(root));
         }
 
-        positionedNodesList.forEach(n => { n.x += PADDING; n.y += PADDING; });
-        lines.forEach(l => { l.x1 += PADDING; l.x2 += PADDING; l.y1 += PADDING; l.y2 += PADDING; });
+        // Calculate Bounds
+        let minX = Infinity, maxX = -Infinity, maxY = -Infinity;
+        positionedNodesList.forEach(n => {
+            minX = Math.min(minX, n.x);
+            maxX = Math.max(maxX, n.x);
+            maxY = Math.max(maxY, n.y);
+        });
+
+        finalWidth = maxX - minX + R_NODE_WIDTH + PADDING * 2;
+        finalHeight = maxY + R_NODE_HEIGHT + PADDING * 2;
+
+        // Normalize & RTL FLIP
+        const flipX = true; 
+
+        const positionedNodesMap = new Map(positionedNodesList.map(n => [n.id, n]));
+        
+        positionedNodesList.forEach(node => {
+            // Normalize X to start at PADDING
+            const normalizedX = node.x - minX;
+            
+            if (flipX) {
+                // Flip: What was Left becomes Right
+                node.x = (maxX - minX) - normalizedX + PADDING;
+            } else {
+                node.x = normalizedX + PADDING;
+            }
+            
+            node.y = node.y + PADDING;
+        });
+
+        // Generate Lines
+        positionedNodesList.forEach(node => {
+            if (node.parentId && positionedNodesMap.has(node.parentId)) {
+                const parent = positionedNodesMap.get(node.parentId)!;
+                lines.push({
+                    x1: parent.x + R_NODE_WIDTH / 2,
+                    y1: parent.y + R_NODE_HEIGHT,
+                    x2: node.x + R_NODE_WIDTH / 2,
+                    y2: node.y,
+                    parentId: parent.id,
+                    childId: node.id,
+                });
+            }
+        });
 
         return { positionedNodes: positionedNodesList, lines, width: finalWidth, height: finalHeight, isPortrait: isPortraitLayout, nodeWidth: R_NODE_WIDTH, nodeHeight: R_NODE_HEIGHT };
 
     }, [nodes, containerSize]);
 
-    const needsHorizontalScroll = width > containerSize.width;
-    const justificationClass = needsHorizontalScroll ? 'justify-start' : 'justify-center';
-    
+    // Reset centering if layout mode changes (rotation)
+    useEffect(() => {
+        hasCenteredRef.current = false;
+    }, [isPortrait]);
+
+    const centerOnRoot = () => {
+         if (positionedNodes.length > 0 && containerRef.current) {
+            const root = positionedNodes.find(n => n.parentId === null) || positionedNodes[0];
+            if (root) {
+                const container = containerRef.current;
+                const scrollX = root.x - (container.clientWidth / 2) + (nodeWidth / 2);
+                const scrollY = root.y - (container.clientHeight / 2) + (nodeHeight / 2);
+                
+                container.scrollTo({
+                    left: scrollX,
+                    top: scrollY,
+                    behavior: 'smooth'
+                });
+            }
+        }
+    };
+
+    // Scroll to Root Node on Load (Only once per layout mode)
+    useLayoutEffect(() => {
+        if (positionedNodes.length > 0 && containerRef.current && !hasCenteredRef.current && width > 0) {
+            // Immediate scroll without animation for initial load to prevent jump
+             const root = positionedNodes.find(n => n.parentId === null) || positionedNodes[0];
+             if (root) {
+                const container = containerRef.current;
+                const scrollX = root.x - (container.clientWidth / 2) + (nodeWidth / 2);
+                const scrollY = root.y - (container.clientHeight / 2) + (nodeHeight / 2);
+                container.scrollTo({ left: scrollX, top: scrollY });
+                hasCenteredRef.current = true;
+             }
+        }
+    }, [positionedNodes.length, width, nodeWidth, nodeHeight]);
+
     const suggestedNodeIds = useMemo(() => new Set(suggestedPath || []), [suggestedPath]);
 
     const NodeComponent: React.FC<{ node: MindMapNodeType & { x?: number, y?: number }; index: number }> = ({ node, index }) => {
@@ -288,52 +300,58 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
 
         return (
             <div
-                className={`mindmap-node ${isVisible ? 'mindmap-node-visible' : ''} ${isActive ? 'active-node' : ''} ${isSuggestedAndIncomplete ? 'suggested-node' : ''} absolute flex flex-col justify-between p-1.5 text-center border-2 rounded-lg shadow-lg cursor-pointer bg-card text-card-foreground ${borderClass}`}
+                className={`mindmap-node ${isVisible ? 'mindmap-node-visible' : ''} ${isActive ? 'active-node' : ''} ${isSuggestedAndIncomplete ? 'suggested-node' : ''} absolute flex flex-col justify-between p-1.5 text-center border-2 rounded-lg shadow-lg cursor-pointer bg-card text-card-foreground ${borderClass} overflow-hidden`}
                 style={{
                     left: node.x,
                     top: node.y,
                     width: nodeWidth,
                     height: nodeHeight,
-                    transitionDelay: `${index * 50}ms`
+                    transitionDelay: `${index * 50}ms`,
+                    zIndex: isLocked ? 10 : 20 // Base z-index
                 }}
                 onClick={handleNodeClick}
                 aria-disabled={isLocked}
                 role="button"
                 tabIndex={isLocked ? -1 : 0}
             >
-                {isLocked && <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/70 backdrop-blur-sm"><Lock className="w-5 h-5 text-muted-foreground" /></div>}
+                {isLocked && (
+                    <div className="absolute inset-0 z-50 flex items-center justify-center rounded-lg bg-secondary/90 backdrop-blur-[2px]">
+                        <Lock className="w-6 h-6 text-muted-foreground" />
+                    </div>
+                )}
                 
                 {isSuggestedAndIncomplete && suggestedIndex !== -1 && (
-                    <div className="absolute flex items-center justify-center w-5 h-5 font-bold rounded-full -top-2 -right-2 bg-primary text-primary-foreground text-xs ring-2 ring-background">
+                    <div className="absolute flex items-center justify-center w-5 h-5 font-bold rounded-full -top-2 -right-2 bg-primary text-primary-foreground text-xs ring-2 ring-background z-30">
                         {suggestedIndex + 1}
                     </div>
                 )}
 
-                <div className="w-full">
-                    <h3 className={`${isPortrait ? 'text-xs' : 'text-sm'} font-bold leading-tight`}>{node.title}</h3>
+                <div className="flex flex-col justify-center w-full h-full px-1" dir="rtl">
+                    <h3 className={`${isPortrait ? 'text-xs' : 'text-sm'} font-bold leading-tight line-clamp-2`}>{node.title}</h3>
                     {node.sourcePages && node.sourcePages.length > 0 && 
-                        <p className="mt-0.5 text-xs text-muted-foreground">{formatPageNumbers(node.sourcePages)}</p>
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">{formatPageNumbers(node.sourcePages)}</p>
                     }
                 </div>
                 
-                <div className="flex items-center justify-between w-full">
+                <div className="absolute bottom-1 left-1 flex items-center gap-1">
                     <div 
-                        className={`w-2.5 h-2.5 rounded-full ${difficultyColorClass}`}
+                        className={`w-2 h-2 rounded-full ${difficultyColorClass}`}
                         title={`سطح دشواری: ${difficultyLevelText}`}
                     />
-                    {status !== 'completed' && !isLocked && !isIntroNode && (
-                        <button 
-                            onClick={handleQuizClick} 
-                            className="flex items-center justify-center w-5 h-5 rounded-full text-primary-foreground bg-primary hover:bg-primary-hover active:scale-95 transition-transform"
-                            title="شروع آزمون"
-                        >
-                            <FileQuestion className="w-2.5 h-2.5" />
-                        </button>
-                    )}
                 </div>
 
+                 {status !== 'completed' && !isLocked && !isIntroNode && (
+                    <button 
+                        onClick={handleQuizClick} 
+                        className="absolute bottom-1 right-1 flex items-center justify-center w-5 h-5 transition-transform rounded-full text-primary-foreground bg-primary hover:bg-primary-hover active:scale-95 z-20"
+                        title="شروع آزمون"
+                    >
+                        <FileQuestion className="w-2.5 h-2.5" />
+                    </button>
+                )}
+
                 {status === 'completed' && (
-                    <div className="absolute flex items-center justify-center w-5 h-5 rounded-full -bottom-2.5 bg-success">
+                    <div className="absolute flex items-center justify-center w-5 h-5 rounded-full -bottom-2.5 -right-1 bg-success z-20">
                         <CheckCircle className="w-3.5 h-3.5 text-white" />
                     </div>
                 )}
@@ -342,9 +360,19 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
     };
 
     return (
-        <div ref={containerRef} className={`relative flex items-start w-full h-full ${justificationClass}`}>
-            <div className="relative" style={{ width, height }}>
-                <svg className="absolute top-0 left-0" style={{ width, height, overflow: 'visible' }}>
+        <div ref={containerRef} className="relative w-full h-full overflow-auto bg-background/50" style={{ direction: 'ltr' }}>
+             {/* direction: ltr on container prevents browser RTL scroll weirdness with absolute positioning */}
+             
+            <button 
+                onClick={centerOnRoot}
+                className="absolute z-50 p-3 transition-transform rounded-full shadow-lg bottom-6 left-6 bg-card text-primary border border-border hover:bg-accent hover:scale-110 active:scale-95"
+                title="تمرکز بر مقدمه"
+            >
+               <Target className="w-6 h-6" />
+            </button>
+
+            <div className="relative mx-auto" style={{ width: Math.max(width, containerSize.width), height: Math.max(height, containerSize.height) }}>
+                <svg className="absolute top-0 left-0" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
                     <defs>
                         <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5"
                             markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -354,11 +382,9 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
                     {lines.map((line, i) => {
                          const isActive = activeNodeId === line.parentId || activeNodeId === line.childId;
                          const isSuggested = showSuggestedPath && suggestedNodeIds.has(line.parentId) && suggestedNodeIds.has(line.childId);
-                         const R_H_GAP = isPortrait ? 30 : 50;
-                         const R_V_GAP = isPortrait ? 25 : 90;
-                         const path = isPortrait
-                            ? `M${line.x1},${line.y1} C${line.x1 + R_H_GAP / 2},${line.y1} ${line.x2 - R_H_GAP / 2},${line.y2} ${line.x2},${line.y2}`
-                            : `M${line.x1},${line.y1} C${line.x1},${line.y1 + R_V_GAP / 2} ${line.x2},${line.y2 - R_V_GAP / 2} ${line.x2},${line.y2}`;
+                         
+                         // Simple Bezier curve for vertical tree
+                         const path = `M${line.x1},${line.y1} C${line.x1},${line.y1 + (line.y2 - line.y1) / 2} ${line.x2},${line.y2 - (line.y2 - line.y1) / 2} ${line.x2},${line.y2}`;
                          
                          return (
                             <path
