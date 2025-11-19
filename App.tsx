@@ -1,22 +1,24 @@
 
-import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef, Suspense } from 'react';
 import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse, generateRemedialNode, generateDailyChallenge, generateDeepAnalysis } from './services/geminiService';
 import { ArrowRight, BookOpen, Brain, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize, SlidersHorizontal, ChevronDown, Sparkles, Trash, Edit, Flame, Diamond, Scroll, User, LogOut, Wand } from './components/icons';
-import MindMap from './components/MindMap';
-import NodeView from './components/NodeView';
-import QuizView from './components/QuizView';
-import QuizReview from './components/QuizReview';
-import WeaknessTracker from './components/WeaknessTracker';
-import PracticeZone from './components/PracticeZone';
 import Spinner from './components/Spinner';
 import StartupScreen from './components/StartupScreen';
-import PreAssessmentReview from './components/PreAssessmentReview';
-import ChatPanel from './components/ChatPanel';
 import ParticleBackground from './components/ParticleBackground';
-import DailyBriefing from './components/DailyBriefing';
-import UserPanel from './components/UserPanel';
-import PersonalizationWizard from './components/PersonalizationWizard';
+
+// Lazy Load Components for Performance Optimization
+const MindMap = React.lazy(() => import('./components/MindMap'));
+const NodeView = React.lazy(() => import('./components/NodeView'));
+const QuizView = React.lazy(() => import('./components/QuizView'));
+const QuizReview = React.lazy(() => import('./components/QuizReview'));
+const WeaknessTracker = React.lazy(() => import('./components/WeaknessTracker'));
+const PracticeZone = React.lazy(() => import('./components/PracticeZone'));
+const PreAssessmentReview = React.lazy(() => import('./components/PreAssessmentReview'));
+const ChatPanel = React.lazy(() => import('./components/ChatPanel'));
+const DailyBriefing = React.lazy(() => import('./components/DailyBriefing'));
+const UserPanel = React.lazy(() => import('./components/UserPanel'));
+const PersonalizationWizard = React.lazy(() => import('./components/PersonalizationWizard'));
 
 const CURRENT_APP_VERSION = 7;
 declare var pdfjsLib: any;
@@ -715,7 +717,9 @@ function App() {
       }
   }, [state.status]);
 
-  const handleNodeSelect = (nodeId: string) => {
+  const handleNodeSelect = useCallback((nodeId: string) => {
+       if (state.activeNodeId === nodeId) return;
+
        dispatch({ type: 'SELECT_NODE', payload: nodeId });
        const node = state.mindMap.find(n => n.id === nodeId);
        
@@ -748,7 +752,7 @@ function App() {
                 console.error(err);
             });
        }
-  };
+  }, [state.activeNodeId, state.mindMap, state.nodeContents, state.preAssessmentAnalysis, state.sourceContent, state.sourcePageContents, state.sourceImages, state.preferences]);
   
   const handleCompleteIntro = () => {
       dispatch({ type: 'COMPLETE_INTRO_NODE' });
@@ -894,6 +898,8 @@ function App() {
       {showStartup && <StartupScreen onAnimationEnd={() => setShowStartup(false)} />}
       
       <ParticleBackground theme={state.theme} />
+
+      <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center z-[2000]"><Spinner size={50} /></div>}>
 
       {/* Daily Briefing Overlay */}
       {state.showDailyBriefing && (
@@ -1204,8 +1210,10 @@ function App() {
                 onInitialMessageConsumed={() => {}}
             />
         )}
-
+      
       </main>
+
+      </Suspense>
 
         {/* Mobile Bottom Nav */}
         <div className="lg:hidden bottom-nav">
