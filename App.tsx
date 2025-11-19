@@ -1,8 +1,8 @@
 
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef } from 'react';
-import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress } from './types';
-import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse } from './services/geminiService';
-import { ArrowRight, BookOpen, Brain, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize, SlidersHorizontal, ChevronDown, Sparkles, Trash, Edit } from './components/icons';
+import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession } from './types';
+import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse, generateRemedialNode, generateDailyChallenge, generateDeepAnalysis } from './services/geminiService';
+import { ArrowRight, BookOpen, Brain, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize, SlidersHorizontal, ChevronDown, Sparkles, Trash, Edit, Flame, Diamond, Scroll, User, LogOut, Wand } from './components/icons';
 import MindMap from './components/MindMap';
 import NodeView from './components/NodeView';
 import QuizView from './components/QuizView';
@@ -14,10 +14,29 @@ import StartupScreen from './components/StartupScreen';
 import PreAssessmentReview from './components/PreAssessmentReview';
 import ChatPanel from './components/ChatPanel';
 import ParticleBackground from './components/ParticleBackground';
+import DailyBriefing from './components/DailyBriefing';
+import UserPanel from './components/UserPanel';
+import PersonalizationWizard from './components/PersonalizationWizard';
 
-const CURRENT_APP_VERSION = 4;
+const CURRENT_APP_VERSION = 7;
 declare var pdfjsLib: any;
 
+// --- Security Utility ---
+const hashPassword = async (password: string): Promise<string> => {
+    const msgBuffer = new TextEncoder().encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
+// ------------------------
+
+const DEFAULT_BEHAVIOR: UserBehavior = {
+    lastLoginDate: new Date().toISOString(),
+    dailyStreak: 1,
+    studyHours: new Array(24).fill(0),
+    gritScore: 0,
+    totalPoints: 0
+};
 
 const initialState: AppState = {
   theme: 'dark',
@@ -53,28 +72,42 @@ const initialState: AppState = {
   isChatOpen: false,
   isChatFullScreen: false,
   chatHistory: [],
+  // Engagement
+  behavior: DEFAULT_BEHAVIOR,
+  rewards: [],
+  showDailyBriefing: false,
+  dailyChallengeContent: null,
+  // User Account
+  currentUser: null,
+  isUserPanelOpen: false,
+  savedSessions: []
 };
 
 function appReducer(state: AppState, action: any): AppState {
   switch (action.type) {
     case 'SET_THEME':
       return { ...state, theme: action.payload };
-    case 'START_GENERATION':
-      return { ...initialState, theme: state.theme, status: AppStatus.LOADING, sourceContent: action.payload.sourceContent, sourcePageContents: action.payload.sourcePageContents, sourceImages: action.payload.sourceImages, preferences: action.payload.preferences, loadingMessage: 'در حال تحلیل و ساختاردهی محتوای شما...' };
+    case 'INIT_WIZARD':
+       return { ...state, status: AppStatus.WIZARD, sourceContent: action.payload.sourceContent, sourcePageContents: action.payload.sourcePageContents, sourceImages: action.payload.sourceImages };
+    case 'FINISH_WIZARD':
+       return { ...state, status: AppStatus.LOADING, preferences: action.payload, loadingMessage: 'در حال تحلیل محتوا و طراحی مسیر یادگیری شخصی...' };
+    case 'START_GENERATION': // Directly from loading state
+      return { ...state, status: AppStatus.LOADING, loadingMessage: 'در حال تولید نقشه ذهنی...' };
     case 'MIND_MAP_GENERATED': {
-        const welcomeMessage: ChatMessage = { role: 'model', message: 'سلام! من مربی ذهن گاه شما هستم. ساختار پیشنهادی درس آماده است. آن را بررسی کنید.' };
+        const welcomeMessage: ChatMessage = { role: 'model', message: 'سلام! من مربی ذهن گاه شما هستم. نقشه یادگیری آماده است. بیایید با هم آن را بررسی کنیم.' };
         return { 
             ...state, 
-            status: AppStatus.PLAN_REVIEW, // New Step
+            status: AppStatus.PLAN_REVIEW, 
             mindMap: action.payload.mindMap, 
             suggestedPath: action.payload.suggestedPath,
-            preAssessment: { questions: [], isStreaming: true },
+            preAssessment: { questions: [], isStreaming: true }, // Initialize Pre-Assessment
             loadingMessage: null, 
             chatHistory: [welcomeMessage] 
         };
     }
-    case 'CONFIRM_PLAN': // Transition from Review to Pre-Assessment
-        return { ...state, status: AppStatus.PRE_ASSESSMENT, mindMap: action.payload.mindMap };
+    case 'CONFIRM_PLAN':
+        // Transition strictly to Pre-Assessment
+        return { ...state, status: AppStatus.PRE_ASSESSMENT };
     case 'PRE_ASSESSMENT_QUESTION_STREAMED':
       if (!state.preAssessment) return state;
       return { ...state, preAssessment: { ...state.preAssessment, questions: [...state.preAssessment.questions, action.payload] } };
@@ -106,20 +139,60 @@ function appReducer(state: AppState, action: any): AppState {
       if (!state.activeQuiz) return state;
       return { ...state, activeQuiz: { ...state.activeQuiz, isStreaming: false } };
     case 'SUBMIT_QUIZ':
-        return { ...state, status: AppStatus.GRADING_QUIZ };
+        // Update study hours histogram
+        const hour = new Date().getHours();
+        const newStudyHours = [...state.behavior.studyHours];
+        newStudyHours[hour]++;
+        return { 
+            ...state, 
+            status: AppStatus.GRADING_QUIZ,
+            behavior: { ...state.behavior, studyHours: newStudyHours } 
+        };
+    case 'START_REMEDIAL_GENERATION':
+        return { ...state, status: AppStatus.GENERATING_REMEDIAL, loadingMessage: 'در حال ایجاد درس تقویتی...' };
+    case 'CANCEL_REMEDIAL_GENERATION': 
+        return { ...state, status: AppStatus.QUIZ_REVIEW, loadingMessage: null };
+    case 'ADD_REMEDIAL_NODE': {
+        const { remedialNode, originalNodeId } = action.payload;
+        const newMindMap = [...state.mindMap, remedialNode];
+        let newPath = [...(state.suggestedPath || [])];
+        const originalIndex = newPath.indexOf(originalNodeId);
+        if (originalIndex !== -1) {
+            newPath.splice(originalIndex + 1, 0, remedialNode.id);
+        } else {
+            newPath.push(remedialNode.id);
+        }
+        return { 
+            ...state, 
+            mindMap: newMindMap, 
+            suggestedPath: newPath, 
+            status: AppStatus.QUIZ_REVIEW, 
+            activeNodeId: originalNodeId, 
+            loadingMessage: null 
+        };
+    }
     case 'QUIZ_ANALYSIS_LOADED': {
         const { results } = action.payload;
         const totalScore = results.reduce((sum: number, r: QuizResult) => sum + r.score, 0);
         const maxScore = results.reduce((sum: number, r: QuizResult) => sum + r.question.points, 0);
-        const passed = maxScore > 0 && (totalScore / maxScore) >= 0.7;
+        const proficiency = maxScore > 0 ? totalScore / maxScore : 0;
+        const passed = proficiency >= 0.7;
 
-        const currentProgress = state.userProgress[state.activeNodeId!] || { status: 'in_progress', attempts: 0 };
+        const currentProgress = state.userProgress[state.activeNodeId!] || { status: 'in_progress', attempts: 0, proficiency: 0, explanationCount: 0, lastAttemptScore: 0 };
         const attempts = currentProgress.attempts + 1;
         const status: NodeProgress['status'] = passed ? 'completed' : 'failed';
 
-        const newProgress = { ...state.userProgress, [state.activeNodeId!]: { status, attempts } };
+        const newProgress = { 
+            ...state.userProgress, 
+            [state.activeNodeId!]: { 
+                status, 
+                attempts,
+                proficiency,
+                explanationCount: currentProgress.explanationCount,
+                lastAttemptScore: totalScore
+            } 
+        };
         
-        // Unlock next nodes logic
         let newMindMap = [...state.mindMap];
         if (passed) {
             newMindMap = newMindMap.map(node => {
@@ -130,7 +203,6 @@ function appReducer(state: AppState, action: any): AppState {
             });
         }
 
-        // Weakness tracking logic (same as before)
         const newWeaknesses = [...state.weaknesses];
         results.forEach((r: QuizResult) => {
             if (!r.isCorrect) {
@@ -153,9 +225,26 @@ function appReducer(state: AppState, action: any): AppState {
             quizResults: results,
         };
     }
-    case 'FORCE_UNLOCK_NODE': { // Mercy Rule
+    case 'RECORD_EXPLANATION_REQUEST': {
+        const nodeId = state.activeNodeId;
+        if (!nodeId) return state;
+        const current = state.userProgress[nodeId] || { status: 'in_progress', attempts: 0, proficiency: 0, explanationCount: 0, lastAttemptScore: 0 };
+        return {
+            ...state,
+            userProgress: {
+                ...state.userProgress,
+                [nodeId]: { ...current, explanationCount: current.explanationCount + 1 }
+            }
+        };
+    }
+    case 'FORCE_UNLOCK_NODE': { 
         const nodeId = state.activeNodeId!;
-        const newProgress = { ...state.userProgress, [nodeId]: { status: 'completed' as const, attempts: state.userProgress[nodeId].attempts } };
+        const current = state.userProgress[nodeId] || { status: 'in_progress', attempts: 0, proficiency: 0, explanationCount: 0, lastAttemptScore: 0 };
+        
+        // Decrease Grit score for giving up
+        const newBehavior = { ...state.behavior, gritScore: state.behavior.gritScore - 1 };
+
+        const newProgress = { ...state.userProgress, [nodeId]: { ...current, status: 'completed' as const } };
         const newMindMap = state.mindMap.map(node => 
             node.parentId === nodeId ? { ...node, locked: false } : node
         );
@@ -167,12 +256,23 @@ function appReducer(state: AppState, action: any): AppState {
             quizResults: null,
             userProgress: newProgress,
             mindMap: newMindMap,
+            behavior: newBehavior
         };
+    }
+    case 'RETRY_QUIZ_IMMEDIATELY': {
+        // Increase Grit score for trying again
+        return { ...state, behavior: { ...state.behavior, gritScore: state.behavior.gritScore + 1 } };
+    }
+    case 'UNLOCK_REWARD': {
+        const newReward = action.payload;
+        // Deduplicate
+        if (state.rewards.some(r => r.id === newReward.id)) return state;
+        return { ...state, rewards: [...state.rewards, newReward] };
     }
      case 'COMPLETE_INTRO_NODE': {
         const rootNodeId = state.mindMap.find(n => n.parentId === null)?.id;
         if (!rootNodeId) return { ...state, status: AppStatus.LEARNING, activeNodeId: null };
-        const newProgress = { ...state.userProgress, [rootNodeId]: { status: 'completed' as const, attempts: 1 } };
+        const newProgress = { ...state.userProgress, [rootNodeId]: { status: 'completed' as const, attempts: 1, proficiency: 1, explanationCount: 0, lastAttemptScore: 100 } };
         const newMindMap = state.mindMap.map(node => node.parentId === rootNodeId ? { ...node, locked: false } : node);
         return { ...state, status: AppStatus.LEARNING, activeNodeId: null, userProgress: newProgress, mindMap: newMindMap };
     }
@@ -191,853 +291,818 @@ function appReducer(state: AppState, action: any): AppState {
     case 'SUMMARY_LOADED':
         return { ...state, status: AppStatus.SUMMARY, finalExam: null, correctiveSummary: action.payload.summary };
     case 'LOAD_STATE':
-        return { ...initialState, ...action.payload, status: action.payload.preAssessmentAnalysis ? AppStatus.LEARNING : AppStatus.IDLE };
-    case 'RESET':
-      return { ...initialState, theme: state.theme };
-    case 'ERROR':
-      return { ...state, status: AppStatus.ERROR, error: action.payload, loadingMessage: null };
-    case 'OPEN_CHAT':
-        return { ...state, isChatOpen: true };
-    case 'CLOSE_CHAT':
-        return { ...state, isChatOpen: false, isChatFullScreen: false };
-    case 'TOGGLE_CHAT_FULLSCREEN':
-        return { ...state, isChatFullScreen: !state.isChatFullScreen };
-    case 'ADD_CHAT_MESSAGE':
-        const newHistory = [...state.chatHistory];
-        if (newHistory.length > 0 && newHistory[newHistory.length - 1].message === '...') {
-            newHistory[newHistory.length - 1] = action.payload;
-        } else {
-            newHistory.push(action.payload);
+        return { ...initialState, ...action.payload, currentUser: state.currentUser, savedSessions: state.savedSessions, status: action.payload.preAssessmentAnalysis ? AppStatus.LEARNING : AppStatus.IDLE };
+    case 'CHECK_DAILY_STATUS': {
+        const lastLogin = new Date(state.behavior.lastLoginDate);
+        const now = new Date();
+        const diffHours = (now.getTime() - lastLogin.getTime()) / (1000 * 60 * 60);
+        
+        let newStreak = state.behavior.dailyStreak;
+        let showBriefing = false;
+
+        // Only show daily briefing if user has some progress (MindMap exists)
+        if (state.mindMap.length > 0) {
+            if (diffHours > 24 && diffHours < 48) {
+                newStreak += 1;
+                showBriefing = true;
+            } else if (diffHours >= 48) {
+                newStreak = 1;
+                showBriefing = true;
+            }
         }
-        return { ...state, chatHistory: newHistory };
+
+        const newBehavior = { 
+            ...state.behavior, 
+            lastLoginDate: now.toISOString(), 
+            dailyStreak: newStreak 
+        };
+
+        return {
+            ...state,
+            behavior: newBehavior,
+            showDailyBriefing: showBriefing
+        };
+    }
+    case 'DISMISS_BRIEFING':
+        return { ...state, showDailyBriefing: false };
+    case 'SET_DAILY_CHALLENGE':
+        return { ...state, dailyChallengeContent: action.payload };
+    // --- User Panel Actions ---
+    case 'TOGGLE_USER_PANEL':
+        return { ...state, isUserPanelOpen: !state.isUserPanelOpen };
+    case 'SET_USER':
+        return { ...state, currentUser: action.payload };
+    case 'LOGOUT':
+        return { ...state, currentUser: null, savedSessions: [] };
+    case 'UPDATE_SAVED_SESSIONS':
+        return { ...state, savedSessions: action.payload };
+    case 'TOGGLE_CHAT':
+      return { ...state, isChatOpen: !state.isChatOpen };
+    case 'TOGGLE_FULLSCREEN_CHAT':
+      return { ...state, isChatFullScreen: !state.isChatFullScreen };
+    case 'ADD_CHAT_MESSAGE':
+      return { ...state, chatHistory: [...state.chatHistory, action.payload] };
+    case 'SET_ERROR':
+      return { ...state, error: action.payload, status: AppStatus.ERROR, loadingMessage: null };
     default:
       return state;
   }
 }
 
-// ... (TabButton and BottomNavItem components remain same)
-const TabButton: React.FC<{ active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }> = ({ active, onClick, icon, children }) => (
-    <button onClick={onClick} className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${active ? 'bg-primary text-primary-foreground shadow-md' : 'text-secondary-foreground hover:bg-accent hover:text-accent-foreground hover:-translate-y-0.5'}`}>
-        {icon}
-        {children}
-    </button>
-);
-
-const BottomNavItem: React.FC<{ active: boolean; onClick: () => void; icon: React.ReactNode; label: string }> = ({ active, onClick, icon, label }) => (
-    <button onClick={onClick} className={`bottom-nav-item ${active ? 'active' : ''}`}>
-        <div className="w-6 h-6">{icon}</div>
-        <span>{label}</span>
-    </button>
-);
-
-// Plan Review Component
-const PlanReview: React.FC<{ 
-    nodes: MindMapNode[], 
-    onConfirm: (updatedNodes: MindMapNode[]) => void 
-}> = ({ nodes, onConfirm }) => {
-    const [currentNodes, setCurrentNodes] = useState(nodes);
-
-    const handleDelete = (id: string) => {
-        // Can't delete root
-        const node = currentNodes.find(n => n.id === id);
-        if (!node?.parentId) return;
-        
-        // Simple removal for now (children would be orphaned in a real app, but prompt usually ensures depth 1 or 2)
-        setCurrentNodes(currentNodes.filter(n => n.id !== id));
-    };
-
-    return (
-        <div className="flex flex-col items-center justify-center min-h-full p-6">
-             <div className="w-full max-w-3xl p-6 border rounded-lg shadow-lg bg-card">
-                <h2 className="mb-4 text-2xl font-bold text-center">بررسی ساختار درس</h2>
-                <p className="mb-6 text-center text-muted-foreground">قبل از شروع، می‌توانید بخش‌های اضافی را حذف کنید تا مسیر یادگیری کوتاه‌تر شود.</p>
-                
-                <div className="space-y-2 max-h-[60vh] overflow-y-auto mb-6">
-                    {currentNodes.map(node => (
-                        <div key={node.id} className="flex items-center justify-between p-3 border rounded-md bg-background border-border">
-                            <div className="flex items-center gap-3">
-                                <div className={`w-2 h-2 rounded-full ${node.parentId ? 'bg-secondary-foreground' : 'bg-primary'}`}></div>
-                                <span className={node.parentId ? '' : 'font-bold'}>{node.title}</span>
-                            </div>
-                            {node.parentId && (
-                                <button onClick={() => handleDelete(node.id)} className="p-2 transition-colors rounded-full text-destructive hover:bg-destructive/10">
-                                    <Trash className="w-4 h-4" />
-                                </button>
-                            )}
-                        </div>
-                    ))}
-                </div>
-
-                <button onClick={() => onConfirm(currentNodes)} className="w-full py-3 font-bold text-white rounded-lg bg-primary hover:bg-primary-hover">
-                    تایید طرح و شروع آزمون تعیین سطح
-                </button>
-             </div>
-        </div>
-    );
-};
-
-
-export default function App() {
+function App() {
   const [state, dispatch] = useReducer(appReducer, initialState);
-  const [currentView, setCurrentView] = useState<'learning' | 'weaknesses' | 'practice'>('learning');
-  const [showSuggestedPath, setShowSuggestedPath] = useState(true);
-  const [showStartupScreen, setShowStartupScreen] = useState(true);
-  const [chatInitialMessage, setChatInitialMessage] = useState('');
+  const [showStartup, setShowStartup] = useState(true);
+  const [textInput, setTextInput] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', state.theme);
-  }, [state.theme]);
+      // Initialize Theme
+      const storedTheme = localStorage.getItem('theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', storedTheme);
+      dispatch({ type: 'SET_THEME', payload: storedTheme });
 
-  // ... (handleStart and other handlers)
-
-  const handleStart = async (sourceContent: string, sourcePageContents: string[] | null, sourceImages: {mimeType: string, data: string}[], preferences: LearningPreferences) => {
-    dispatch({ type: 'START_GENERATION', payload: { sourceContent, sourcePageContents, sourceImages, preferences } });
-    try {
-      await generateLearningPlan(
-            sourceContent, 
-            sourcePageContents, 
-            sourceImages, 
-            preferences,
-            (mindMap, suggestedPath) => {
-                dispatch({ type: 'MIND_MAP_GENERATED', payload: { mindMap, suggestedPath } });
-            },
-            (question) => {
-                dispatch({ type: 'PRE_ASSESSMENT_QUESTION_STREAMED', payload: question });
-            }
-        );
-        dispatch({ type: 'PRE_ASSESSMENT_STREAM_END' });
-    } catch (err) {
-      console.error(err);
-      dispatch({ type: 'ERROR', payload: 'خطا در ایجاد طرح درس. لطفاً دوباره تلاش کنید.' });
-    }
-  };
-
-  const handleConfirmPlan = (updatedNodes: MindMapNode[]) => {
-      dispatch({ type: 'CONFIRM_PLAN', payload: { mindMap: updatedNodes } });
-  };
-
-  // ... (Rest of handlers: handleSubmitPreAssessment, handleSelectNode, etc. remain mostly same)
-    
-  const handleSubmitPreAssessment = async (answers: Record<string, UserAnswer>) => {
-    dispatch({ type: 'SUBMIT_PRE_ASSESSMENT', payload: answers });
-    try {
-        const analysis = await analyzePreAssessment(state.preAssessment!.questions, answers, state.sourceContent);
-        dispatch({ type: 'PRE_ASSESSMENT_ANALYSIS_LOADED', payload: analysis });
-    } catch (err) {
-        console.error(err);
-        dispatch({ type: 'ERROR', payload: 'خطا در تحلیل پیش‌آزمون.' });
-    }
-  };
-
-  const handleSelectNode = useCallback(async (nodeId: string) => {
-    dispatch({ type: 'SELECT_NODE', payload: nodeId });
-    try {
-        if (state.nodeContents[nodeId]) {
-            dispatch({ type: 'NODE_CONTENT_LOADED', payload: state.nodeContents[nodeId] });
-            return;
-        }
-        dispatch({ type: 'NODE_CONTENT_STREAM_START' });
-        const strengths = state.preAssessmentAnalysis?.strengths || [];
-        const weaknesses = state.preAssessmentAnalysis?.weaknesses || [];
-        const isIntroNode = state.mindMap.find(n => n.id === nodeId)?.parentId === null;
-
-        const content = await generateNodeContent(
-            state.mindMap.find(n => n.id === nodeId)!.title,
-            state.sourceContent,
-            state.sourceImages,
-            state.preferences,
-            strengths,
-            weaknesses,
-            isIntroNode,
-            (partialContent) => {
-                dispatch({ type: 'NODE_CONTENT_STREAM_UPDATE', payload: partialContent });
-            }
-        );
-        dispatch({ type: 'NODE_CONTENT_STREAM_END', payload: { nodeId, content } });
-    } catch (err) {
-        console.error(err);
-        dispatch({ type: 'ERROR', payload: 'خطا در بارگذاری محتوای درس.' });
-    }
-}, [state.mindMap, state.sourceContent, state.sourceImages, state.preferences, state.nodeContents, state.preAssessmentAnalysis]);
-
-  const handleStartQuiz = useCallback(async (nodeId: string) => {
-    dispatch({ type: 'START_QUIZ', payload: nodeId });
-    try {
-        const finalQuiz = await generateQuiz(
-            state.mindMap.find(n => n.id === nodeId)!.title,
-            state.sourceContent,
-            state.sourceImages,
-            (question: QuizQuestion) => {
-                dispatch({ type: 'QUIZ_QUESTION_STREAMED', payload: question });
-            }
-        );
-        dispatch({ type: 'QUIZ_STREAM_END', payload: finalQuiz });
-    } catch (err) {
-        console.error(err);
-        dispatch({ type: 'ERROR', payload: 'خطا در ایجاد آزمون.' });
-    }
-  }, [state.mindMap, state.sourceContent, state.sourceImages]);
-
-  const handleSubmitQuiz = useCallback(async (answers: Record<string, UserAnswer>) => {
-    dispatch({ type: 'SUBMIT_QUIZ' });
-    try {
-        const gradedResults = await gradeAndAnalyzeQuiz(state.activeQuiz!.questions, answers, state.sourceContent, state.sourceImages);
-        
-        const resultsWithFullData = gradedResults.map(res => {
-            const question = state.activeQuiz!.questions.find(q => q.id === res.questionId)!;
-            return {
-                ...res,
-                question,
-                userAnswer: answers[question.id],
-            };
-        });
-        
-        dispatch({ type: 'QUIZ_ANALYSIS_LOADED', payload: { results: resultsWithFullData } });
-
-    } catch (err) {
-        console.error(err);
-        dispatch({ type: 'ERROR', payload: 'خطا در تصحیح آزمون.' });
-    }
-  }, [state.activeQuiz, state.sourceContent, state.sourceImages]);
-
-  // ... (Final exam handlers, save/load etc.)
-  const handleStartFinalExam = async () => {
-    dispatch({ type: 'START_FINAL_EXAM' });
-    try {
-        const weaknessTopics = state.weaknesses.map(w => state.mindMap.find(n => n.title.includes(w.question.substring(0,20)))?.title).filter(Boolean).join(', ');
-        await generateFinalExam(
-            state.sourceContent, 
-            state.sourceImages, 
-            weaknessTopics,
-            (question) => {
-                dispatch({ type: 'FINAL_EXAM_QUESTION_STREAMED', payload: question });
-            }
-        );
-        dispatch({ type: 'FINAL_EXAM_STREAM_END' });
-    } catch (err) {
-        dispatch({ type: 'ERROR', payload: 'خطا در ایجاد آزمون نهایی.' });
-    }
-  };
-
-  const handleCompleteFinalExam = async (answers: Record<string, UserAnswer>) => {
-    dispatch({ type: 'COMPLETE_FINAL_EXAM' });
-    try {
-        const incorrectAnswersForSummary = Object.entries(answers).map(([qid, uAns]) => {
-          const q = state.finalExam!.questions.find(q => q.id === qid)!;
-          let isCorrect = false;
-          if (q.type === 'multiple-choice') isCorrect = uAns === q.correctAnswerIndex;
-          return { q, uAns, isCorrect };
-        })
-        .filter(item => !item.isCorrect)
-        .map(item => ({ question: item.q.question, correctAnswer: item.q.type === 'multiple-choice' ? item.q.options[item.q.correctAnswerIndex] : 'Complex Answer' }));
-
-        const summary = await generateCorrectiveSummary(state.sourceContent, state.sourceImages, incorrectAnswersForSummary);
-        dispatch({ type: 'SUMMARY_LOADED', payload: { summary } });
-    } catch (err) {
-        dispatch({ type: 'ERROR', payload: 'خطا در ایجاد خلاصه اصلاحی.' });
-    }
-  };
-
-  const handleBackToPlan = () => {
-    const rootNodeId = state.mindMap.find(n => n.parentId === null)?.id;
-    if (rootNodeId && state.activeNodeId === rootNodeId) {
-        dispatch({ type: 'COMPLETE_INTRO_NODE' });
-    } else {
-        dispatch({ type: 'START_PERSONALIZED_LEARNING' });
-    }
-  };
-  
-  const handleForceUnlock = () => {
-      dispatch({ type: 'FORCE_UNLOCK_NODE' });
-  };
-
-   // ... (Save/Load/Chat handlers same as before)
-  const handleSaveProgress = () => {
-      // ... same code
-      const savableState: SavableState = {
-        version: CURRENT_APP_VERSION,
-        sourceContent: state.sourceContent,
-        sourcePageContents: state.sourcePageContents,
-        sourceImages: state.sourceImages,
-        preferences: state.preferences,
-        mindMap: state.mindMap,
-        suggestedPath: state.suggestedPath,
-        preAssessmentAnalysis: state.preAssessmentAnalysis,
-        nodeContents: state.nodeContents,
-        userProgress: state.userProgress,
-        weaknesses: state.weaknesses,
-    };
-    const blob = new Blob([JSON.stringify(savableState, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `zehn-gah-progress-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleLoadProgress = (file: File) => {
-      // ... same code
-      const reader = new FileReader();
-      reader.onload = (event) => {
+      // Initialize User from LocalStorage
+      const storedUser = localStorage.getItem('zehngah_current_user');
+      if (storedUser) {
           try {
-              const loadedData = JSON.parse(event.target?.result as string);
-              dispatch({ type: 'LOAD_STATE', payload: loadedData });
+              const user: UserProfile = JSON.parse(storedUser);
+              dispatch({ type: 'SET_USER', payload: user });
+              
+              // Load sessions
+              const storedSessions = localStorage.getItem(`zehngah_sessions_${user.id}`);
+              if (storedSessions) {
+                  dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: JSON.parse(storedSessions) });
+              }
           } catch (e) {
-              dispatch({ type: 'ERROR', payload: 'فایل ذخیره شده معتبر نیست.' });
+              console.error("Error parsing stored user", e);
           }
-      };
-      reader.readAsText(file);
-  };
-
-  const handleSendChatMessage = async (message: string) => {
-      // ... same code
-    const userMessage: ChatMessage = { role: 'user', message };
-    dispatch({ type: 'ADD_CHAT_MESSAGE', payload: userMessage });
-    
-    const loadingMessage: ChatMessage = { role: 'model', message: '...' };
-    dispatch({ type: 'ADD_CHAT_MESSAGE', payload: loadingMessage });
-
-    try {
-        const activeNodeTitle = state.activeNodeId ? state.mindMap.find(n => n.id === state.activeNodeId)?.title || null : null;
-        const historyForAI = [...state.chatHistory, userMessage];
-        const response = await generateChatResponse(historyForAI, message, activeNodeTitle, state.sourceContent);
-        const modelMessage: ChatMessage = { role: 'model', message: response };
-        dispatch({ type: 'ADD_CHAT_MESSAGE', payload: modelMessage });
-
-    } catch (err) {
-        const errorMessage: ChatMessage = { role: 'model', message: 'خطا در برقراری ارتباط.' };
-        dispatch({ type: 'ADD_CHAT_MESSAGE', payload: errorMessage });
-    }
-  };
-  
-    const handleExplainRequest = (text: string) => {
-        setChatInitialMessage(text.endsWith('?') ? text : `لطفاً این بخش را بیشتر توضیح بده: "${text}"`);
-        dispatch({ type: 'OPEN_CHAT' });
-    };
-
-  const orderedNodes = useMemo(() => {
-      // ... same code
-      if (!state.mindMap || state.mindMap.length === 0) return [];
-    type MindMapNodeWithChildren = MindMapNode & { children: MindMapNodeWithChildren[] };
-    const nodesById = new Map<string, MindMapNodeWithChildren>(state.mindMap.map(node => [node.id, { ...node, children: [] }]));
-    const roots: MindMapNodeWithChildren[] = [];
-    state.mindMap.forEach(node => {
-        const currentNode = nodesById.get(node.id)!;
-        if (node.parentId && nodesById.has(node.parentId)) {
-            nodesById.get(node.parentId)!.children.push(currentNode);
-        } else {
-            roots.push(currentNode);
-        }
-    });
-    const ordered: MindMapNode[] = [];
-    const queue: MindMapNodeWithChildren[] = [...roots];
-    while (queue.length > 0) {
-        const node = queue.shift()!;
-        const originalNode = state.mindMap.find(n => n.id === node.id);
-        if (originalNode) { ordered.push(originalNode); }
-        if (node.children) { queue.push(...node.children); }
-    }
-    return ordered;
-  }, [state.mindMap]);
-
-  
-  const renderContent = () => {
-    const LoadingScreen = ({ message, subMessage }: { message: string, subMessage?: string }) => (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-8 text-center bg-background/80 backdrop-blur-sm fade-in">
-            <Spinner />
-            <div>
-                <p className="text-xl font-semibold text-foreground">{message}</p>
-                {subMessage && <p className="mt-2 text-muted-foreground">{subMessage}</p>}
-            </div>
-        </div>
-    );
-    
-    switch (state.status) {
-      case AppStatus.IDLE:
-        return <HomePage onStart={handleStart} onLoad={handleLoadProgress} theme={state.theme} />;
-      case AppStatus.LOADING:
-        return <LoadingScreen message={state.loadingMessage || 'در حال پردازش...'} subMessage="هوش مصنوعی در حال ساخت ساختار بهینه برای شماست." />;
-      case AppStatus.PLAN_REVIEW:
-          return <PlanReview nodes={state.mindMap} onConfirm={handleConfirmPlan} />;
-      case AppStatus.GRADING_PRE_ASSESSMENT:
-        return <LoadingScreen message="در حال تحلیل پاسخ‌ها..." subMessage="در حال تنظیم سطح دشواری برای شما." />;
-      case AppStatus.GRADING_QUIZ:
-        return <LoadingScreen message="در حال تصحیح..." />;
-      case AppStatus.PRE_ASSESSMENT:
-        return <QuizView title="پیش‌آزمون تعیین سطح" quiz={state.preAssessment!} onSubmit={handleSubmitPreAssessment} />;
-      case AppStatus.PRE_ASSESSMENT_REVIEW:
-        return <PreAssessmentReview analysis={state.preAssessmentAnalysis!} onStart={() => dispatch({ type: 'START_PERSONALIZED_LEARNING' })} />;
-      case AppStatus.LEARNING:
-      case AppStatus.ALL_NODES_COMPLETED:
-        const allNodesCompleted = state.mindMap.length > 0 && state.mindMap.every(node => state.userProgress[node.id]?.status === 'completed');
-        const nodeProgressMap = Object.entries(state.userProgress).reduce((acc, [key, val]) => ({ ...acc, [key]: val.status }), {} as Record<string, string>);
-
-        return (
-            <div className="flex flex-col h-full p-4 sm:p-6 md:p-8">
-                <div className="flex flex-col items-center gap-4 mb-6 md:flex-row md:justify-between">
-                    <h1 className="text-2xl font-bold text-foreground">نقشه راه یادگیری</h1>
-                    <div className="flex flex-col items-stretch gap-2 sm:items-center sm:flex-row">
-                        <div className="hidden sm:flex items-center justify-center gap-2 p-1 bg-secondary rounded-xl">
-                            <TabButton active={currentView === 'learning'} onClick={() => setCurrentView('learning')} icon={<BrainCircuit />}>نقشه ذهنی</TabButton>
-                            <TabButton active={currentView === 'weaknesses'} onClick={() => setCurrentView('weaknesses')} icon={<XCircle />}>نقاط ضعف</TabButton>
-                            <TabButton active={currentView === 'practice'} onClick={() => setCurrentView('practice')} icon={<ClipboardList />}>تمرین</TabButton>
-                        </div>
-                        <button onClick={() => setShowSuggestedPath(!showSuggestedPath)} className={`flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${showSuggestedPath ? 'bg-primary text-primary-foreground shadow-md' : 'text-secondary-foreground hover:bg-accent hover:text-accent-foreground hover:-translate-y-0.5'}`}>
-                            <Sparkles className="w-5 h-5" />
-                            <span>مسیر پیشنهادی</span>
-                        </button>
-                    </div>
-                </div>
-                {allNodesCompleted && (
-                    <div className="p-4 mb-6 text-center text-success-foreground bg-success/20 border-r-4 border-success rounded-md">
-                        <h3 className="font-bold">تبریک!</h3>
-                        <p>تمام مراحل با موفقیت طی شد. آماده آزمون نهایی هستید؟</p>
-                        <button onClick={handleStartFinalExam} className="px-6 py-2 mt-3 font-semibold text-white transition-transform duration-200 bg-success rounded-md hover:bg-success/90 active:scale-95">
-                            شروع آزمون نهایی
-                        </button>
-                    </div>
-                )}
-                <div className={`flex-grow min-h-0 ${currentView !== 'learning' ? 'overflow-auto' : ''}`}>
-                    {/* Remove overflow-auto for learning view to prevent nested scrollbars with MindMap */}
-                    {currentView === 'learning' && <MindMap nodes={state.mindMap} progress={nodeProgressMap as any} suggestedPath={state.suggestedPath} onSelectNode={handleSelectNode} onTakeQuiz={handleStartQuiz} theme={state.theme} activeNodeId={state.activeNodeId} showSuggestedPath={showSuggestedPath} />}
-                    {currentView === 'weaknesses' && <WeaknessTracker weaknesses={state.weaknesses} />}
-                    {currentView === 'practice' && <PracticeZone />}
-                </div>
-            </div>
-        );
-      case AppStatus.VIEWING_NODE: {
-        const activeNode = state.mindMap.find(n => n.id === state.activeNodeId);
-        const currentIndex = orderedNodes.findIndex(n => n.id === state.activeNodeId);
-        const prevNode = currentIndex > 0 ? orderedNodes[currentIndex - 1] : null;
-        const nextNode = currentIndex < orderedNodes.length - 1 ? orderedNodes[currentIndex + 1] : null;
-        const content = state.streamingNodeContent ?? state.nodeContents[state.activeNodeId!];
-
-        if (!activeNode || !content) {
-             return <LoadingScreen message="در حال آماده‌سازی درس..." />;
-        }
-        
-        const isIntroNode = activeNode.parentId === null;
-
-        return <NodeView 
-                    node={activeNode} 
-                    content={content} 
-                    onBack={handleBackToPlan} 
-                    onStartQuiz={() => handleStartQuiz(state.activeNodeId!)}
-                    onNavigate={handleSelectNode}
-                    prevNode={prevNode}
-                    nextNode={nextNode}
-                    onExplainRequest={handleExplainRequest}
-                    isIntroNode={isIntroNode}
-                />;
       }
-      case AppStatus.TAKING_QUIZ:
-        const quizNode = state.mindMap.find(n => n.id === state.activeNodeId);
-        return <QuizView title={`آزمون: ${quizNode?.title}`} quiz={state.activeQuiz!} onSubmit={handleSubmitQuiz} />;
-      case AppStatus.QUIZ_REVIEW:
-          const attempts = state.userProgress[state.activeNodeId!]?.attempts || 0;
-        return <QuizReview results={state.quizResults!} onFinish={handleBackToPlan} attempts={attempts} onForceUnlock={handleForceUnlock} />;
-      case AppStatus.FINAL_EXAM:
-          return <QuizView title="آزمون نهایی" quiz={state.finalExam!} onSubmit={handleCompleteFinalExam} />;
-      case AppStatus.SUMMARY:
-        return (
-            <div className="p-8 mx-auto max-w-4xl">
-                <h1 className="mb-4 text-3xl font-bold text-foreground">جزوه مرور هوشمند</h1>
-                <p className="mb-6 text-muted-foreground">این جزوه فقط شامل نکاتی است که در آن‌ها ضعف داشتید.</p>
-                <div className="p-6 markdown-content bg-card border rounded-lg max-w-none text-card-foreground" dangerouslySetInnerHTML={{ __html: state.correctiveSummary }} />
-                <button onClick={() => dispatch({ type: 'RESET' })} className="px-6 py-2 mt-8 font-semibold transition-transform duration-200 rounded-md text-primary-foreground bg-primary hover:bg-primary-hover active:scale-95">
-                    شروع یک موضوع جدید
-                </button>
-            </div>
-        );
-      case AppStatus.ERROR:
-        return (
-            <div className="flex flex-col items-center justify-center h-full text-center text-destructive">
-                <XCircle className="w-16 h-16" />
-                <h2 className="mt-4 text-2xl font-bold">خطا</h2>
-                <p className="mt-2">{state.error}</p>
-                <button onClick={() => dispatch({ type: 'RESET' })} className="px-6 py-2 mt-6 font-semibold transition-transform duration-200 rounded-md text-destructive-foreground bg-destructive hover:bg-destructive/90 active:scale-95">
-                    بازگشت
-                </button>
-            </div>
-        );
-      default:
-        return null;
-    }
-  }
-  
-  // ... (Render logic similar to previous)
-  const hasProgress = state.status !== AppStatus.IDLE && state.status !== AppStatus.LOADING;
-  const showBottomNav = hasProgress && (state.status === AppStatus.LEARNING || state.status === AppStatus.ALL_NODES_COMPLETED);
+  }, []);
 
-  if (showStartupScreen) {
-    return <StartupScreen onAnimationEnd={() => setShowStartupScreen(false)} />;
-  }
+  // Persist behavior changes to local storage for the current user if logged in, or generic storage
+  useEffect(() => {
+      if (state.currentUser) {
+          localStorage.setItem(`zehngah_behavior_${state.currentUser.id}`, JSON.stringify(state.behavior));
+      }
+  }, [state.behavior, state.currentUser]);
+
+  useEffect(() => {
+      // Check daily status once on mount
+      const timer = setTimeout(() => {
+          dispatch({ type: 'CHECK_DAILY_STATUS' });
+      }, 2000);
+      return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+      // Load Daily Challenge if needed
+      if (state.showDailyBriefing && !state.dailyChallengeContent && state.mindMap.length > 0) {
+          generateDailyChallenge(state.weaknesses, state.sourceContent)
+              .then(content => dispatch({ type: 'SET_DAILY_CHALLENGE', payload: content }))
+              .catch(err => console.error("Challenge gen failed", err));
+      }
+  }, [state.showDailyBriefing, state.dailyChallengeContent, state.mindMap, state.weaknesses, state.sourceContent]);
+
+
+  const handleThemeChange = (theme: 'light' | 'balanced' | 'dark') => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+    dispatch({ type: 'SET_THEME', payload: theme });
+  };
+
+  // --- User Management Handlers (Secure) ---
+  const handleLogin = async (email: string, password: string) => {
+      const usersStr = localStorage.getItem('zehngah_users');
+      let users: UserProfile[] = usersStr ? JSON.parse(usersStr) : [];
+      
+      const user = users.find(u => u.email === email);
+      
+      if (!user) {
+          throw new Error('کاربری با این ایمیل یافت نشد.');
+      }
+
+      const inputHash = await hashPassword(password);
+      if (user.passwordHash !== inputHash) {
+          throw new Error('رمز عبور اشتباه است.');
+      }
+
+      localStorage.setItem('zehngah_current_user', JSON.stringify(user));
+      dispatch({ type: 'SET_USER', payload: user });
+      
+      // Load sessions
+      const storedSessions = localStorage.getItem(`zehngah_sessions_${user.id}`);
+      if (storedSessions) {
+          dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: JSON.parse(storedSessions) });
+      }
+  };
+
+  const handleRegister = async (email: string, password: string, name: string) => {
+      const usersStr = localStorage.getItem('zehngah_users');
+      let users: UserProfile[] = usersStr ? JSON.parse(usersStr) : [];
+      
+      if (users.some(u => u.email === email)) {
+          throw new Error('این ایمیل قبلاً ثبت شده است.');
+      }
+
+      const passHash = await hashPassword(password);
+      const colors = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef'];
+      const randomColor = colors[Math.floor(Math.random() * colors.length)];
+
+      const newUser: UserProfile = {
+          id: Math.random().toString(36).substr(2, 9),
+          name,
+          email,
+          passwordHash: passHash,
+          avatarColor: randomColor,
+          joinDate: new Date().toISOString()
+      };
+
+      users.push(newUser);
+      localStorage.setItem('zehngah_users', JSON.stringify(users));
+      
+      // Auto login
+      localStorage.setItem('zehngah_current_user', JSON.stringify(newUser));
+      dispatch({ type: 'SET_USER', payload: newUser });
+      dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: [] });
+  };
+
+  const handleLogout = () => {
+      localStorage.removeItem('zehngah_current_user');
+      dispatch({ type: 'LOGOUT' });
+  };
+
+  const handleSaveSession = (title: string) => {
+      if (!state.currentUser) return;
+
+      const sessionData: SavableState = {
+          version: CURRENT_APP_VERSION,
+          sourceContent: state.sourceContent,
+          sourcePageContents: state.sourcePageContents,
+          sourceImages: state.sourceImages,
+          preferences: state.preferences,
+          mindMap: state.mindMap,
+          suggestedPath: state.suggestedPath,
+          preAssessmentAnalysis: state.preAssessmentAnalysis,
+          nodeContents: state.nodeContents,
+          userProgress: state.userProgress,
+          weaknesses: state.weaknesses,
+          behavior: state.behavior,
+          rewards: state.rewards
+      };
+      
+      const totalNodes = state.mindMap.length;
+      const completedNodes = Object.values(state.userProgress).filter(p => p.status === 'completed').length;
+      const progress = totalNodes > 0 ? (completedNodes / totalNodes) * 100 : 0;
+
+      const newSession: SavedSession = {
+          id: Math.random().toString(36).substr(2, 9),
+          userId: state.currentUser.id,
+          title: title || `جلسه ${new Date().toLocaleDateString('fa-IR')}`,
+          lastModified: new Date().toISOString(),
+          progressPercentage: progress,
+          topic: state.mindMap[0]?.title || 'بدون عنوان',
+          data: sessionData
+      };
+
+      const newSessions = [newSession, ...state.savedSessions];
+      localStorage.setItem(`zehngah_sessions_${state.currentUser.id}`, JSON.stringify(newSessions));
+      dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: newSessions });
+  };
+
+  const handleDeleteSession = (sessionId: string) => {
+       if (!state.currentUser) return;
+       const newSessions = state.savedSessions.filter(s => s.id !== sessionId);
+       localStorage.setItem(`zehngah_sessions_${state.currentUser.id}`, JSON.stringify(newSessions));
+       dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: newSessions });
+  };
+
+  const handleLoadSession = (session: SavedSession) => {
+      dispatch({ type: 'LOAD_STATE', payload: session.data });
+  };
+  // ----------------------------
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (file.type === 'application/pdf') {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const arrayBuffer = e.target?.result;
+            if (!arrayBuffer) return;
+            try {
+                const loadingTask = pdfjsLib.getDocument(arrayBuffer);
+                const pdf = await loadingTask.promise;
+                let fullText = '';
+                let pageContents: string[] = [];
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map((item: any) => item.str).join(' ');
+                    fullText += pageText + '\n\n';
+                    pageContents.push(pageText);
+                }
+                 // TRIGGER WIZARD INSTEAD OF GENERATION
+                 dispatch({ type: 'INIT_WIZARD', payload: { sourceContent: fullText, sourcePageContents: pageContents, sourceImages: [] } });
+            } catch (error) {
+                console.error("PDF Error:", error);
+                dispatch({ type: 'SET_ERROR', payload: 'خطا در خواندن فایل PDF.' });
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    } else if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+             const result = e.target?.result as string;
+             const base64Data = result.split(',')[1];
+             const mimeType = file.type;
+             // TRIGGER WIZARD
+             dispatch({ type: 'INIT_WIZARD', payload: { sourceContent: "تصویر آپلود شد.", sourcePageContents: null, sourceImages: [{mimeType, data: base64Data}] } });
+        }
+        reader.readAsDataURL(file);
+    } else {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const text = e.target?.result as string;
+            // TRIGGER WIZARD
+            dispatch({ type: 'INIT_WIZARD', payload: { sourceContent: text, sourcePageContents: null, sourceImages: [] } });
+        };
+        reader.readAsText(file);
+    }
+  };
   
+  const handleStartFromText = () => {
+      if (textInput.trim().length > 10) { 
+          dispatch({ type: 'INIT_WIZARD', payload: { sourceContent: textInput, sourcePageContents: null, sourceImages: [] } });
+      } else {
+          dispatch({ type: 'SET_ERROR', payload: 'لطفاً حداقل ۱۰ کاراکتر متن وارد کنید.' });
+      }
+  };
+
+  const handleWizardComplete = (prefs: LearningPreferences) => {
+      dispatch({ type: 'FINISH_WIZARD', payload: prefs });
+      // The useEffect below will trigger handleGeneratePlan because status becomes LOADING
+  };
+
+  const handleGeneratePlan = () => {
+      if (state.mindMap.length > 0) return; 
+      
+      generateLearningPlan(
+          state.sourceContent, 
+          state.sourcePageContents,
+          state.sourceImages, 
+          state.preferences,
+          (mindMap, suggestedPath) => dispatch({ type: 'MIND_MAP_GENERATED', payload: { mindMap, suggestedPath } }),
+          (question) => dispatch({ type: 'PRE_ASSESSMENT_QUESTION_STREAMED', payload: question })
+      ).then(quiz => {
+          dispatch({ type: 'PRE_ASSESSMENT_STREAM_END' });
+      }).catch(error => {
+          dispatch({ type: 'SET_ERROR', payload: 'خطا در ارتباط با هوش مصنوعی. لطفاً دوباره تلاش کنید.' });
+      });
+  };
+
+  // Trigger generation automatically when status is LOADING (which happens after Wizard)
+  useEffect(() => {
+      if (state.status === AppStatus.LOADING) {
+          handleGeneratePlan();
+      }
+  }, [state.status]);
+
+  const handleNodeSelect = (nodeId: string) => {
+       dispatch({ type: 'SELECT_NODE', payload: nodeId });
+       const node = state.mindMap.find(n => n.id === nodeId);
+       
+       if (state.nodeContents[nodeId]) {
+           dispatch({ type: 'NODE_CONTENT_LOADED', payload: state.nodeContents[nodeId] });
+       } else if (node) {
+            const strengths = state.preAssessmentAnalysis?.strengths || [];
+            const weaknesses = state.preAssessmentAnalysis?.weaknesses || [];
+            const isIntro = node.parentId === null;
+            
+            dispatch({ type: 'NODE_CONTENT_STREAM_START' });
+            
+            let nodeContext = state.sourceContent;
+            if (state.sourcePageContents && node.sourcePages.length > 0) {
+                 nodeContext = node.sourcePages.map(p => state.sourcePageContents![p-1]).join('\n');
+            }
+
+            generateNodeContent(
+                node.title, 
+                nodeContext, 
+                state.sourceImages,
+                state.preferences, 
+                strengths, 
+                weaknesses,
+                isIntro,
+                (partialContent) => dispatch({ type: 'NODE_CONTENT_STREAM_UPDATE', payload: partialContent })
+            ).then(content => {
+                dispatch({ type: 'NODE_CONTENT_STREAM_END', payload: { nodeId, content } });
+            }).catch(err => {
+                console.error(err);
+            });
+       }
+  };
+
+  const handleTakeQuiz = (nodeId: string) => {
+      const node = state.mindMap.find(n => n.id === nodeId);
+      if (!node) return;
+      
+      dispatch({ type: 'START_QUIZ', payload: nodeId });
+      
+       let nodeContext = state.sourceContent;
+       if (state.sourcePageContents && node.sourcePages.length > 0) {
+            nodeContext = node.sourcePages.map(p => state.sourcePageContents![p-1]).join('\n');
+       }
+
+      generateQuiz(node.title, nodeContext, state.sourceImages, (q) => dispatch({ type: 'QUIZ_QUESTION_STREAMED', payload: q }))
+        .then(() => dispatch({ type: 'QUIZ_STREAM_END' }))
+        .catch(err => console.error(err));
+  };
+
+  const handleQuizSubmit = async (answers: Record<string, UserAnswer>) => {
+      dispatch({ type: 'SUBMIT_QUIZ' });
+      const node = state.mindMap.find(n => n.id === state.activeNodeId);
+      if (!node || !state.activeQuiz) return;
+      
+      try {
+           let nodeContext = state.sourceContent;
+           if (state.sourcePageContents && node.sourcePages.length > 0) {
+                nodeContext = node.sourcePages.map(p => state.sourcePageContents![p-1]).join('\n');
+           }
+
+          const gradingResults = await gradeAndAnalyzeQuiz(state.activeQuiz.questions, answers, nodeContext, state.sourceImages);
+          
+          const results: QuizResult[] = gradingResults.map((result) => {
+              const question = state.activeQuiz?.questions.find(q => q.id === result.questionId);
+              if (!question) throw new Error(`Question ${result.questionId} not found`);
+              return {
+                  question: question,
+                  userAnswer: answers[result.questionId],
+                  isCorrect: result.isCorrect,
+                  score: result.score,
+                  analysis: result.analysis
+              };
+          });
+
+          dispatch({ type: 'QUIZ_ANALYSIS_LOADED', payload: { results } });
+          
+          const totalScore = results.reduce((sum, r) => sum + r.score, 0);
+          const maxScore = results.reduce((sum, r) => sum + r.question.points, 0);
+          const percentage = maxScore > 0 ? (totalScore / maxScore) : 0;
+
+          if (percentage >= 0.85) {
+              const nodeContentText = state.nodeContents[node.id]?.theory || '';
+              const rewardContent = await generateDeepAnalysis(node.title, nodeContentText);
+              
+              const reward: Reward = {
+                  id: `reward_${node.id}`,
+                  type: 'deep_analysis',
+                  title: `تحلیل عمیق: ${node.title}`,
+                  content: rewardContent,
+                  unlockedAt: new Date().toISOString(),
+                  relatedNodeId: node.id
+              };
+              
+              dispatch({ type: 'UNLOCK_REWARD', payload: reward });
+          }
+          
+      } catch (err) {
+          console.error(err);
+      }
+  };
+
+  const handlePreAssessmentSubmit = async (answers: Record<string, UserAnswer>) => {
+      dispatch({ type: 'SUBMIT_PRE_ASSESSMENT', payload: answers });
+      if (state.preAssessment) {
+          try {
+            const analysis = await analyzePreAssessment(state.preAssessment.questions, answers, state.sourceContent);
+            dispatch({ type: 'PRE_ASSESSMENT_ANALYSIS_LOADED', payload: analysis });
+          } catch (err) {
+              console.error(err);
+          }
+      }
+  };
+
+  const handleExplainRequest = (text: string) => {
+      dispatch({ type: 'RECORD_EXPLANATION_REQUEST' });
+      dispatch({ type: 'TOGGLE_CHAT' });
+      const msg: ChatMessage = { role: 'user', message: `می‌توانی درباره "${text}" بیشتر توضیح دهی؟` };
+      dispatch({ type: 'ADD_CHAT_MESSAGE', payload: msg });
+      
+      const activeNodeTitle = state.activeNodeId ? state.mindMap.find(n => n.id === state.activeNodeId)?.title || null : null;
+
+      generateChatResponse([...state.chatHistory, msg], text, activeNodeTitle, state.sourceContent)
+        .then(response => dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'model', message: response } }))
+        .catch(err => console.error(err));
+  };
+
+  const handleChatSend = (message: string) => {
+      const msg: ChatMessage = { role: 'user', message };
+      dispatch({ type: 'ADD_CHAT_MESSAGE', payload: msg });
+      const activeNodeTitle = state.activeNodeId ? state.mindMap.find(n => n.id === state.activeNodeId)?.title || null : null;
+      generateChatResponse([...state.chatHistory, msg], message, activeNodeTitle, state.sourceContent)
+        .then(response => dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'model', message: response } }))
+        .catch(err => console.error(err));
+  };
+
+  const handleRetryQuiz = () => {
+      const result = state.quizResults;
+      if (!result) return;
+
+      const failedQuestions = result.filter(r => !r.isCorrect);
+      const parentNode = state.mindMap.find(n => n.id === state.activeNodeId);
+      
+      if (failedQuestions.length > 0 && parentNode) {
+           dispatch({ type: 'START_REMEDIAL_GENERATION' });
+           const weaknesses: Weakness[] = failedQuestions.map(r => ({
+               question: r.question.question,
+               incorrectAnswer: String(r.userAnswer),
+               correctAnswer: r.question.type === 'multiple-choice' ? r.question.options[r.question.correctAnswerIndex] : r.question.correctAnswer
+           }));
+
+            let nodeContext = state.sourceContent;
+            if (state.sourcePageContents && parentNode.sourcePages.length > 0) {
+                    nodeContext = parentNode.sourcePages.map(p => state.sourcePageContents![p-1]).join('\n');
+            }
+
+           generateRemedialNode(parentNode.title, weaknesses, nodeContext, state.sourceImages)
+            .then(remedialNode => {
+                 remedialNode.parentId = parentNode.parentId; 
+                 dispatch({ type: 'ADD_REMEDIAL_NODE', payload: { remedialNode, originalNodeId: parentNode.id } });
+            })
+            .catch(() => dispatch({ type: 'CANCEL_REMEDIAL_GENERATION' }));
+      } else {
+           dispatch({ type: 'RETRY_QUIZ_IMMEDIATELY' });
+           dispatch({ type: 'START_PERSONALIZED_LEARNING' });
+           dispatch({ type: 'SELECT_NODE', payload: state.activeNodeId }); 
+      }
+  };
+
   return (
-      // ... Same structure
-     <div className="flex flex-col w-full h-screen transition-colors duration-300 bg-background text-foreground">
-        <header className="flex items-center justify-between p-4 border-b shadow-sm bg-card border-border shrink-0">
-             <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-[#C8A05A] text-[#0F172A]">
-                    <Brain className="w-6 h-6" />
-                </div>
-                <h1 className="hidden text-xl font-bold sm:block text-[#C8A05A]">ذهن گاه</h1>
+    <div className="flex flex-col h-screen overflow-hidden bg-background text-foreground font-vazir transition-colors duration-300" dir="rtl">
+      {showStartup && <StartupScreen onAnimationEnd={() => setShowStartup(false)} />}
+      
+      <ParticleBackground theme={state.theme} />
+
+      {/* Daily Briefing Overlay */}
+      {state.showDailyBriefing && (
+          <DailyBriefing 
+              streak={state.behavior.dailyStreak}
+              challengeContent={state.dailyChallengeContent}
+              nextNode={state.mindMap.find(n => state.userProgress[n.id]?.status !== 'completed' && !n.locked) || null}
+              onContinue={() => dispatch({ type: 'DISMISS_BRIEFING' })}
+              onDismiss={() => dispatch({ type: 'DISMISS_BRIEFING' })}
+          />
+      )}
+
+      {/* Personalization Wizard Overlay */}
+      {state.status === AppStatus.WIZARD && (
+          <PersonalizationWizard 
+             initialPreferences={state.preferences}
+             onSubmit={handleWizardComplete}
+             onSkip={() => handleWizardComplete(state.preferences)}
+          />
+      )}
+
+      {/* User Panel Overlay */}
+      <UserPanel 
+          isOpen={state.isUserPanelOpen}
+          onClose={() => dispatch({ type: 'TOGGLE_USER_PANEL' })}
+          user={state.currentUser}
+          onLogin={handleLogin}
+          onRegister={handleRegister}
+          onLogout={handleLogout}
+          savedSessions={state.savedSessions}
+          onLoadSession={handleLoadSession}
+          onDeleteSession={handleDeleteSession}
+          onSaveCurrentSession={handleSaveSession}
+          hasCurrentSession={state.mindMap.length > 0}
+      />
+
+      {/* Header */}
+      <header className="flex items-center justify-between px-6 py-4 border-b border-border/50 bg-card/80 backdrop-blur-md z-50 shadow-sm">
+        <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-primary/20">
+                 <Brain className="w-5 h-5 text-primary-foreground" />
             </div>
-            <div className="flex items-center gap-4">
-                <div className="flex items-center p-1 space-x-1 rounded-lg bg-secondary">
-                    <button onClick={() => dispatch({ type: 'SET_THEME', payload: 'light' })} className={`p-1.5 rounded-md transition-all ${state.theme === 'light' ? 'bg-card shadow-sm ring-1 ring-inset ring-border' : 'hover:bg-card/50'}`} aria-label="Light theme"><Sun className="w-5 h-5" /></button>
-                    <button onClick={() => dispatch({ type: 'SET_THEME', payload: 'balanced' })} className={`p-1.5 rounded-md transition-all ${state.theme === 'balanced' ? 'bg-card shadow-sm ring-1 ring-inset ring-border' : 'hover:bg-card/50'}`} aria-label="Balanced theme"><div className="w-5 h-5 bg-slate-500 rounded-full"></div></button>
-                    <button onClick={() => dispatch({ type: 'SET_THEME', payload: 'dark' })} className={`p-1.5 rounded-md transition-all ${state.theme === 'dark' ? 'bg-card shadow-sm ring-1 ring-inset ring-border' : 'hover:bg-card/50'}`} aria-label="Dark theme"><Moon className="w-5 h-5" /></button>
-                </div>
-                {hasProgress && (
-                    <>
-                        <button onClick={handleSaveProgress} className="flex items-center gap-2 px-3 py-2 text-sm font-medium transition-all duration-200 rounded-lg sm:px-4 text-secondary-foreground bg-secondary hover:bg-accent hover:-translate-y-0.5 active:scale-95" title="ذخیره پیشرفت">
-                            <Save className="w-4 h-4" />
-                            <span className="hidden sm:inline">ذخیره</span>
-                        </button>
-                        <button onClick={() => dispatch({type: 'RESET'})} className="flex items-center gap-2 px-3 py-2 text-sm font-medium transition-all duration-200 rounded-lg sm:px-4 text-secondary-foreground bg-secondary hover:bg-accent hover:-translate-y-0.5 active:scale-95" title="شروع مجدد">
-                            <Home className="w-4 h-4" />
-                            <span className="hidden sm:inline">شروع مجدد</span>
-                        </button>
-                    </>
-                )}
-            </div>
-        </header>
-        <main className="flex-grow overflow-auto main-content">
-            {renderContent()}
-        </main>
+            <h1 className="text-xl font-extrabold tracking-tight text-foreground">ذهن گاه</h1>
+        </div>
+        
+        <div className="flex items-center gap-3">
+           <button 
+              onClick={() => dispatch({ type: 'TOGGLE_USER_PANEL' })}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary hover:bg-accent transition-colors border border-transparent hover:border-primary/20"
+           >
+               {state.currentUser ? (
+                   <>
+                       <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: state.currentUser.avatarColor }}>
+                           {state.currentUser.name.charAt(0).toUpperCase()}
+                       </div>
+                       <span className="text-sm font-medium hidden sm:block">{state.currentUser.name}</span>
+                   </>
+               ) : (
+                   <>
+                       <User className="w-5 h-5 text-muted-foreground" />
+                       <span className="text-sm font-medium text-muted-foreground hidden sm:block">ورود / ثبت نام</span>
+                   </>
+               )}
+           </button>
 
-        {showBottomNav && (
-            <nav className="bottom-nav sm:hidden">
-                <BottomNavItem icon={<BrainCircuit />} label="نقشه ذهنی" active={currentView === 'learning'} onClick={() => setCurrentView('learning')} />
-                <BottomNavItem icon={<XCircle />} label="نقاط ضعف" active={currentView === 'weaknesses'} onClick={() => setCurrentView('weaknesses')} />
-                <BottomNavItem icon={<ClipboardList />} label="تمرین" active={currentView === 'practice'} onClick={() => setCurrentView('practice')} />
-            </nav>
-        )}
+           <button onClick={() => dispatch({ type: 'TOGGLE_CHAT' })} className="p-2 rounded-full hover:bg-accent text-muted-foreground hover:text-foreground transition-colors relative">
+              <MessageSquare className="w-5 h-5" />
+              {state.chatHistory.length > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full"></span>}
+           </button>
+           <div className="w-px h-6 bg-border mx-1"></div>
+           <button onClick={() => handleThemeChange('light')} className={`p-2 rounded-full transition-all ${state.theme === 'light' ? 'bg-yellow-100 text-yellow-600 shadow-inner' : 'hover:bg-accent text-muted-foreground'}`}><Sun className="w-5 h-5" /></button>
+           <button onClick={() => handleThemeChange('balanced')} className={`p-2 rounded-full transition-all ${state.theme === 'balanced' ? 'bg-slate-200 text-slate-700 shadow-inner' : 'hover:bg-accent text-muted-foreground'}`}><SlidersHorizontal className="w-5 h-5" /></button>
+           <button onClick={() => handleThemeChange('dark')} className={`p-2 rounded-full transition-all ${state.theme === 'dark' ? 'bg-indigo-900/50 text-indigo-300 shadow-inner' : 'hover:bg-accent text-muted-foreground'}`}><Moon className="w-5 h-5" /></button>
+        </div>
+      </header>
 
-        {hasProgress && (
-            <>
-                <button 
-                    onClick={() => dispatch({ type: 'OPEN_CHAT' })} 
-                    className="fixed z-50 flex items-center justify-center w-16 h-16 transition-transform duration-200 transform rounded-full shadow-lg bottom-6 right-6 sm:bottom-6 bg-primary text-primary-foreground hover:bg-primary-hover hover:scale-110 active:scale-100"
-                    style={{ bottom: showBottomNav ? '80px' : '24px' }}
-                    aria-label="Open chat"
-                >
-                    <MessageSquare className="w-8 h-8" />
-                </button>
-                {state.isChatOpen && (
-                    <ChatPanel
-                        history={state.chatHistory}
-                        isFullScreen={state.isChatFullScreen}
-                        onSend={handleSendChatMessage}
-                        onClose={() => dispatch({ type: 'CLOSE_CHAT' })}
-                        onToggleFullScreen={() => dispatch({ type: 'TOGGLE_CHAT_FULLSCREEN' })}
-                        initialMessage={chatInitialMessage}
-                        onInitialMessageConsumed={() => setChatInitialMessage('')}
-                    />
-                )}
-            </>
-        )}
-        <footer className="p-4 text-sm text-center border-t main-footer text-muted-foreground bg-card border-border shrink-0">
-            © {new Date().getFullYear()} ذهن گاه. تمام حقوق محفوظ است.
-        </footer>
-    </div>
-  );
-}
+      <main className="flex-grow relative overflow-hidden flex flex-col md:flex-row main-content">
+        
+        <div className="flex-grow relative z-10 overflow-y-auto scroll-smooth">
+             
+             {/* Status: IDLE / Input */}
+            {state.status === AppStatus.IDLE && (
+                <div className="max-w-4xl mx-auto mt-10 p-6 space-y-8 animate-slide-up pb-32">
+                    <div className="text-center space-y-4">
+                        <h2 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-600 py-2">
+                           یادگیری عمیق با طعم هوش مصنوعی
+                        </h2>
+                        <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+                            محتوای آموزشی خود را بارگذاری کنید تا ذهن‌گاه آن را به یک نقشه ذهنی تعاملی، آزمون‌های هوشمند و مسیر یادگیری شخصی‌سازی شده تبدیل کند.
+                        </p>
+                    </div>
 
-// Updated Personalization Steps
-const personalizationSteps = [
-    {
-        name: 'learningGoal',
-        title: 'هدف اصلی شما چیست؟',
-        type: 'radio',
-        icon: Target,
-        options: [
-            { value: 'امتحان نهایی', label: 'آمادگی برای امتحان (نمره محور)' },
-            { value: 'درک عمیق', label: 'یادگیری عمیق و مفهومی (بدون عجله)' },
-            { value: 'مرور سریع', label: 'مرور و جمع‌بندی (بازیابی اطلاعات)' },
-            { value: 'کاربرد عملی', label: 'استفاده در پروژه یا کار (عملی)' },
-        ]
-    },
-    {
-        name: 'knowledgeLevel',
-        title: 'سطح دانش فعلی شما چیست؟',
-        type: 'radio',
-        icon: BrainCircuit,
-        options: [
-            { value: 'beginner', label: 'مبتدی (تازه کار)' },
-            { value: 'intermediate', label: 'متوسط (آشنایی دارم)' },
-            { value: 'expert', label: 'پیشرفته (می‌خواهم مسلط شوم)' },
-        ]
-    },
-    {
-        name: 'learningFocus',
-        title: 'سبک یادگیری مورد علاقه؟',
-        type: 'radio',
-        icon: BrainCircuit,
-        options: [
-            { value: 'theoretical', label: 'چرایی و تئوری' },
-            { value: 'practical', label: 'چگونگی و مثال' },
-            { value: 'analogies', label: 'داستان و تشبیه' },
-        ]
-    },
-    // ... tone and final step similar
-    {
-        name: 'tone',
-        title: 'لحن مربی چگونه باشد؟',
-        type: 'radio',
-        icon: MessageSquare,
-        options: [
-            { value: 'conversational', label: 'دوستانه و ساده' },
-            { value: 'academic', label: 'رسمی و دقیق' },
-        ]
-    },
-    {
-        name: 'final',
-        title: 'تنظیمات نهایی',
-        type: 'final',
-        icon: CheckCircle,
-    }
-];
-
-// Personalization Wizard Component (Logic updated for new options structure)
-const PersonalizationWizard: React.FC<{
-    isOpen: boolean;
-    onClose: () => void;
-    preferences: LearningPreferences;
-    onPreferencesChange: (newPrefs: LearningPreferences) => void;
-}> = ({ isOpen, onClose, preferences, onPreferencesChange }) => {
-    // ... existing logic, just ensure it renders the new options correctly
-    const [currentStep, setCurrentStep] = useState(0);
-    
-    useEffect(() => {
-        if (isOpen) setCurrentStep(0);
-    }, [isOpen]);
-
-    const handleNext = () => {
-        if (currentStep < personalizationSteps.length - 1) setCurrentStep(currentStep + 1);
-    };
-    
-    const handlePrev = () => {
-        if (currentStep > 0) setCurrentStep(currentStep - 1);
-    }
-
-    const handleSelectOption = (name: keyof LearningPreferences, value: any) => {
-        onPreferencesChange({ ...preferences, [name]: value });
-        setTimeout(() => handleNext(), 300);
-    };
-    
-    if (!isOpen) return null;
-
-    return (
-        <div className={`wizard-overlay ${isOpen ? 'open' : ''}`} onClick={onClose}>
-            <div className="wizard-container" onClick={e => e.stopPropagation()}>
-                <div className="wizard-steps-wrapper">
-                    <div className="wizard-steps" style={{ transform: `translateX(${currentStep * 100}%)` }}>
-                        {personalizationSteps.map((step, index) => (
-                            <div key={index} className="wizard-step">
-                                <div className="flex items-center justify-center w-16 h-16 mx-auto mb-6 rounded-full bg-primary/10 text-primary shrink-0">
-                                    <step.icon className="w-8 h-8" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Text Input */}
+                         <div className="stylish-textarea-wrapper p-1 bg-gradient-to-br from-border to-transparent">
+                            <div className="bg-card rounded-xl p-4 h-full flex flex-col relative">
+                                <div className="flex items-center gap-2 mb-3 text-primary">
+                                    <FileText className="w-5 h-5" />
+                                    <span className="font-bold">متن خام</span>
                                 </div>
-                                <h3 className="mb-6 text-xl font-bold text-card-foreground shrink-0">{step.title}</h3>
-                                <div className="wizard-step-content">
-                                    {step.type === 'radio' && (
-                                        <div className="w-full max-w-lg wizard-radio-group">
-                                            {step.options?.map(option => (
-                                                <div key={option.value}>
-                                                    <input
-                                                        type="radio"
-                                                        id={`${step.name}-${option.value}`}
-                                                        name={step.name}
-                                                        value={option.value}
-                                                        checked={preferences[step.name as keyof LearningPreferences] === option.value}
-                                                        onChange={() => handleSelectOption(step.name as keyof LearningPreferences, option.value)}
-                                                        className="wizard-radio-input"
-                                                    />
-                                                    <label htmlFor={`${step.name}-${option.value}`} className="wizard-radio-label">{option.label}</label>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                    {step.type === 'final' && (
-                                        <div className="w-full max-w-md space-y-4">
-                                        <div>
-                                            <label htmlFor="customInstructions" className="block mb-2 text-sm font-medium text-secondary-foreground">دستورالعمل خاص (اختیاری)</label>
-                                            <input 
-                                                type="text" 
-                                                id="customInstructions"
-                                                value={preferences.customInstructions} 
-                                                onChange={e => onPreferencesChange({...preferences, customInstructions: e.target.value})} 
-                                                className="w-full p-2 border rounded-md bg-background border-border focus:ring-2 focus:ring-ring focus:border-primary" 
-                                                placeholder="مثال: تمرکز بر فرمول‌ها"/>
-                                        </div>
-                                        <div className="flex items-center justify-center pt-2 space-x-2 space-x-reverse">
-                                                <input
-                                                    type="checkbox"
-                                                    id="addExplanatoryNodes"
-                                                    checked={preferences.addExplanatoryNodes}
-                                                    onChange={e => onPreferencesChange({...preferences, addExplanatoryNodes: e.target.checked})}
-                                                    className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
-                                                />
-                                                <label htmlFor="addExplanatoryNodes" className="text-sm font-medium text-secondary-foreground">گره‌های توضیحی اضافه کن</label>
-                                        </div>
-                                        </div>
-                                    )}
+                                <textarea 
+                                    className="w-full flex-grow bg-transparent border-none resize-none focus:ring-0 text-foreground placeholder:text-muted-foreground/50 min-h-[150px] mb-12" 
+                                    placeholder="متن مقاله، جزوه یا کتاب خود را اینجا پیست کنید..."
+                                    value={textInput}
+                                    onChange={(e) => setTextInput(e.target.value)}
+                                />
+                                <div className="absolute bottom-4 left-4 right-4">
+                                    <button 
+                                        onClick={handleStartFromText}
+                                        disabled={!textInput.trim()}
+                                        className="w-full py-2 flex items-center justify-center gap-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                                    >
+                                        <span>شروع و شخصی‌سازی</span>
+                                        <Wand className="w-4 h-4" />
+                                    </button>
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* File Upload */}
+                        <div className="stylish-textarea-wrapper p-1 bg-gradient-to-bl from-border to-transparent group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                             <div className="bg-card rounded-xl p-4 h-full flex flex-col items-center justify-center text-center border-2 border-dashed border-transparent group-hover:border-primary/20 transition-all">
+                                <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-primary">
+                                    <Upload className="w-8 h-8" />
+                                </div>
+                                <h3 className="font-bold text-lg">آپلود فایل</h3>
+                                <p className="text-sm text-muted-foreground mt-2">PDF، متن یا تصویر</p>
+                                <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept=".pdf,.txt,image/*" />
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-12">
+                        {[
+                            { icon: BrainCircuit, title: "نقشه ذهنی", desc: "ساختاردهی هوشمند" },
+                            { icon: Target, title: "آزمون تطبیقی", desc: "سنجش دقیق سطح" },
+                            { icon: MessageSquare, title: "مربی شخصی", desc: "رفع اشکال آنی" },
+                            { icon: Sparkles, title: "خلاصه ساز", desc: "مرور سریع" }
+                        ].map((f, i) => (
+                            <div key={i} className="p-4 rounded-xl bg-secondary/30 border border-border text-center hover:bg-secondary/50 transition-colors">
+                                <f.icon className="w-8 h-8 mx-auto mb-2 text-primary" />
+                                <h4 className="font-bold text-sm">{f.title}</h4>
+                                <p className="text-xs text-muted-foreground mt-1">{f.desc}</p>
                             </div>
                         ))}
                     </div>
                 </div>
-                <div className="p-4 border-t border-border">
-                     <div className="flex items-center justify-between">
-                        <button onClick={handlePrev} disabled={currentStep === 0} className="px-4 py-2 font-semibold rounded-md text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 active:scale-95">قبلی</button>
-                        {currentStep < personalizationSteps.length - 1 ? (
-                             <button onClick={handleNext} className="px-4 py-2 font-semibold rounded-md text-primary-foreground bg-primary hover:bg-primary-hover active:scale-95">بعدی</button>
-                        ) : (
-                             <button onClick={onClose} className="px-4 py-2 font-semibold rounded-md text-primary-foreground bg-success hover:bg-success/90 active:scale-95">تایید و ادامه</button>
-                        )}
-                     </div>
-                     <div className="w-full h-1 mt-4 rounded-full bg-muted">
-                        <div className="h-1 rounded-full bg-primary" style={{ width: `${((currentStep + 1) / personalizationSteps.length) * 100}%`, transition: 'width 0.3s ease' }} />
-                    </div>
+            )}
+
+            {/* Loading State */}
+            {(state.status === AppStatus.LOADING || state.status === AppStatus.GENERATING_REMEDIAL) && (
+                <div className="flex flex-col items-center justify-center h-full space-y-6 fade-in">
+                    <Spinner />
+                    <p className="text-xl font-medium text-muted-foreground animate-pulse">{state.loadingMessage || 'در حال پردازش...'}</p>
                 </div>
-            </div>
-        </div>
-    );
-};
+            )}
 
-// HomePage component remains mostly same, just ensure props are passed
-const HomePage: React.FC<{ onStart: (content: string, pageContents: string[] | null, images: {mimeType: string, data: string}[], preferences: LearningPreferences) => void; onLoad: (file: File) => void; theme: AppState['theme'] }> = ({ onStart, onLoad, theme }) => {
-    const [sourceContent, setSourceContent] = useState('');
-    const [sourcePageContents, setSourcePageContents] = useState<string[] | null>(null);
-    const [sourceImages, setSourceImages] = useState<{mimeType: string, data: string}[]>([]);
-    const [preferences, setPreferences] = useState<LearningPreferences>({
-        explanationStyle: 'balanced',
-        knowledgeLevel: 'intermediate',
-        learningFocus: 'practical',
-        tone: 'conversational',
-        addExplanatoryNodes: false,
-        customInstructions: '',
-        learningGoal: '',
-    });
-    const [isParsingPdf, setIsParsingPdf] = useState(false);
-    const [pdfProgress, setPdfProgress] = useState('');
-    const [isWizardOpen, setIsWizardOpen] = useState(false);
-    const jsonInputRef = useRef<HTMLInputElement>(null);
-    const pdfInputRef = useRef<HTMLInputElement>(null);
-
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (sourceContent.trim().length < 50) {
-            alert("لطفاً محتوای کافی برای تحلیل وارد کنید (حداقل ۵۰ کاراکتر).");
-            return;
-        }
-        onStart(sourceContent, sourcePageContents, sourceImages, preferences);
-    };
-    
-    // ... File handling same as previous code
-    const handleJsonFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) onLoad(file);
-    };
-
-    const handlePdfFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-         // ... Same PDF parsing logic as before ...
-          const file = e.target.files?.[0];
-        if (!file) return;
-
-        setIsParsingPdf(true);
-        setPdfProgress('در حال خواندن فایل...');
-        setSourceContent('');
-        setSourcePageContents(null);
-        setSourceImages([]);
-
-        const reader = new FileReader();
-        reader.onload = async (event) => {
-            try {
-                if (!event.target?.result) throw new Error("File could not be read.");
-
-                const typedarray = new Uint8Array(event.target.result as ArrayBuffer);
-                const pdf = await pdfjsLib.getDocument(typedarray).promise;
-                
-                const pageTexts: string[] = [];
-                const images: { mimeType: string; data: string }[] = [];
-                // Simplistic image extraction for now to save space in this block
-                
-                for (let i = 1; i <= pdf.numPages; i++) {
-                    setPdfProgress(`در حال پردازش صفحه ${i} از ${pdf.numPages}...`);
-                    const page = await pdf.getPage(i);
-                    const textContent = await page.getTextContent();
-                    const pageText = textContent.items.map((item: any) => item.str).join(' ');
-                    pageTexts.push(pageText);
-                }
-                setSourcePageContents(pageTexts);
-                setSourceContent(pageTexts.join('\n\n'));
-                setSourceImages(images);
-            } catch (error) {
-                alert("خطا در پردازش فایل PDF.");
-            } finally {
-                setIsParsingPdf(false);
-                setPdfProgress('');
-            }
-        };
-        reader.readAsArrayBuffer(file);
-    };
-
-    return (
-        <div className="relative flex flex-col items-center justify-center min-h-full p-4 sm:p-6 md:p-8">
-            <ParticleBackground theme={theme} />
-             <PersonalizationWizard 
-                isOpen={isWizardOpen}
-                onClose={() => setIsWizardOpen(false)}
-                preferences={preferences}
-                onPreferencesChange={setPreferences}
-            />
-            <div className="relative z-10 w-full max-w-3xl p-6 space-y-8 md:p-8">
-                <div className="text-center">
-                    <h2 className="text-3xl font-bold text-foreground">موضوع یادگیری خود را وارد کنید</h2>
-                </div>
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="stylish-textarea-wrapper">
-                         <FileText className="absolute w-6 h-6 top-4 right-4 text-muted-foreground/50" />
-                        <textarea
-                            value={sourceContent}
-                            onChange={(e) => setSourceContent(e.target.value)}
-                            className="w-full px-4 py-4 pr-12 transition-all duration-200 border-none rounded-lg shadow-sm h-60 bg-transparent text-foreground focus:ring-0 disabled:bg-muted/50 placeholder:text-muted-foreground"
-                            placeholder="محتوا را اینجا کپی کنید یا فایل PDF آپلود کنید..."
-                            disabled={isParsingPdf}
+            {/* Plan Review (Initial Mind Map) */}
+            {state.status === AppStatus.PLAN_REVIEW && (
+                 <div className="flex flex-col h-full">
+                    <div className="flex-grow relative">
+                        <MindMap 
+                            nodes={state.mindMap} 
+                            progress={{}} 
+                            suggestedPath={state.suggestedPath}
+                            onSelectNode={() => {}} 
+                            onTakeQuiz={() => {}}
+                            theme={state.theme}
+                            activeNodeId={null}
+                            showSuggestedPath={true}
                         />
-                         {isParsingPdf && <div className="py-2 text-sm text-center text-muted-foreground">{pdfProgress}</div>}
+                         <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-md px-4">
+                             <div className="bg-card/90 backdrop-blur border border-border p-4 rounded-xl shadow-2xl text-center">
+                                 <h3 className="font-bold text-lg mb-2">نقشه یادگیری شما آماده است</h3>
+                                 <p className="text-sm text-muted-foreground mb-4">این ساختار بر اساس محتوای شما طراحی شده است. برای شخصی‌سازی بیشتر، ابتدا یک پیش‌آزمون کوتاه می‌دهیم.</p>
+                                 <button 
+                                    onClick={() => dispatch({ type: 'CONFIRM_PLAN', payload: { mindMap: state.mindMap } })}
+                                    className="w-full py-3 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary-hover transition-colors shadow-lg shadow-primary/25 flex items-center justify-center gap-2"
+                                >
+                                    <span>تایید و شروع پیش‌آزمون</span>
+                                    <ArrowRight className="w-5 h-5" />
+                                 </button>
+                             </div>
+                         </div>
                     </div>
-                    
-                    <div className="flex flex-col gap-4 sm:flex-row">
-                        <button type="submit" className="flex items-center justify-center flex-grow w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md text-primary-foreground bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring active:scale-95 disabled:bg-primary/70" disabled={!sourceContent.trim() || isParsingPdf}>
-                            <span>ایجاد طرح یادگیری</span>
-                            <ArrowRight className="w-5 h-5" />
-                        </button>
-                        <button type="button" onClick={() => setIsWizardOpen(true)} className="flex items-center justify-center w-full gap-2 px-4 py-3 font-semibold transition-transform duration-200 rounded-md sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent active:scale-95">
-                             <SlidersHorizontal className="w-5 h-5 text-primary" />
-                            <span>شخصی‌سازی</span>
-                        </button>
+                </div>
+            )}
+
+            {/* Pre-Assessment */}
+            {state.status === AppStatus.PRE_ASSESSMENT && state.preAssessment && (
+                <QuizView 
+                    title="پیش‌آزمون تعیین سطح" 
+                    quiz={state.preAssessment} 
+                    onSubmit={handlePreAssessmentSubmit} 
+                />
+            )}
+
+             {/* Pre-Assessment Review */}
+            {state.status === AppStatus.PRE_ASSESSMENT_REVIEW && state.preAssessmentAnalysis && (
+                <PreAssessmentReview 
+                    analysis={state.preAssessmentAnalysis} 
+                    onStart={() => dispatch({ type: 'START_PERSONALIZED_LEARNING' })} 
+                />
+            )}
+
+            {/* Main Learning View (MindMap + Content) */}
+            {(state.status === AppStatus.LEARNING || state.status === AppStatus.VIEWING_NODE || state.status === AppStatus.TAKING_QUIZ || state.status === AppStatus.GRADING_QUIZ || state.status === AppStatus.QUIZ_REVIEW) && (
+                <div className="flex flex-col h-full relative">
+                    {/* MindMap Area */}
+                    <div className={`${state.status === AppStatus.LEARNING ? 'flex-grow' : 'h-1/3 min-h-[200px] border-b border-border'} relative transition-all duration-500 ease-in-out`}>
+                        <MindMap 
+                            nodes={state.mindMap} 
+                            progress={Object.keys(state.userProgress).reduce((acc, key) => ({...acc, [key]: state.userProgress[key].status}), {} as {[key: string]: 'completed' | 'failed' | 'in_progress'})} 
+                            suggestedPath={state.suggestedPath}
+                            onSelectNode={handleNodeSelect} 
+                            onTakeQuiz={handleTakeQuiz}
+                            theme={state.theme}
+                            activeNodeId={state.activeNodeId}
+                            showSuggestedPath={true}
+                        />
+                         {state.status === AppStatus.LEARNING && (
+                            <div className="absolute top-4 right-4 z-30 bg-card/80 backdrop-blur p-3 rounded-lg border border-border shadow-sm max-w-[200px]">
+                                <p className="text-xs text-muted-foreground">مسیر پیشنهادی با شماره مشخص شده است. از گره شماره ۱ شروع کنید.</p>
+                            </div>
+                        )}
                     </div>
 
-                     <div className="flex justify-center gap-4">
-                        <input type="file" ref={pdfInputRef} onChange={handlePdfFileChange} accept=".pdf" className="hidden" />
-                        <button type="button" onClick={() => pdfInputRef.current?.click()} disabled={isParsingPdf} className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold transition-transform duration-200 rounded-md text-secondary-foreground bg-secondary/70 hover:bg-accent active:scale-95 disabled:opacity-70">
-                            {isParsingPdf ? <><Spinner /><span>...</span></> : <><FileText className="w-4 h-4" /><span>PDF</span></>}
-                        </button>
-                        <input type="file" ref={jsonInputRef} onChange={handleJsonFileChange} accept=".json" className="hidden" />
-                        <button type="button" onClick={() => jsonInputRef.current?.click()} className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold transition-transform duration-200 rounded-md text-secondary-foreground bg-secondary/70 hover:bg-accent active:scale-95">
-                             <Upload className="w-4 h-4" />
-                            <span>باز کردن</span>
-                        </button>
-                    </div>
-                </form>
+                    {/* Content/Quiz Area */}
+                    {state.status !== AppStatus.LEARNING && (
+                        <div className="flex-grow overflow-y-auto bg-background/50 backdrop-blur-sm animate-slide-up relative z-20 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)]">
+                            {state.status === AppStatus.VIEWING_NODE && state.activeNodeId && (
+                                <NodeView 
+                                    node={state.mindMap.find(n => n.id === state.activeNodeId)!} 
+                                    content={state.streamingNodeContent || state.nodeContents[state.activeNodeId] || { introduction: '', theory: '', example: '', connection: '', conclusion: '', suggestedQuestions: [] }} 
+                                    onBack={() => dispatch({ type: 'START_PERSONALIZED_LEARNING' })}
+                                    onStartQuiz={() => handleTakeQuiz(state.activeNodeId!)}
+                                    onNavigate={handleNodeSelect}
+                                    prevNode={null}
+                                    nextNode={null}
+                                    onExplainRequest={handleExplainRequest}
+                                    isIntroNode={state.mindMap.find(n => n.id === state.activeNodeId)?.parentId === null}
+                                    unlockedReward={state.rewards.find(r => r.relatedNodeId === state.activeNodeId)}
+                                />
+                            )}
+
+                            {state.status === AppStatus.TAKING_QUIZ && state.activeQuiz && (
+                                <QuizView 
+                                    title={`آزمون: ${state.mindMap.find(n => n.id === state.activeNodeId)?.title}`} 
+                                    quiz={state.activeQuiz} 
+                                    onSubmit={handleQuizSubmit} 
+                                />
+                            )}
+
+                            {state.status === AppStatus.GRADING_QUIZ && (
+                                <div className="flex flex-col items-center justify-center h-full space-y-4">
+                                    <Spinner size={80} />
+                                    <p className="text-lg font-medium">در حال تصحیح و تحلیل پاسخ‌ها...</p>
+                                </div>
+                            )}
+
+                            {state.status === AppStatus.QUIZ_REVIEW && state.quizResults && (
+                                <QuizReview 
+                                    results={state.quizResults} 
+                                    onFinish={handleRetryQuiz} 
+                                    attempts={state.userProgress[state.activeNodeId!]?.attempts || 1}
+                                    onForceUnlock={() => dispatch({ type: 'FORCE_UNLOCK_NODE' })}
+                                />
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+
+        {/* Right/Bottom Panel */}
+        <div className="hidden lg:flex flex-col w-80 border-r border-border bg-card/50 backdrop-blur-sm shrink-0">
+            <div className="p-4 border-b border-border font-bold text-foreground flex items-center gap-2">
+                <SlidersHorizontal className="w-5 h-5" />
+                <span>جعبه ابزار</span>
+            </div>
+            <div className="flex-grow overflow-y-auto">
+                 <WeaknessTracker weaknesses={state.weaknesses} />
+                 <div className="h-px bg-border my-2 mx-4"></div>
+                 <PracticeZone />
             </div>
         </div>
-    );
-};
+
+        {/* Chat Panel Overlay */}
+        {state.isChatOpen && (
+            <ChatPanel 
+                history={state.chatHistory} 
+                isFullScreen={state.isChatFullScreen} 
+                initialMessage=""
+                onSend={handleChatSend} 
+                onClose={() => dispatch({ type: 'TOGGLE_CHAT' })}
+                onToggleFullScreen={() => dispatch({ type: 'TOGGLE_FULLSCREEN_CHAT' })}
+                onInitialMessageConsumed={() => {}}
+            />
+        )}
+
+      </main>
+
+        {/* Mobile Bottom Nav */}
+        <div className="lg:hidden bottom-nav">
+            <button className="bottom-nav-item active" onClick={() => dispatch({ type: 'START_PERSONALIZED_LEARNING' })}>
+                <Home className="w-6 h-6" />
+                <span>خانه</span>
+            </button>
+             <button className="bottom-nav-item" onClick={() => dispatch({ type: 'TOGGLE_CHAT' })}>
+                <MessageSquare className="w-6 h-6" />
+                <span>مربی</span>
+            </button>
+            <button className="bottom-nav-item" onClick={() => dispatch({ type: 'TOGGLE_USER_PANEL' })}>
+                <User className="w-6 h-6" />
+                <span>پروفایل</span>
+            </button>
+        </div>
+
+    </div>
+  );
+}
+
+export default App;

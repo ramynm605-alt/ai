@@ -1,5 +1,4 @@
 
-
 export interface ChatMessage {
   role: 'user' | 'model';
   message: string;
@@ -14,6 +13,7 @@ export interface MindMapNode {
     difficulty: number;
     isExplanatory: boolean;
     sourcePages: number[];
+    type: 'core' | 'remedial' | 'extension'; // Added for Adaptive Branching
     children?: MindMapNode[];
   }
 
@@ -79,6 +79,7 @@ export interface MindMapNode {
 
   export enum AppStatus {
     IDLE = 'IDLE',
+    WIZARD = 'WIZARD', // New status for Personalization Wizard
     LOADING = 'LOADING',
     PLAN_REVIEW = 'PLAN_REVIEW',
     PRE_ASSESSMENT = 'PRE_ASSESSMENT',
@@ -93,6 +94,7 @@ export interface MindMapNode {
     FINAL_EXAM = 'FINAL_EXAM',
     SUMMARY = 'SUMMARY',
     ERROR = 'ERROR',
+    GENERATING_REMEDIAL = 'GENERATING_REMEDIAL',
   }
 
   export type UserAnswer = string | number;
@@ -115,7 +117,50 @@ export interface MindMapNode {
   export interface NodeProgress {
       status: 'completed' | 'failed' | 'in_progress';
       attempts: number;
+      proficiency: number; // 0.0 to 1.0
+      explanationCount: number; // User Model: Tracks curiosity/confusion
+      lastAttemptScore: number;
   }
+
+  // --- Engagement Loop Additions ---
+  export interface Reward {
+      id: string;
+      type: 'deep_analysis' | 'notebook';
+      title: string;
+      content: string;
+      unlockedAt: string;
+      relatedNodeId?: string; // If attached to a specific node
+  }
+
+  export interface UserBehavior {
+      lastLoginDate: string; // ISO string
+      dailyStreak: number;
+      studyHours: number[]; // Histogram of study hours (0-23)
+      gritScore: number; // Metric for persistence (retries vs quits)
+      totalPoints: number; // Professional currency
+  }
+  // ---------------------------------
+
+  // --- User Panel & Account Additions ---
+  export interface UserProfile {
+      id: string;
+      name: string;
+      email: string;
+      passwordHash: string; // Added for Security
+      avatarColor: string;
+      joinDate: string;
+  }
+
+  export interface SavedSession {
+      id: string;
+      userId: string;
+      title: string;
+      lastModified: string;
+      progressPercentage: number;
+      topic: string;
+      data: SavableState; // The full state blob
+  }
+  // --------------------------------------
 
   export interface AppState {
     theme: 'light' | 'balanced' | 'dark';
@@ -144,6 +189,17 @@ export interface MindMapNode {
     isChatOpen: boolean;
     isChatFullScreen: boolean;
     chatHistory: ChatMessage[];
+    
+    // Engagement State
+    behavior: UserBehavior;
+    rewards: Reward[];
+    showDailyBriefing: boolean;
+    dailyChallengeContent: string | null;
+
+    // User Account State
+    currentUser: UserProfile | null;
+    isUserPanelOpen: boolean;
+    savedSessions: SavedSession[];
   }
 
   export interface SavableState {
@@ -158,4 +214,7 @@ export interface MindMapNode {
     nodeContents: { [key: string]: NodeContent };
     userProgress: { [key: string]: NodeProgress };
     weaknesses: Weakness[];
+    // Save Engagement Data
+    behavior: UserBehavior;
+    rewards: Reward[];
   }

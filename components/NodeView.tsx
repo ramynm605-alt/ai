@@ -1,8 +1,8 @@
 
 
 import React, { useState, useRef, useEffect } from 'react';
-import { MindMapNode, NodeContent } from '../types';
-import { ArrowRight, MessageSquare, Sparkles } from './icons';
+import { MindMapNode, NodeContent, Reward } from '../types';
+import { ArrowRight, MessageSquare, Sparkles, Diamond, Lock } from './icons';
 
 interface NodeViewProps {
     node: MindMapNode;
@@ -14,6 +14,7 @@ interface NodeViewProps {
     nextNode: MindMapNode | null;
     onExplainRequest: (text: string) => void;
     isIntroNode: boolean;
+    unlockedReward?: Reward; // New prop
 }
 
 const LoadingSkeleton: React.FC = () => (
@@ -36,9 +37,10 @@ const Section: React.FC<{ title: string; content: string }> = ({ title, content 
     </div>
 );
 
-const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz, onNavigate, prevNode, nextNode, onExplainRequest, isIntroNode }) => {
+const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz, onNavigate, prevNode, nextNode, onExplainRequest, isIntroNode, unlockedReward }) => {
     const [selectionPopup, setSelectionPopup] = useState<{ x: number; y: number; text: string } | null>(null);
     const [reminderPopup, setReminderPopup] = useState<{ x: number; y: number; content: string } | null>(null);
+    const [activeTab, setActiveTab] = useState<'content' | 'reward'>('content');
     const viewRef = useRef<HTMLDivElement>(null);
 
     const handleMouseUp = () => {
@@ -81,7 +83,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                 if (reminderContent) {
                     const rect = target.getBoundingClientRect();
                     const containerRect = viewRef.current!.getBoundingClientRect();
-                    setSelectionPopup(null);
+                    setReminderPopup(null);
                     setReminderPopup({
                         content: reminderContent,
                         x: rect.left - containerRect.left + rect.width / 2,
@@ -125,78 +127,118 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                 </div>
             )}
 
-            <button onClick={onBack} className="flex items-center gap-2 mb-6 text-sm font-medium text-primary hover:underline">
-                <ArrowRight className="w-4 h-4 transform rotate-180" />
-                <span>بازگشت به نقشه ذهنی</span>
-            </button>
-            <div className="p-6 border rounded-lg shadow-lg sm:p-8 bg-card border-border">
-                <h2 className="mb-8 text-3xl font-bold text-center text-card-foreground">{node.title}</h2>
-                {isIntroNode ? (
-                    content.introduction ? (
-                         <div className="node-content-section markdown-content leading-relaxed text-card-foreground/90" dangerouslySetInnerHTML={{ __html: content.introduction }} />
-                    ) : (
-                        <LoadingSkeleton />
-                    )
-                ) : (
-                    <>
-                        {content.introduction && <Section title="مقدمه" content={content.introduction} />}
-                        {content.theory && <Section title="تئوری" content={content.theory} />}
-                        {content.example && <Section title="مثال کاربردی" content={content.example} />}
-                        {content.connection && <Section title="ارتباط با سایر مفاهیم" content={content.connection} />}
-                        {content.conclusion && <Section title="نتیجه‌گیری" content={content.conclusion} />}
-                    </>
-                )}
+            <div className="flex items-center justify-between mb-6">
+                <button onClick={onBack} className="flex items-center gap-2 text-sm font-medium text-primary hover:underline">
+                    <ArrowRight className="w-4 h-4 transform rotate-180" />
+                    <span>بازگشت به نقشه ذهنی</span>
+                </button>
                 
-                {content.suggestedQuestions && content.suggestedQuestions.length > 0 && (
-                    <div className="mt-8 mb-6">
-                        <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-muted-foreground">
-                            <Sparkles className="w-4 h-4 text-primary" />
-                            <span>سؤالات پیشنهادی (از مربی بپرسید):</span>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                            {content.suggestedQuestions.map((q, i) => (
-                                <button 
-                                    key={i} 
-                                    onClick={() => onExplainRequest(q)}
-                                    className="px-3 py-1.5 text-sm text-left bg-secondary/50 hover:bg-secondary text-secondary-foreground rounded-full transition-colors border border-transparent hover:border-primary/30"
-                                >
-                                    {q}
-                                </button>
-                            ))}
-                        </div>
+                {/* Tab Switcher if Reward Exists */}
+                {unlockedReward && (
+                    <div className="flex items-center p-1 space-x-1 space-x-reverse rounded-lg bg-secondary">
+                        <button 
+                            onClick={() => setActiveTab('content')}
+                            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'content' ? 'bg-card shadow-sm text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            درس اصلی
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('reward')}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'reward' ? 'bg-card shadow-sm text-purple-600' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            <Diamond className="w-3.5 h-3.5" />
+                            تحلیل پیشرفته
+                        </button>
                     </div>
                 )}
+            </div>
 
-                <div className={`flex flex-col items-center gap-4 pt-6 mt-8 border-t border-border sm:flex-row ${isIntroNode ? 'sm:justify-center' : 'sm:justify-between'}`}>
-                    {isIntroNode ? (
-                         <button 
-                            onClick={onBack} 
-                            className="flex items-center gap-2 px-8 py-3 font-bold text-white transition-transform duration-200 rounded-lg bg-primary hover:bg-primary-hover active:scale-95">
-                            <span>شروع یادگیری و مشاهده نقشه راه</span>
-                            <ArrowRight className="w-5 h-5" />
-                        </button>
+            <div className="p-6 border rounded-lg shadow-lg sm:p-8 bg-card border-border">
+                <h2 className="mb-8 text-3xl font-bold text-center text-card-foreground">{activeTab === 'content' ? node.title : unlockedReward?.title}</h2>
+                
+                {activeTab === 'content' ? (
+                    // Standard Content
+                    isIntroNode ? (
+                        content.introduction ? (
+                             <div className="node-content-section markdown-content leading-relaxed text-card-foreground/90" dangerouslySetInnerHTML={{ __html: content.introduction }} />
+                        ) : (
+                            <LoadingSkeleton />
+                        )
                     ) : (
                         <>
-                            <button 
-                                onClick={() => prevNode && onNavigate(prevNode.id)} 
-                                disabled={!prevNode}
-                                className="w-full px-6 py-2 font-semibold transition-all duration-200 rounded-lg sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed hover:disabled:-translate-y-0 active:scale-95 hover:-translate-y-0.5">
-                                درس قبلی
-                            </button>
-                            <button onClick={onStartQuiz} className="order-first w-full px-8 py-3 font-bold text-white transition-transform duration-200 rounded-lg sm:order-none sm:w-auto bg-primary hover:bg-primary-hover active:scale-95">
-                                آماده‌ام، برویم برای آزمون!
-                            </button>
-                            <button 
-                                onClick={() => nextNode && onNavigate(nextNode.id)} 
-                                disabled={!nextNode || nextNode.locked}
-                                className="w-full px-6 py-2 font-semibold transition-all duration-200 rounded-lg sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed hover:disabled:-translate-y-0 active:scale-95 hover:-translate-y-0.5"
-                                title={nextNode?.locked ? 'ابتدا باید درس فعلی را کامل کنید' : ''}
-                                >
-                                درس بعدی
-                            </button>
+                            {content.introduction && <Section title="مقدمه" content={content.introduction} />}
+                            {content.theory && <Section title="تئوری" content={content.theory} />}
+                            {content.example && <Section title="مثال کاربردی" content={content.example} />}
+                            {content.connection && <Section title="ارتباط با سایر مفاهیم" content={content.connection} />}
+                            {content.conclusion && <Section title="نتیجه‌گیری" content={content.conclusion} />}
                         </>
-                    )}
-                </div>
+                    )
+                ) : (
+                    // Reward Content
+                    <div className="bg-purple-50 dark:bg-purple-900/10 p-6 rounded-lg border border-purple-200 dark:border-purple-800">
+                        <div className="flex items-center gap-2 mb-4 text-purple-700 dark:text-purple-300">
+                            <Diamond className="w-6 h-6" />
+                            <h3 className="text-lg font-bold">محتویات ویژه: تحلیل عمیق</h3>
+                        </div>
+                         <div className="node-content-section markdown-content leading-relaxed text-card-foreground/90" dangerouslySetInnerHTML={{ __html: unlockedReward?.content || '' }} />
+                    </div>
+                )}
+                
+                {/* Only show Qs and Nav in Main Content Tab */}
+                {activeTab === 'content' && (
+                    <>
+                        {content.suggestedQuestions && content.suggestedQuestions.length > 0 && (
+                            <div className="mt-8 mb-6">
+                                <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-muted-foreground">
+                                    <Sparkles className="w-4 h-4 text-primary" />
+                                    <span>سؤالات پیشنهادی (از مربی بپرسید):</span>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    {content.suggestedQuestions.map((q, i) => (
+                                        <button 
+                                            key={i} 
+                                            onClick={() => onExplainRequest(q)}
+                                            className="px-3 py-1.5 text-sm text-left bg-secondary/50 hover:bg-secondary text-secondary-foreground rounded-full transition-colors border border-transparent hover:border-primary/30"
+                                        >
+                                            {q}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className={`flex flex-col items-center gap-4 pt-6 mt-8 border-t border-border sm:flex-row ${isIntroNode ? 'sm:justify-center' : 'sm:justify-between'}`}>
+                            {isIntroNode ? (
+                                 <button 
+                                    onClick={onBack} 
+                                    className="flex items-center gap-2 px-8 py-3 font-bold text-white transition-transform duration-200 rounded-lg bg-primary hover:bg-primary-hover active:scale-95">
+                                    <span>شروع یادگیری و مشاهده نقشه راه</span>
+                                    <ArrowRight className="w-5 h-5" />
+                                </button>
+                            ) : (
+                                <>
+                                    <button 
+                                        onClick={() => prevNode && onNavigate(prevNode.id)} 
+                                        disabled={!prevNode}
+                                        className="w-full px-6 py-2 font-semibold transition-all duration-200 rounded-lg sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed hover:disabled:-translate-y-0 active:scale-95 hover:-translate-y-0.5">
+                                        درس قبلی
+                                    </button>
+                                    <button onClick={onStartQuiz} className="order-first w-full px-8 py-3 font-bold text-white transition-transform duration-200 rounded-lg sm:order-none sm:w-auto bg-primary hover:bg-primary-hover active:scale-95">
+                                        آماده‌ام، برویم برای آزمون!
+                                    </button>
+                                    <button 
+                                        onClick={() => nextNode && onNavigate(nextNode.id)} 
+                                        disabled={!nextNode || nextNode.locked}
+                                        className="w-full px-6 py-2 font-semibold transition-all duration-200 rounded-lg sm:w-auto text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed hover:disabled:-translate-y-0 active:scale-95 hover:-translate-y-0.5"
+                                        title={nextNode?.locked ? 'ابتدا باید درس فعلی را کامل کنید' : ''}
+                                        >
+                                        درس بعدی
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );

@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
   <head>
@@ -344,29 +345,30 @@
       /* Mind Map Animations & Styles */
       .mindmap-node {
         opacity: 0;
-        transform: scale(0.5) translateY(20px);
-        transition: opacity 0.4s ease-out, transform 0.4s ease-out, border-color 0.4s, box-shadow 0.4s;
+        transform: scale(0.8);
+        transition: opacity 0.4s ease-out, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.3s, box-shadow 0.3s;
       }
       .mindmap-node:hover {
         transform: translateY(-4px) scale(1.02);
-        box-shadow: 0 10px 20px rgb(var(--foreground) / 0.07), 0 4px 6px rgb(var(--foreground) / 0.05);
+        box-shadow: 0 12px 24px -10px rgb(var(--foreground) / 0.1);
+        z-index: 40;
       }
       .mindmap-node.active-node {
         border-color: rgb(var(--primary));
-        box-shadow: 0 0 15px -3px rgb(var(--primary)), 0 4px 6px -4px rgb(var(--primary));
+        box-shadow: 0 0 20px -5px rgb(var(--primary) / 0.5);
+        z-index: 50 !important;
       }
       .mindmap-node-visible {
         opacity: 1;
         transform: scale(1) translateY(0);
       }
       .mindmap-node.suggested-node {
-        box-shadow: 0 0 12px -2px rgb(var(--primary) / 0.7);
         animation: pulse-suggested 2.5s infinite;
       }
 
       @keyframes pulse-suggested {
         50% {
-          box-shadow: 0 0 20px 0px rgb(var(--primary) / 0.7);
+          box-shadow: 0 0 20px 0px rgb(var(--primary) / 0.3);
         }
       }
 
@@ -570,7 +572,7 @@
       }
 
     </style>
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
     "react": "https://aistudiocdn.com/react@^19.2.0",

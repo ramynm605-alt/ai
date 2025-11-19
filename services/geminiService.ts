@@ -1,6 +1,7 @@
 
+
 import { GoogleGenAI, Type } from "@google/genai";
-import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, GradingResult, PreAssessmentAnalysis, ChatMessage } from '../types';
+import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, GradingResult, PreAssessmentAnalysis, ChatMessage, Weakness } from '../types';
 import { marked } from 'marked';
 
 const API_KEY = process.env.API_KEY;
@@ -40,6 +41,7 @@ function flattenMindMap(node: any, parentId: string | null = null): MindMapNode[
         difficulty: node.difficulty || 0.5,
         isExplanatory: node.isExplanatory || false,
         sourcePages: node.sourcePages || [],
+        type: 'core',
     };
 
     let childrenNodes: MindMapNode[] = [];
@@ -103,7 +105,7 @@ export async function generateLearningPlan(
         **قوانین ساختاری (بسیار مهم):**
         1.  **گره ریشه (اجباری):** باید دقیقاً یک گره با parentId: null وجود داشته باشد. عنوان آن باید "مقدمه و نقشه راه" باشد.
         2.  **گره‌های اصلی:** سایر گره‌ها باید به طور مستقیم یا غیرمستقیم فرزند این گره باشند.
-        3.  **گره پایان (اجباری):** آخرین گره در مسیر یادگیری باید "جمع‌بندی و نتیجه‌گیری" باشد. این گره باید فرزند یکی از شاخه‌های اصلی یا فرزند مستقیم ریشه باشد تا در انتهای مسیر قرار گیرد.
+        3.  **گره پایان (اجباری):** آخرین گره در مسیر یادگیری باید "جمع‌بندی و نتیجه‌گیری" باشد.
         4.  **تشخیص نوع محتوا:** اگر متن ریاضی است، گره‌ها باید "قضیه/اثبات" باشند. اگر تاریخ است، "رویداد/تحلیل". ساختار را هوشمندانه انتخاب کن.
         5.  **فشردگی:** بین ۳ تا ۱۰ گره کل.
 
@@ -195,6 +197,7 @@ export async function generateLearningPlan(
                                 difficulty: node.difficulty || 0.5,
                                 isExplanatory: node.isExplanatory || false,
                                 sourcePages: node.sourcePages || [],
+                                type: 'core',
                             }));
                         } else if (resultJson.mindMap && Array.isArray(resultJson.mindMap.nodes)) {
                              mindMap = resultJson.mindMap.nodes.map((node: any) => ({
@@ -205,6 +208,7 @@ export async function generateLearningPlan(
                                 difficulty: node.difficulty || 0.5,
                                 isExplanatory: node.isExplanatory || false,
                                 sourcePages: node.sourcePages || [],
+                                type: 'core',
                             }));
                         } else if (resultJson.mindMap && typeof resultJson.mindMap === 'object') {
                             mindMap = flattenMindMap(resultJson.mindMap);
@@ -248,7 +252,8 @@ export async function generateLearningPlan(
                                     locked: false,
                                     difficulty: 0.1,
                                     isExplanatory: true,
-                                    sourcePages: []
+                                    sourcePages: [],
+                                    type: 'core',
                                 };
                                 mindMap.unshift(newRoot);
                                 // Link old roots to new root
@@ -266,8 +271,8 @@ export async function generateLearningPlan(
                         if (!conclusionNode && mindMap.length > 0) {
                              // No conclusion node found? Create one.
                              const conclusionId = 'synthetic_conclusion_' + Math.random().toString(36).substr(2, 5);
-                             // Attach to the root or the last added node? Attaching to root is safer for tree structure.
                              const rootNode = mindMap.find(n => n.parentId === null);
+                             // We attach it to root for data consistency, but UI will handle visual placement
                              mindMap.push({
                                  id: conclusionId,
                                  title: 'جمع‌بندی و نتیجه‌گیری',
@@ -275,7 +280,8 @@ export async function generateLearningPlan(
                                  locked: true,
                                  difficulty: 0.3,
                                  isExplanatory: false,
-                                 sourcePages: []
+                                 sourcePages: [],
+                                 type: 'core',
                              });
                         }
                         // -------------------------------------------------------------
@@ -507,6 +513,52 @@ export async function generateNodeContent(
              connection: await marked.parse(processReminders(contentObj.connection)),
              conclusion: await marked.parse(processReminders(contentObj.conclusion)),
              suggestedQuestions: contentObj.suggestedQuestions
+        };
+    });
+}
+
+// --- NEW: Generate Remedial Node for Adaptive Branching ---
+export async function generateRemedialNode(
+    parentTitle: string,
+    weaknesses: Weakness[],
+    content: string,
+    images: { mimeType: string; data: string }[]
+): Promise<MindMapNode> {
+    return withRetry(async () => {
+        const prompt = `
+        The student failed the quiz for the topic "${parentTitle}".
+        Their specific mistakes were:
+        ${JSON.stringify(weaknesses.map(w => w.question), null, 2)}
+        
+        Create a "Remedial Node" (Mini-lesson) that focuses ONLY on explaining these specific weak points simpler and with better examples.
+        
+        Output JSON format:
+        {
+           "title": "Title for remedial lesson (e.g. 'Review: [Concept]')",
+           "difficulty": 0.3,
+           "isExplanatory": true
+        }
+        `;
+        
+        const imageParts = images.map(img => ({ inlineData: { mimeType: img.mimeType, data: img.data } }));
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: { parts: [{ text: prompt }, ...imageParts] },
+            config: { responseMimeType: "application/json" }
+        });
+        
+        const cleanText = cleanJsonString(response.text || '{}');
+        const data = JSON.parse(cleanText);
+        
+        return {
+            id: 'remedial_' + Math.random().toString(36).substr(2, 9),
+            title: data.title || `مرور: ${parentTitle}`,
+            parentId: null, // Will be set by the caller
+            locked: false,
+            difficulty: data.difficulty || 0.3,
+            isExplanatory: true,
+            sourcePages: [],
+            type: 'remedial'
         };
     });
 }
@@ -775,5 +827,57 @@ export async function generateChatResponse(
         const result = await chat.sendMessage({ message: lastMsg });
         
         return await marked.parse(result.text || '');
+    });
+}
+
+// --- ENGAGEMENT LOOP FUNCTIONS ---
+
+export async function generateDailyChallenge(
+    weaknesses: Weakness[],
+    content: string
+): Promise<string> {
+    return withRetry(async () => {
+        const weakSpot = weaknesses.length > 0 
+            ? weaknesses[Math.floor(Math.random() * weaknesses.length)]
+            : null;
+
+        const prompt = weakSpot
+            ? `The user struggled with: "${weakSpot.question}". Create a "Daily Flash Challenge" (Markdown). Start with a quick recap of the concept, then ask a single thought-provoking question to test if they understand it now. Language: Persian. Brief and engaging.`
+            : `Create a "Daily Flash Challenge" (Markdown) based on a random key concept from the content. Brief and engaging. Language: Persian. Content: ${content.substring(0, 10000)}`;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: { parts: [{ text: prompt }] },
+        });
+        
+        return await marked.parse(response.text || '');
+    });
+}
+
+export async function generateDeepAnalysis(
+    nodeTitle: string,
+    nodeContent: string
+): Promise<string> {
+    return withRetry(async () => {
+        const prompt = `
+        Create a high-value "Premium Reward" content (Markdown) for the topic: "${nodeTitle}".
+        This is a reward for a top-performing student (mastery level).
+
+        Structure as a "Smart Notebook" or "Deep Analysis".
+        Include:
+        1. **Nuance & Misconceptions**: Subtle details experts know.
+        2. **Advanced Application**: Real-world complex usage.
+        3. **Quick Cheat Sheet**: A very concise bulleted summary for rapid review (The "Notebook" part).
+        
+        Base context: ${nodeContent}
+        Language: Persian. Professional tone.
+        `;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-pro", // Use Pro for high-quality reward content
+            contents: { parts: [{ text: prompt }] },
+        });
+        
+        return await marked.parse(response.text || '');
     });
 }
