@@ -1,8 +1,7 @@
 
-
 import React, { useState } from 'react';
 import { UserProfile, SavedSession } from '../types';
-import { User, LogOut, History, BrainCircuit, Trash, Save, CheckCircle, ArrowRight, XCircle, Shield, Key } from './icons';
+import { User, LogOut, History, BrainCircuit, Trash, Save, CheckCircle, ArrowRight, XCircle, Shield, Key, Upload, ClipboardList } from './icons';
 
 interface UserPanelProps {
     isOpen: boolean;
@@ -16,6 +15,8 @@ interface UserPanelProps {
     onDeleteSession: (sessionId: string) => void;
     onSaveCurrentSession: (title: string) => void;
     hasCurrentSession: boolean;
+    onExportData: () => string;
+    onImportData: (data: string) => boolean;
 }
 
 const UserPanel: React.FC<UserPanelProps> = ({ 
@@ -29,7 +30,9 @@ const UserPanel: React.FC<UserPanelProps> = ({
     onLoadSession,
     onDeleteSession,
     onSaveCurrentSession,
-    hasCurrentSession
+    hasCurrentSession,
+    onExportData,
+    onImportData
 }) => {
     const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
     const [email, setEmail] = useState('');
@@ -38,6 +41,13 @@ const UserPanel: React.FC<UserPanelProps> = ({
     const [sessionTitle, setSessionTitle] = useState('');
     const [showSaveInput, setShowSaveInput] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    
+    // Sync States
+    const [showExport, setShowExport] = useState(false);
+    const [exportString, setExportString] = useState('');
+    const [showImport, setShowImport] = useState(false);
+    const [importString, setImportString] = useState('');
+    const [syncMsg, setSyncMsg] = useState('');
 
     if (!isOpen) return null;
 
@@ -61,6 +71,26 @@ const UserPanel: React.FC<UserPanelProps> = ({
             onSaveCurrentSession(sessionTitle);
             setSessionTitle('');
             setShowSaveInput(false);
+        }
+    };
+
+    const handleGenerateExport = () => {
+        const data = onExportData();
+        setExportString(data);
+        setShowExport(true);
+        setShowImport(false);
+    };
+
+    const handleExecuteImport = () => {
+        if (!importString.trim()) return;
+        const success = onImportData(importString);
+        if (success) {
+            setSyncMsg('اطلاعات با موفقیت بارگذاری شد!');
+            setTimeout(() => setSyncMsg(''), 3000);
+            setImportString('');
+            setShowImport(false);
+        } else {
+            setSyncMsg('کد نامعتبر است.');
         }
     };
 
@@ -167,15 +197,57 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                 <div className="z-10">
                                     <h3 className="text-xl font-bold">{user.name}</h3>
                                     <p className="text-muted-foreground text-sm">{user.email}</p>
-                                    <p className="text-xs text-muted-foreground mt-1 opacity-70">عضویت: {new Date(user.joinDate).toLocaleDateString('fa-IR')}</p>
+                                    <div className="flex gap-2 mt-1">
+                                        <p className="text-xs text-muted-foreground opacity-70">عضویت: {new Date(user.joinDate).toLocaleDateString('fa-IR')}</p>
+                                    </div>
                                 </div>
                                 <Shield className="absolute -left-4 -bottom-4 w-32 h-32 text-primary/5 z-0" />
                             </div>
+                            
+                            {/* Sync & Transfer Section */}
+                            <div className="p-4 border border-indigo-500/20 bg-indigo-500/5 rounded-lg">
+                                <h4 className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mb-2 flex items-center gap-2">
+                                    <ClipboardList className="w-4 h-4" />
+                                    همگام‌سازی بین دستگاه‌ها
+                                </h4>
+                                <p className="text-xs text-muted-foreground mb-3">
+                                    برای انتقال پیشرفت خود به دستگاه دیگر (موبایل/لپتاپ)، از گزینه‌های زیر استفاده کنید:
+                                </p>
+                                <div className="flex gap-2 mb-3">
+                                    <button onClick={handleGenerateExport} className="flex-1 px-3 py-2 text-xs font-bold bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors">
+                                        دریافت کد انتقال (Export)
+                                    </button>
+                                    <button onClick={() => { setShowImport(true); setShowExport(false); }} className="flex-1 px-3 py-2 text-xs font-bold border border-indigo-600 text-indigo-600 rounded hover:bg-indigo-600 hover:text-white transition-colors">
+                                        وارد کردن کد (Import)
+                                    </button>
+                                </div>
 
-                             {/* Security Status */}
-                             <div className="flex items-center gap-2 text-xs text-success bg-success/10 p-2 rounded-lg border border-success/20">
-                                <Shield className="w-4 h-4" />
-                                <span>حساب شما با رمزنگاری SHA-256 محافظت می‌شود.</span>
+                                {showExport && (
+                                    <div className="animate-slide-up">
+                                        <p className="text-xs mb-1 text-muted-foreground">این کد را کپی کرده و در دستگاه جدید در بخش "Import" وارد کنید:</p>
+                                        <textarea 
+                                            readOnly 
+                                            value={exportString} 
+                                            className="w-full h-20 p-2 text-xs font-mono bg-background border border-border rounded select-all"
+                                            onClick={(e) => e.currentTarget.select()}
+                                        />
+                                    </div>
+                                )}
+
+                                {showImport && (
+                                    <div className="animate-slide-up flex flex-col gap-2">
+                                        <textarea 
+                                            placeholder="کد انتقال را اینجا پیست کنید..."
+                                            value={importString}
+                                            onChange={(e) => setImportString(e.target.value)}
+                                            className="w-full h-20 p-2 text-xs font-mono bg-background border border-border rounded"
+                                        />
+                                        <button onClick={handleExecuteImport} className="self-end px-4 py-1 text-xs bg-green-600 text-white rounded font-bold">
+                                            اعمال تغییرات
+                                        </button>
+                                    </div>
+                                )}
+                                {syncMsg && <p className="text-xs text-green-600 font-bold mt-2">{syncMsg}</p>}
                             </div>
 
                             {/* Stats Row */}
@@ -200,7 +272,7 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                     {!showSaveInput ? (
                                         <button onClick={() => setShowSaveInput(true)} className="w-full flex items-center justify-center gap-2 py-2 text-primary font-semibold hover:bg-primary/10 rounded-md transition-colors">
                                             <Save className="w-5 h-5" />
-                                            <span>ذخیره وضعیت فعلی در پروفایل</span>
+                                            <span>تغییر نام جلسه فعلی</span>
                                         </button>
                                     ) : (
                                         <form onSubmit={handleSaveSubmit} className="flex gap-2">
@@ -216,6 +288,7 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                             <button type="button" onClick={() => setShowSaveInput(false)} className="px-3 py-2 text-muted-foreground hover:bg-secondary rounded-md">لغو</button>
                                         </form>
                                     )}
+                                    <p className="text-[10px] text-center mt-2 text-muted-foreground opacity-70">تغییرات شما به صورت خودکار ذخیره می‌شوند.</p>
                                 </div>
                             )}
 

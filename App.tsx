@@ -80,7 +80,9 @@ const initialState: AppState = {
   // User Account
   currentUser: null,
   isUserPanelOpen: false,
-  savedSessions: []
+  savedSessions: [],
+  currentSessionId: null,
+  isAutoSaving: false
 };
 
 function appReducer(state: AppState, action: any): AppState {
@@ -166,8 +168,10 @@ function appReducer(state: AppState, action: any): AppState {
             ...state, 
             mindMap: newMindMap, 
             suggestedPath: newPath, 
-            status: AppStatus.QUIZ_REVIEW, 
-            activeNodeId: originalNodeId, 
+            status: AppStatus.LEARNING, 
+            activeNodeId: remedialNode.id,
+            quizResults: null,
+            activeQuiz: null,
             loadingMessage: null 
         };
     }
@@ -291,7 +295,7 @@ function appReducer(state: AppState, action: any): AppState {
     case 'SUMMARY_LOADED':
         return { ...state, status: AppStatus.SUMMARY, finalExam: null, correctiveSummary: action.payload.summary };
     case 'LOAD_STATE':
-        return { ...initialState, ...action.payload, currentUser: state.currentUser, savedSessions: state.savedSessions, status: action.payload.preAssessmentAnalysis ? AppStatus.LEARNING : AppStatus.IDLE };
+        return { ...initialState, ...action.payload, currentUser: state.currentUser, savedSessions: state.savedSessions, currentSessionId: action.sessionId, status: action.payload.preAssessmentAnalysis ? AppStatus.LEARNING : AppStatus.IDLE };
     case 'CHECK_DAILY_STATUS': {
         const lastLogin = new Date(state.behavior.lastLoginDate);
         const now = new Date();
@@ -333,9 +337,13 @@ function appReducer(state: AppState, action: any): AppState {
     case 'SET_USER':
         return { ...state, currentUser: action.payload };
     case 'LOGOUT':
-        return { ...state, currentUser: null, savedSessions: [] };
+        return { ...state, currentUser: null, savedSessions: [], currentSessionId: null };
     case 'UPDATE_SAVED_SESSIONS':
         return { ...state, savedSessions: action.payload };
+    case 'SET_CURRENT_SESSION_ID':
+        return { ...state, currentSessionId: action.payload };
+    case 'SET_AUTO_SAVING':
+        return { ...state, isAutoSaving: action.payload };
     case 'TOGGLE_CHAT':
       return { ...state, isChatOpen: !state.isChatOpen };
     case 'TOGGLE_FULLSCREEN_CHAT':
@@ -471,8 +479,10 @@ function App() {
       dispatch({ type: 'LOGOUT' });
   };
 
-  const handleSaveSession = (title: string) => {
+  const handleSaveSession = (title: string, isAutoSave = false) => {
       if (!state.currentUser) return;
+      
+      if (isAutoSave) dispatch({ type: 'SET_AUTO_SAVING', payload: true });
 
       const sessionData: SavableState = {
           version: CURRENT_APP_VERSION,
@@ -494,19 +504,50 @@ function App() {
       const completedNodes = Object.values(state.userProgress).filter(p => p.status === 'completed').length;
       const progress = totalNodes > 0 ? (completedNodes / totalNodes) * 100 : 0;
 
-      const newSession: SavedSession = {
-          id: Math.random().toString(36).substr(2, 9),
-          userId: state.currentUser.id,
-          title: title || `جلسه ${new Date().toLocaleDateString('fa-IR')}`,
-          lastModified: new Date().toISOString(),
-          progressPercentage: progress,
-          topic: state.mindMap[0]?.title || 'بدون عنوان',
-          data: sessionData
-      };
+      let newSessions = [...state.savedSessions];
+      let sessionId = state.currentSessionId;
 
-      const newSessions = [newSession, ...state.savedSessions];
+      if (sessionId) {
+          // Update existing session
+          const index = newSessions.findIndex(s => s.id === sessionId);
+          if (index !== -1) {
+              newSessions[index] = {
+                  ...newSessions[index],
+                  lastModified: new Date().toISOString(),
+                  progressPercentage: progress,
+                  data: sessionData,
+                  title: (title && !isAutoSave) ? title : newSessions[index].title
+              };
+          } else {
+              // Session ID exists but not found in list (shouldn't happen, but safety fallback)
+              sessionId = null;
+          }
+      }
+      
+      if (!sessionId) {
+          // Create new session
+          sessionId = Math.random().toString(36).substr(2, 9);
+          const newSession: SavedSession = {
+            id: sessionId,
+            userId: state.currentUser.id,
+            title: title || `جلسه ${new Date().toLocaleDateString('fa-IR')}`,
+            lastModified: new Date().toISOString(),
+            progressPercentage: progress,
+            topic: state.mindMap[0]?.title || 'بدون عنوان',
+            data: sessionData
+          };
+          newSessions = [newSession, ...newSessions];
+          dispatch({ type: 'SET_CURRENT_SESSION_ID', payload: sessionId });
+      }
+
       localStorage.setItem(`zehngah_sessions_${state.currentUser.id}`, JSON.stringify(newSessions));
       dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: newSessions });
+
+      if (isAutoSave) {
+          setTimeout(() => {
+              dispatch({ type: 'SET_AUTO_SAVING', payload: false });
+          }, 800);
+      }
   };
 
   const handleDeleteSession = (sessionId: string) => {
@@ -514,10 +555,72 @@ function App() {
        const newSessions = state.savedSessions.filter(s => s.id !== sessionId);
        localStorage.setItem(`zehngah_sessions_${state.currentUser.id}`, JSON.stringify(newSessions));
        dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: newSessions });
+       if (state.currentSessionId === sessionId) {
+           dispatch({ type: 'SET_CURRENT_SESSION_ID', payload: null });
+       }
   };
 
   const handleLoadSession = (session: SavedSession) => {
-      dispatch({ type: 'LOAD_STATE', payload: session.data });
+      dispatch({ type: 'LOAD_STATE', payload: session.data, sessionId: session.id });
+  };
+  
+  // --- Auto-Save Logic ---
+  useEffect(() => {
+      // Only auto-save if user is logged in, has a session ID, and there is content
+      if (state.status === AppStatus.LEARNING && state.currentUser && state.currentSessionId && state.mindMap.length > 0) {
+          const timer = setTimeout(() => {
+              handleSaveSession("", true);
+          }, 3000); // Auto-save 3 seconds after last change
+          return () => clearTimeout(timer);
+      }
+  }, [state.userProgress, state.mindMap, state.rewards, state.behavior, state.status, state.currentUser, state.currentSessionId]);
+
+
+  // --- Export/Import Data Logic (Multi-Device Sync Simulation) ---
+  const handleExportUserData = (): string => {
+      if (!state.currentUser) return '';
+      const userData = {
+          user: state.currentUser,
+          sessions: state.savedSessions,
+          behavior: state.behavior
+      };
+      return btoa(unescape(encodeURIComponent(JSON.stringify(userData))));
+  };
+
+  const handleImportUserData = (importString: string) => {
+      try {
+          const decoded = decodeURIComponent(escape(atob(importString)));
+          const userData = JSON.parse(decoded);
+          
+          if (!userData.user || !userData.sessions) throw new Error("فرمت نامعتبر");
+          
+          // 1. Update/Merge User
+          const usersStr = localStorage.getItem('zehngah_users');
+          let users: UserProfile[] = usersStr ? JSON.parse(usersStr) : [];
+          // Check if user exists, if not add them
+          if (!users.some(u => u.email === userData.user.email)) {
+              users.push(userData.user);
+              localStorage.setItem('zehngah_users', JSON.stringify(users));
+          }
+          
+          // 2. Set Current User
+          localStorage.setItem('zehngah_current_user', JSON.stringify(userData.user));
+          dispatch({ type: 'SET_USER', payload: userData.user });
+
+          // 3. Update Sessions
+          localStorage.setItem(`zehngah_sessions_${userData.user.id}`, JSON.stringify(userData.sessions));
+          dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: userData.sessions });
+          
+          // 4. Update Behavior
+          if (userData.behavior) {
+             localStorage.setItem(`zehngah_behavior_${userData.user.id}`, JSON.stringify(userData.behavior));
+          }
+
+          return true;
+      } catch (e) {
+          console.error("Import failed", e);
+          return false;
+      }
   };
   // ----------------------------
 
@@ -589,13 +692,17 @@ function App() {
       
       generateLearningPlan(
           state.sourceContent, 
-          state.sourcePageContents,
-          state.sourceImages, 
+          state.sourcePageContents, 
+          state.sourceImages,
           state.preferences,
           (mindMap, suggestedPath) => dispatch({ type: 'MIND_MAP_GENERATED', payload: { mindMap, suggestedPath } }),
           (question) => dispatch({ type: 'PRE_ASSESSMENT_QUESTION_STREAMED', payload: question })
       ).then(quiz => {
           dispatch({ type: 'PRE_ASSESSMENT_STREAM_END' });
+          // Auto-init session on first generation if logged in
+          if (state.currentUser) {
+               handleSaveSession(`جلسه جدید ${new Date().toLocaleDateString('fa-IR')}`, true);
+          }
       }).catch(error => {
           dispatch({ type: 'SET_ERROR', payload: 'خطا در ارتباط با هوش مصنوعی. لطفاً دوباره تلاش کنید.' });
       });
@@ -641,6 +748,10 @@ function App() {
                 console.error(err);
             });
        }
+  };
+  
+  const handleCompleteIntro = () => {
+      dispatch({ type: 'COMPLETE_INTRO_NODE' });
   };
 
   const handleTakeQuiz = (nodeId: string) => {
@@ -815,8 +926,10 @@ function App() {
           savedSessions={state.savedSessions}
           onLoadSession={handleLoadSession}
           onDeleteSession={handleDeleteSession}
-          onSaveCurrentSession={handleSaveSession}
+          onSaveCurrentSession={(title) => handleSaveSession(title, false)}
           hasCurrentSession={state.mindMap.length > 0}
+          onExportData={handleExportUserData}
+          onImportData={handleImportUserData}
       />
 
       {/* Header */}
@@ -826,6 +939,12 @@ function App() {
                  <Brain className="w-5 h-5 text-primary-foreground" />
             </div>
             <h1 className="text-xl font-extrabold tracking-tight text-foreground">ذهن گاه</h1>
+            {state.isAutoSaving && (
+                 <div className="flex items-center gap-2 mr-4 text-xs text-muted-foreground animate-pulse">
+                     <Save className="w-3 h-3" />
+                     <span>ذخیره خودکار...</span>
+                 </div>
+            )}
         </div>
         
         <div className="flex items-center gap-3">
@@ -933,10 +1052,12 @@ function App() {
             )}
 
             {/* Loading State */}
-            {(state.status === AppStatus.LOADING || state.status === AppStatus.GENERATING_REMEDIAL) && (
+            {(state.status === AppStatus.LOADING || state.status === AppStatus.GENERATING_REMEDIAL || state.status === AppStatus.GRADING_PRE_ASSESSMENT) && (
                 <div className="flex flex-col items-center justify-center h-full space-y-6 fade-in">
                     <Spinner />
-                    <p className="text-xl font-medium text-muted-foreground animate-pulse">{state.loadingMessage || 'در حال پردازش...'}</p>
+                    <p className="text-xl font-medium text-muted-foreground animate-pulse">
+                        {state.loadingMessage || (state.status === AppStatus.GRADING_PRE_ASSESSMENT ? 'در حال تحلیل پاسخ‌ها و تعیین سطح...' : 'در حال پردازش...')}
+                    </p>
                 </div>
             )}
 
@@ -991,8 +1112,8 @@ function App() {
             {/* Main Learning View (MindMap + Content) */}
             {(state.status === AppStatus.LEARNING || state.status === AppStatus.VIEWING_NODE || state.status === AppStatus.TAKING_QUIZ || state.status === AppStatus.GRADING_QUIZ || state.status === AppStatus.QUIZ_REVIEW) && (
                 <div className="flex flex-col h-full relative">
-                    {/* MindMap Area */}
-                    <div className={`${state.status === AppStatus.LEARNING ? 'flex-grow' : 'h-1/3 min-h-[200px] border-b border-border'} relative transition-all duration-500 ease-in-out`}>
+                    {/* MindMap Area - Occupies full space */}
+                    <div className="absolute inset-0 z-0">
                         <MindMap 
                             nodes={state.mindMap} 
                             progress={Object.keys(state.userProgress).reduce((acc, key) => ({...acc, [key]: state.userProgress[key].status}), {} as {[key: string]: 'completed' | 'failed' | 'in_progress'})} 
@@ -1010,9 +1131,9 @@ function App() {
                         )}
                     </div>
 
-                    {/* Content/Quiz Area */}
+                    {/* Content/Quiz Area Overlay */}
                     {state.status !== AppStatus.LEARNING && (
-                        <div className="flex-grow overflow-y-auto bg-background/50 backdrop-blur-sm animate-slide-up relative z-20 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)]">
+                        <div className="absolute inset-0 z-50 bg-background/95 backdrop-blur-md overflow-y-auto animate-zoom-in">
                             {state.status === AppStatus.VIEWING_NODE && state.activeNodeId && (
                                 <NodeView 
                                     node={state.mindMap.find(n => n.id === state.activeNodeId)!} 
@@ -1024,6 +1145,7 @@ function App() {
                                     nextNode={null}
                                     onExplainRequest={handleExplainRequest}
                                     isIntroNode={state.mindMap.find(n => n.id === state.activeNodeId)?.parentId === null}
+                                    onCompleteIntro={handleCompleteIntro}
                                     unlockedReward={state.rewards.find(r => r.relatedNodeId === state.activeNodeId)}
                                 />
                             )}
@@ -1058,7 +1180,7 @@ function App() {
         </div>
 
         {/* Right/Bottom Panel */}
-        <div className="hidden lg:flex flex-col w-80 border-r border-border bg-card/50 backdrop-blur-sm shrink-0">
+        <div className="hidden lg:flex flex-col w-80 border-r border-border bg-card/50 backdrop-blur-sm shrink-0 relative z-10">
             <div className="p-4 border-b border-border font-bold text-foreground flex items-center gap-2">
                 <SlidersHorizontal className="w-5 h-5" />
                 <span>جعبه ابزار</span>

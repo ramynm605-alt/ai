@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { MindMapNode as MindMapNodeType } from '../types';
-import { CheckCircle, Lock, FileQuestion, Target, Flag, Trophy, Sparkles } from './icons';
+import { CheckCircle, Lock, FileQuestion, Target, Flag, Trophy, Sparkles, BrainCircuit } from './icons';
 
 interface MindMapProps {
     nodes: MindMapNodeType[];
@@ -16,14 +16,10 @@ interface MindMapProps {
 
 const formatPageNumbers = (pages: number[]): string => {
     if (!pages || pages.length === 0) return '';
-    
     pages.sort((a, b) => a - b);
-    
     const ranges: (number | string)[] = [];
     if (pages.length === 0) return '';
-
     let start = pages[0];
-    
     for (let i = 1; i <= pages.length; i++) {
         if (i === pages.length || pages[i] !== pages[i-1] + 1) {
             const end = pages[i-1];
@@ -39,9 +35,188 @@ const formatPageNumbers = (pages: number[]): string => {
             }
         }
     }
-    
     return `ص: ${ranges.join(', ')}`;
 };
+
+// Extracted component to prevent re-mounting and hover flicker
+const MindMapNodeItem = React.memo(({ 
+    node, 
+    index, 
+    status, 
+    isLocked, 
+    isSuggestedAndIncomplete, 
+    suggestedIndex, 
+    isActive, 
+    isRemedial, 
+    isIntro, 
+    isConclusion,
+    width, 
+    height, 
+    isVisible, 
+    isPortrait, 
+    onSelect, 
+    onTakeQuiz 
+}: {
+    node: MindMapNodeType & { x: number, y: number };
+    index: number;
+    status: 'completed' | 'failed' | 'in_progress' | undefined;
+    isLocked: boolean;
+    isSuggestedAndIncomplete: boolean | null;
+    suggestedIndex: number;
+    isActive: boolean;
+    isRemedial: boolean;
+    isIntro: boolean;
+    isConclusion: boolean;
+    width: number;
+    height: number;
+    isVisible: boolean;
+    isPortrait: boolean;
+    onSelect: (id: string) => void;
+    onTakeQuiz: (id: string) => void;
+}) => {
+    const handleNodeClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!isLocked) {
+            onSelect(node.id);
+        }
+    };
+
+    // Difficulty Color Bar
+    let difficultyColor = 'bg-primary';
+    if (isRemedial) difficultyColor = 'bg-purple-500';
+    else if (node.difficulty < 0.4) difficultyColor = 'bg-emerald-500';
+    else if (node.difficulty > 0.7) difficultyColor = 'bg-rose-500';
+
+    const baseStyle = {
+        left: node.x,
+        top: node.y,
+        width: width,
+        height: height,
+        transitionDelay: `${index * 30}ms`,
+        // Use specific z-index hierarchy but rely on hover CSS for lift
+        zIndex: isActive ? 40 : (isLocked ? 10 : 20),
+        opacity: isLocked ? 0.6 : 1,
+        filter: isLocked ? 'grayscale(0.8) blur(0.5px)' : 'none',
+    };
+
+    // 1. Introduction Node
+    if (isIntro) {
+        return (
+            <div
+                className={`mindmap-node group ${isVisible ? 'mindmap-node-visible' : ''} absolute cursor-pointer`}
+                style={baseStyle}
+                onClick={handleNodeClick}
+                role="button"
+            >
+                <div className={`absolute inset-0 rounded-2xl shadow-xl flex flex-col items-center justify-center text-center p-4 border transition-all duration-300 
+                    ${isActive ? 'border-primary ring-4 ring-primary/20 scale-105' : 'border-white/10 hover:scale-105'} 
+                    bg-gradient-to-br from-indigo-600 via-indigo-700 to-slate-800 text-white overflow-hidden`}>
+                    
+                    <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuMDUiLz4KPC9zdmc+')] opacity-20"></div>
+                    
+                    <div className="relative z-10">
+                        <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-white/10 flex items-center justify-center backdrop-blur-sm">
+                            <Flag className="w-6 h-6 text-indigo-200" />
+                        </div>
+                        <h3 className={`font-bold leading-tight ${isPortrait ? 'text-sm' : 'text-lg'}`}>{node.title}</h3>
+                        <span className="inline-block mt-2 text-[10px] font-bold uppercase tracking-wider bg-black/20 px-2 py-1 rounded-full text-indigo-200">شروع مسیر</span>
+                    </div>
+                </div>
+                {status === 'completed' && (
+                    <div className="absolute -top-2 -right-2 z-30 bg-white rounded-full shadow-lg ring-2 ring-green-500">
+                        <CheckCircle className="w-6 h-6 text-green-500 fill-white" />
+                    </div>
+                 )}
+            </div>
+        );
+    }
+
+    // 2. Conclusion Node
+    if (isConclusion) {
+         return (
+            <div
+                className={`mindmap-node group ${isVisible ? 'mindmap-node-visible' : ''} absolute cursor-pointer`}
+                style={baseStyle}
+                onClick={handleNodeClick}
+                role="button"
+            >
+                <div className={`absolute inset-0 rounded-2xl shadow-lg flex flex-col items-center justify-center text-center p-4 border transition-all duration-300
+                    ${isActive ? 'border-emerald-500 ring-4 ring-emerald-500/20' : 'border-emerald-500/30'} 
+                    ${isLocked ? 'bg-slate-100 dark:bg-slate-800' : 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white'}`}>
+                    
+                    {status === 'completed' ? 
+                        <Trophy className="w-10 h-10 mb-2 text-yellow-300 drop-shadow-lg" /> : 
+                        <Target className="w-8 h-8 mb-2 opacity-90" />
+                    }
+                    <h3 className={`font-bold leading-tight ${isPortrait ? 'text-sm' : 'text-lg'}`}>{node.title}</h3>
+                </div>
+            </div>
+        );
+    }
+
+    // 3. Standard Node (Glassmorphism)
+    return (
+        <div
+            className={`mindmap-node group ${isVisible ? 'mindmap-node-visible' : ''} ${isActive ? 'active-node' : ''} ${isSuggestedAndIncomplete ? 'suggested-node' : ''} absolute rounded-xl cursor-pointer`}
+            style={baseStyle}
+            onClick={handleNodeClick}
+            role="button"
+            tabIndex={isLocked ? -1 : 0}
+        >
+             {/* Active Pulse Ring */}
+             {isActive && <div className="absolute inset-0 rounded-xl ring-4 ring-primary/30 animate-pulse"></div>}
+
+             <div className={`absolute inset-0 rounded-xl border transition-all duration-300 overflow-hidden flex flex-col shadow-sm hover:shadow-xl glass
+                ${isActive ? 'border-primary/80 bg-card/90' : 'border-white/40 dark:border-white/10 hover:border-primary/50 bg-card/70'} 
+                ${isRemedial ? 'border-purple-400/50 bg-purple-50/80 dark:bg-purple-900/20' : ''}
+             `}>
+                
+                {/* Top Gradient Line */}
+                <div className={`h-1 w-full ${difficultyColor} opacity-80`} />
+
+                <div className="flex-1 p-3 flex flex-col justify-between relative z-10">
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-2">
+                         <h3 className={`font-bold leading-snug text-foreground line-clamp-2 ${isPortrait ? 'text-xs' : 'text-sm'} ${isRemedial ? 'text-purple-700 dark:text-purple-300' : ''}`} dir="rtl">
+                            {node.title}
+                         </h3>
+                         {isLocked && <Lock className="w-4 h-4 text-muted-foreground/50 shrink-0" />}
+                    </div>
+
+                    {/* Footer info */}
+                    <div className="flex items-end justify-between mt-2">
+                         <div className="flex gap-1">
+                            {node.sourcePages.length > 0 && (
+                                <span className="text-[10px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded border border-border/50">
+                                    {formatPageNumbers(node.sourcePages)}
+                                </span>
+                            )}
+                         </div>
+
+                        {!isLocked && status !== 'completed' && (
+                             <div className="bg-primary/10 p-1 rounded-md text-primary opacity-0 group-hover:opacity-100 transition-all transform translate-y-2 group-hover:translate-y-0">
+                                 {isRemedial ? <Sparkles className="w-4 h-4 text-purple-500" /> : <BrainCircuit className="w-4 h-4" />}
+                             </div>
+                        )}
+                    </div>
+                </div>
+             </div>
+
+             {/* Status Badges (Floating) */}
+             {status === 'completed' && (
+                <div className="absolute -top-2 -left-2 z-30 bg-white dark:bg-slate-800 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.15)] ring-1 ring-success/20">
+                    <CheckCircle className="w-6 h-6 text-success fill-white dark:fill-transparent" />
+                </div>
+             )}
+             
+             {isSuggestedAndIncomplete && suggestedIndex !== -1 && (
+                <div className="absolute -top-3 -right-3 z-30 flex items-center justify-center w-7 h-7 text-xs font-bold text-white rounded-full bg-gradient-to-br from-primary to-indigo-600 shadow-lg ring-2 ring-background animate-bounce">
+                    {suggestedIndex + 1}
+                </div>
+             )}
+        </div>
+    );
+});
 
 const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSelectNode, onTakeQuiz, theme, activeNodeId, showSuggestedPath }) => {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -50,7 +225,7 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
     const hasCenteredRef = useRef(false);
 
     useEffect(() => {
-        const timer = setTimeout(() => setIsVisible(true), 100); // Delay for animation
+        const timer = setTimeout(() => setIsVisible(true), 150);
         return () => clearTimeout(timer);
     }, []);
 
@@ -64,14 +239,8 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
                 });
             }
         });
-
-        if (containerRef.current) {
-            resizeObserver.observe(containerRef.current);
-        }
-
-        return () => {
-            resizeObserver.disconnect();
-        };
+        if (containerRef.current) resizeObserver.observe(containerRef.current);
+        return () => resizeObserver.disconnect();
     }, []);
 
     const { positionedNodes, lines, width, height, isPortrait, nodeWidth, nodeHeight } = useMemo(() => {
@@ -80,48 +249,33 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
         }
 
         const isPortraitLayout = containerSize.width < 768;
-
-        // Updated dimensions for the new card design
+        // Increased spacing for better visuals
         const R_NODE_WIDTH = isPortraitLayout ? 160 : 220;
         const R_NODE_HEIGHT = isPortraitLayout ? 100 : 130;
-        const R_H_GAP = isPortraitLayout ? 30 : 70; 
-        const R_V_GAP = isPortraitLayout ? 70 : 100; 
-
+        const R_H_GAP = isPortraitLayout ? 40 : 90; 
+        const R_V_GAP = isPortraitLayout ? 80 : 120; 
 
         type NodeWithChildren = MindMapNodeType & { children: NodeWithChildren[], level: number, x: number, y: number };
         const nodeMap = new Map<string, NodeWithChildren>(nodes.map(n => [n.id, { ...n, children: [], level: 0, x: 0, y: 0 }]));
         const roots: NodeWithChildren[] = [];
 
-        // Identify Conclusion Node to treat it specially
         let conclusionNodeId: string | null = null;
         const isConclusion = (title: string) => title.includes('نتیجه‌گیری') || title.includes('جمع‌بندی') || title.toLowerCase().includes('conclusion');
-        
         const conclusionEntry = nodes.find(n => isConclusion(n.title));
-        if (conclusionEntry) {
-            conclusionNodeId = conclusionEntry.id;
-        }
+        if (conclusionEntry) conclusionNodeId = conclusionEntry.id;
 
-        // Build Tree Structure
         nodes.forEach(node => {
             const nodeObj = nodeMap.get(node.id)!;
-            
-            // SKIP adding conclusion node to the tree structure here
             if (node.id === conclusionNodeId) return;
-
             if (node.parentId && nodeMap.has(node.parentId)) {
                 const parent = nodeMap.get(node.parentId)!;
-                // Prevent circular reference or adding conclusion as parent in logic
-                if (parent.id !== conclusionNodeId) {
-                    parent.children.push(nodeObj);
-                }
+                if (parent.id !== conclusionNodeId) parent.children.push(nodeObj);
             } else {
                 roots.push(nodeObj);
             }
         });
 
-        // Defensive: If no roots found (circular or broken), force first node as root
         if (roots.length === 0 && nodes.length > 0 && !conclusionNodeId) {
-             // Only if conclusion wasn't the only node
              if (nodes.length > 1 || (nodes.length === 1 && nodes[0].id !== conclusionNodeId)) {
                  const first = nodeMap.get(nodes[0].id)!;
                  if (first.id !== conclusionNodeId) roots.push(first);
@@ -129,20 +283,14 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
         }
 
         const levels: NodeWithChildren[][] = [];
-        
         function assignLevels(node: MindMapNodeType, level: number) {
             const positionedNode = nodeMap.get(node.id)!;
-            // Prevent infinite recursion in cyclic graphs
             if(positionedNode.level > 0 && positionedNode.level !== level) return; 
             if(positionedNode.level > 0 && level > positionedNode.level) positionedNode.level = level; 
             if(positionedNode.level === 0) positionedNode.level = level;
 
-            if (!levels[level]) {
-                levels[level] = [];
-            }
-            if (!levels[level].includes(positionedNode)) {
-                levels[level].push(positionedNode);
-            }
+            if (!levels[level]) levels[level] = [];
+            if (!levels[level].includes(positionedNode)) levels[level].push(positionedNode);
             positionedNode.children.forEach(child => assignLevels(child, level + 1));
         }
 
@@ -150,17 +298,11 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
         
         const positionedNodesList: NodeWithChildren[] = [];
         const lines: { x1: number, y1: number, x2: number, y2: number, parentId: string, childId: string, type?: 'normal' | 'conclusion' }[] = [];
-        // Increased padding to prevent cut-off
-        const PADDING = 100;
-        let finalWidth = 0;
-        let finalHeight = 0;
-
-        // Standard layout
+        const PADDING = 120;
+        
         let currentLeafX = 0;
-
         const layoutVerticalNode = (node: NodeWithChildren) => {
             node.children.forEach(layoutVerticalNode);
-
             if (node.children.length === 0) {
                 node.x = currentLeafX;
                 currentLeafX += R_NODE_WIDTH + R_H_GAP;
@@ -169,14 +311,12 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
                 const lastChild = node.children[node.children.length - 1];
                 node.x = (firstChild.x + lastChild.x) / 2;
             }
-
             node.y = node.level * (R_NODE_HEIGHT + R_V_GAP);
             positionedNodesList.push(node);
         };
 
         roots.forEach(root => layoutVerticalNode(root));
 
-        // Calculate Bounds of the tree
         let minX = Infinity, maxX = -Infinity, maxY = -Infinity;
         if (positionedNodesList.length > 0) {
             positionedNodesList.forEach(n => {
@@ -188,58 +328,40 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
             minX = 0; maxX = 0; maxY = 0;
         }
 
-        // Position Conclusion Node at the bottom center
         if (conclusionNodeId) {
             const cNode = nodeMap.get(conclusionNodeId)!;
-            // Center relative to the entire tree width
             const treeCenter = (minX + maxX) / 2;
-            
-            cNode.x = treeCenter; // Centered relative to bounds
-            cNode.y = maxY + R_V_GAP * 1.5; // Add extra gap below the tree
-            
+            cNode.x = treeCenter; 
+            cNode.y = maxY + R_V_GAP * 1.5; 
             positionedNodesList.push(cNode);
-            
-            // Update bounds
             minX = Math.min(minX, cNode.x);
             maxX = Math.max(maxX, cNode.x);
             maxY = Math.max(maxY, cNode.y);
         }
 
-        finalWidth = (maxX - minX) + R_NODE_WIDTH + PADDING * 2;
-        finalHeight = (maxY) + R_NODE_HEIGHT + PADDING * 2;
-
-        // Normalize & RTL FLIP
+        const finalWidth = (maxX - minX) + R_NODE_WIDTH + PADDING * 2;
+        const finalHeight = (maxY) + R_NODE_HEIGHT + PADDING * 2;
         const flipX = true; 
-
         const positionedNodesMap = new Map(positionedNodesList.map(n => [n.id, n]));
         
         positionedNodesList.forEach(node => {
-            // Normalize X to start at PADDING
             const normalizedX = node.x - minX;
+            let xPos = flipX ? (maxX - minX) - normalizedX + PADDING : normalizedX + PADDING;
             
-            if (flipX) {
-                // Flip: What was Left becomes Right
-                node.x = (maxX - minX) - normalizedX + PADDING;
-            } else {
-                node.x = normalizedX + PADDING;
-            }
-            
-            node.y = node.y + PADDING;
+            // ROUND COORDINATES TO PREVENT BLURRINESS
+            node.x = Math.round(xPos);
+            node.y = Math.round(node.y + PADDING);
         });
 
-        // Generate Lines
         positionedNodesList.forEach(node => {
-            // Standard Lines (Parent -> Child)
-            // Skip if node is Conclusion (we handle its connections separately)
             if (node.id !== conclusionNodeId && node.parentId && positionedNodesMap.has(node.parentId)) {
                 const parent = positionedNodesMap.get(node.parentId)!;
-                // Don't draw line if parent is Conclusion (shouldn't happen logic wise but safety first)
                 if (parent.id !== conclusionNodeId) {
                     lines.push({
-                        x1: parent.x + R_NODE_WIDTH / 2,
-                        y1: parent.y + R_NODE_HEIGHT,
-                        x2: node.x + R_NODE_WIDTH / 2,
-                        y2: node.y,
+                        x1: Math.round(parent.x + R_NODE_WIDTH / 2),
+                        y1: Math.round(parent.y + R_NODE_HEIGHT),
+                        x2: Math.round(node.x + R_NODE_WIDTH / 2),
+                        y2: Math.round(node.y),
                         parentId: parent.id,
                         childId: node.id,
                         type: 'normal'
@@ -248,24 +370,15 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
             }
         });
 
-        // Generate Conclusion Lines (Leaf Nodes -> Conclusion)
         if (conclusionNodeId && positionedNodesMap.has(conclusionNodeId)) {
             const cNode = positionedNodesMap.get(conclusionNodeId)!;
-            
-            // Find leaf nodes (nodes with no children in the layout)
-            // We iterate positionedNodesList because `node.children` was populated earlier
-            // Only consider 'core' or 'remedial' nodes, not the conclusion itself
-            const leafNodes = positionedNodesList.filter(n => 
-                n.id !== conclusionNodeId && 
-                n.children.length === 0
-            );
-
+            const leafNodes = positionedNodesList.filter(n => n.id !== conclusionNodeId && n.children.length === 0);
             leafNodes.forEach(leaf => {
                 lines.push({
-                    x1: leaf.x + R_NODE_WIDTH / 2,
-                    y1: leaf.y + R_NODE_HEIGHT,
-                    x2: cNode.x + R_NODE_WIDTH / 2,
-                    y2: cNode.y,
+                    x1: Math.round(leaf.x + R_NODE_WIDTH / 2),
+                    y1: Math.round(leaf.y + R_NODE_HEIGHT),
+                    x2: Math.round(cNode.x + R_NODE_WIDTH / 2),
+                    y2: Math.round(cNode.y),
                     parentId: leaf.id,
                     childId: cNode.id,
                     type: 'conclusion'
@@ -277,32 +390,12 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
 
     }, [nodes, containerSize]);
 
-    // Reset centering if layout mode changes (rotation)
     useEffect(() => {
         hasCenteredRef.current = false;
     }, [isPortrait]);
 
-    const centerOnRoot = () => {
-         if (positionedNodes.length > 0 && containerRef.current) {
-            const root = positionedNodes.find(n => n.parentId === null) || positionedNodes[0];
-            if (root) {
-                const container = containerRef.current;
-                const scrollX = root.x - (container.clientWidth / 2) + (nodeWidth / 2);
-                const scrollY = root.y - (container.clientHeight / 2) + (nodeHeight / 2);
-                
-                container.scrollTo({
-                    left: scrollX,
-                    top: scrollY,
-                    behavior: 'smooth'
-                });
-            }
-        }
-    };
-
-    // Scroll to Root Node on Load (Only once per layout mode)
     useLayoutEffect(() => {
         if (positionedNodes.length > 0 && containerRef.current && !hasCenteredRef.current && width > 0) {
-            // Immediate scroll without animation for initial load to prevent jump
              const root = positionedNodes.find(n => n.parentId === null) || positionedNodes[0];
              if (root) {
                 const container = containerRef.current;
@@ -314,167 +407,36 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
         }
     }, [positionedNodes.length, width, nodeWidth, nodeHeight]);
 
+    const centerOnRoot = () => {
+        if (positionedNodes.length > 0 && containerRef.current) {
+           const root = positionedNodes.find(n => n.parentId === null) || positionedNodes[0];
+           if (root) {
+               const container = containerRef.current;
+               const scrollX = root.x - (container.clientWidth / 2) + (nodeWidth / 2);
+               const scrollY = root.y - (container.clientHeight / 2) + (nodeHeight / 2);
+               container.scrollTo({ left: scrollX, top: scrollY, behavior: 'smooth' });
+           }
+       }
+   };
+
     const suggestedNodeIds = useMemo(() => new Set(suggestedPath || []), [suggestedPath]);
 
-    const NodeComponent: React.FC<{ node: MindMapNodeType & { x?: number, y?: number }; index: number }> = ({ node, index }) => {
-        const status = progress[node.id];
-        const isLocked = node.locked && status !== 'completed';
-        const isSuggestedAndIncomplete = showSuggestedPath && suggestedPath?.includes(node.id) && status !== 'completed';
-        const suggestedIndex = showSuggestedPath && suggestedPath ? suggestedPath.indexOf(node.id) : -1;
-        const isActive = activeNodeId === node.id;
-        const isRemedial = node.type === 'remedial';
-        
-        // Determine node type
-        const isIntro = node.parentId === null;
-        const isConclusion = node.title.includes('نتیجه‌گیری') || node.title.includes('جمع‌بندی') || node.title.toLowerCase().includes('conclusion');
-
-        const handleNodeClick = () => {
-            if (!isLocked) {
-                onSelectNode(node.id);
-            }
-        };
-
-        const handleQuizClick = (e: React.MouseEvent) => {
-            e.stopPropagation();
-            onTakeQuiz(node.id);
-        };
-
-        // Difficulty Color Bar
-        let difficultyColor = 'bg-primary';
-        if (isRemedial) difficultyColor = 'bg-purple-500';
-        else if (node.difficulty < 0.4) difficultyColor = 'bg-success';
-        else if (node.difficulty > 0.7) difficultyColor = 'bg-destructive';
-
-        const baseStyle = {
-            left: node.x,
-            top: node.y,
-            width: nodeWidth,
-            height: nodeHeight,
-            transitionDelay: `${index * 50}ms`,
-            zIndex: isActive ? 50 : (isLocked ? 10 : 20),
-            opacity: isLocked ? 0.75 : 1,
-            filter: isLocked ? 'grayscale(0.8)' : 'none',
-        };
-
-        // 1. Introduction Node Design
-        if (isIntro) {
-            return (
-                <div
-                    className={`mindmap-node group ${isVisible ? 'mindmap-node-visible' : ''} absolute cursor-pointer transition-all duration-300`}
-                    style={baseStyle}
-                    onClick={handleNodeClick}
-                    role="button"
-                >
-                    <div className={`absolute inset-0 rounded-2xl shadow-lg flex flex-col items-center justify-center text-center p-4 border-2 transition-transform hover:scale-105 ${isActive ? 'ring-4 ring-primary/30' : ''} bg-gradient-to-br from-primary via-primary/90 to-primary/70 border-primary-foreground/20 text-primary-foreground`}>
-                        <Flag className="w-8 h-8 mb-2 opacity-90" />
-                        <h3 className={`font-bold leading-tight ${isPortrait ? 'text-sm' : 'text-lg'}`}>{node.title}</h3>
-                        <span className="text-xs opacity-80 mt-1 font-medium bg-primary-foreground/20 px-2 py-0.5 rounded-full">شروع مسیر</span>
-                    </div>
-                    {status === 'completed' && (
-                        <div className="absolute -top-2 -right-2 z-30 bg-card rounded-full p-1 shadow-md ring-2 ring-success">
-                            <CheckCircle className="w-5 h-5 text-success fill-current" />
-                        </div>
-                     )}
-                </div>
-            );
-        }
-
-        // 2. Conclusion Node Design
-        if (isConclusion) {
-             return (
-                <div
-                    className={`mindmap-node group ${isVisible ? 'mindmap-node-visible' : ''} absolute cursor-pointer transition-all duration-300`}
-                    style={baseStyle}
-                    onClick={handleNodeClick}
-                    role="button"
-                >
-                    <div className={`absolute inset-0 rounded-2xl shadow-lg flex flex-col items-center justify-center text-center p-4 border-2 transition-transform hover:scale-105 ${isActive ? 'ring-4 ring-success/30' : ''} ${isLocked ? 'bg-muted' : 'bg-gradient-to-br from-emerald-500 to-teal-600 border-white/20 text-white'}`}>
-                        {status === 'completed' ? 
-                            <Trophy className="w-8 h-8 mb-2 text-yellow-300 drop-shadow-md" /> : 
-                            <Target className="w-8 h-8 mb-2 opacity-90" />
-                        }
-                        <h3 className={`font-bold leading-tight ${isPortrait ? 'text-sm' : 'text-lg'}`}>{node.title}</h3>
-                         <span className="text-xs opacity-80 mt-1 font-medium bg-white/20 px-2 py-0.5 rounded-full">پایان مسیر</span>
-                    </div>
-                </div>
-            );
-        }
-
-        // 3. Standard & Remedial Node Design
-        return (
-            <div
-                className={`mindmap-node group ${isVisible ? 'mindmap-node-visible' : ''} ${isActive ? 'active-node' : ''} ${isSuggestedAndIncomplete ? 'suggested-node' : ''} absolute rounded-xl transition-all duration-300 cursor-pointer`}
-                style={baseStyle}
-                onClick={handleNodeClick}
-                role="button"
-                tabIndex={isLocked ? -1 : 0}
-            >
-                 <div className={`absolute inset-0 bg-card rounded-xl border transition-all overflow-hidden flex flex-col shadow-sm hover:shadow-md ${isActive ? 'border-primary ring-2 ring-primary/20' : 'border-border group-hover:border-primary/50'} ${isRemedial ? 'border-dashed border-2 border-purple-400 bg-purple-50 dark:bg-purple-900/10' : ''}`}>
-                    
-                    {/* Colored Difficulty Strip (Left side in LTR, Right side in RTL layout) */}
-                    <div className={`absolute top-0 bottom-0 right-0 w-1.5 ${difficultyColor} opacity-80`} />
-
-                    <div className="flex-1 p-3 pl-3 pr-4 flex flex-col justify-between relative z-10">
-                        {/* Header */}
-                        <div className="flex items-start justify-between gap-2">
-                             <h3 className={`font-bold leading-snug text-foreground line-clamp-2 ${isPortrait ? 'text-xs' : 'text-sm'} ${isRemedial ? 'text-purple-700 dark:text-purple-300' : ''}`} dir="rtl">
-                                {node.title}
-                             </h3>
-                             {isLocked && <Lock className="w-4 h-4 text-muted-foreground/70 shrink-0" />}
-                        </div>
-
-                        {/* Footer info */}
-                        <div className="flex items-end justify-between mt-2">
-                             <span className="text-[10px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded">
-                                {formatPageNumbers(node.sourcePages) || (isRemedial ? 'تقویتی' : (node.isExplanatory ? 'توضیحی' : 'درس'))}
-                            </span>
-
-                            {!isLocked && status !== 'completed' && (
-                                 <div className="text-primary/30 group-hover:text-primary transition-colors">
-                                     {isRemedial ? <Sparkles className="w-5 h-5 text-purple-500" /> : <FileQuestion className="w-5 h-5" />}
-                                 </div>
-                            )}
-                        </div>
-                    </div>
-                 </div>
-
-                 {/* Status Badges (Pop out) */}
-                 {status === 'completed' && (
-                    <div className="absolute -top-2 -left-2 z-30 bg-card rounded-full p-0.5 shadow-md ring-1 ring-success/20">
-                        <CheckCircle className="w-5 h-5 text-success fill-current" />
-                    </div>
-                 )}
-                 
-                 {isSuggestedAndIncomplete && suggestedIndex !== -1 && (
-                    <div className="absolute -top-3 -left-3 z-30 flex items-center justify-center w-6 h-6 text-xs font-bold text-white rounded-full bg-primary shadow-md ring-2 ring-background animate-bounce">
-                        {suggestedIndex + 1}
-                    </div>
-                 )}
-            </div>
-        );
-    };
-
     return (
-        <div ref={containerRef} className="relative w-full h-full overflow-auto bg-background/50" style={{ direction: 'ltr' }}>
-             {/* direction: ltr on container prevents browser RTL scroll weirdness with absolute positioning */}
-             
-            <button 
-                onClick={centerOnRoot}
-                className="absolute z-50 p-3 transition-transform rounded-full shadow-lg bottom-6 left-6 bg-card text-primary border border-border hover:bg-accent hover:scale-110 active:scale-95"
-                title="تمرکز بر مقدمه"
-            >
+        <div ref={containerRef} className="relative w-full h-full overflow-auto bg-[radial-gradient(circle_at_center,rgba(var(--primary)/0.05)_0%,transparent_70%)]" style={{ direction: 'ltr' }}>
+            <button onClick={centerOnRoot} className="absolute z-50 p-3 transition-transform rounded-full shadow-lg bottom-6 left-6 bg-card text-primary border border-border hover:bg-accent hover:scale-110 active:scale-95">
                <Target className="w-6 h-6" />
             </button>
 
-            <div className="relative mx-auto" style={{ width: Math.max(width, containerSize.width), height: Math.max(height, containerSize.height) }}>
-                <svg className="absolute top-0 left-0" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
+            <div className="relative mx-auto transition-all duration-500 ease-out" style={{ width: Math.max(width, containerSize.width), height: Math.max(height, containerSize.height) }}>
+                <svg className="absolute top-0 left-0 pointer-events-none" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
                     <defs>
-                        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5"
-                            markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                            <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(var(--muted))" />
+                        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(var(--muted-foreground))" opacity="0.5" />
                         </marker>
-                        <marker id="arrow-conclusion" viewBox="0 0 10 10" refX="8" refY="5"
-                            markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <marker id="arrow-active" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(var(--primary))" />
+                        </marker>
+                        <marker id="arrow-conclusion" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                             <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(var(--success))" opacity="0.6" />
                         </marker>
                     </defs>
@@ -482,29 +444,71 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
                          const isActive = activeNodeId === line.parentId || activeNodeId === line.childId;
                          const isSuggested = showSuggestedPath && suggestedNodeIds.has(line.parentId) && suggestedNodeIds.has(line.childId);
                          const isConclusionLine = line.type === 'conclusion';
-                         
-                         // Curve calculation
-                         const path = `M${line.x1},${line.y1} C${line.x1},${line.y1 + (line.y2 - line.y1) / 2} ${line.x2},${line.y2 - (line.y2 - line.y1) / 2} ${line.x2},${line.y2}`;
+                         // Smooth bezier curve with slight randomness for organic feel
+                         const cpY = (line.y2 - line.y1) * 0.5;
+                         const path = `M${line.x1},${line.y1} C${line.x1},${line.y1 + cpY} ${line.x2},${line.y2 - cpY} ${line.x2},${line.y2}`;
                          
                          return (
-                            <path
-                                key={i}
-                                d={path}
-                                fill="none"
-                                stroke={isConclusionLine ? "rgb(var(--success))" : "rgb(var(--border))"}
-                                strokeWidth={isActive ? 2.5 : 1.5}
-                                strokeDasharray={isConclusionLine ? "5,5" : "none"}
-                                strokeOpacity={isConclusionLine ? 0.6 : 1}
-                                markerEnd={isConclusionLine ? "url(#arrow-conclusion)" : "url(#arrow)"}
-                                className={`mindmap-line ${isVisible ? 'mindmap-line-visible' : ''} ${isActive ? 'mindmap-line-active' : ''} ${isSuggested && !isConclusionLine ? 'suggested-line' : ''}`}
-                                style={{ transitionDelay: `${i * 50}ms` }}
-                            />
+                            <g key={i}>
+                                {/* Base Line */}
+                                <path
+                                    d={path}
+                                    fill="none"
+                                    stroke={isConclusionLine ? "rgb(var(--success))" : "rgb(var(--border))"}
+                                    strokeWidth={isActive ? 3 : 2}
+                                    strokeOpacity={isConclusionLine ? 0.4 : 0.3}
+                                    className={`mindmap-line ${isVisible ? 'opacity-100' : 'opacity-0'}`}
+                                    style={{ transitionDelay: `${i * 20}ms` }}
+                                    markerEnd={isConclusionLine ? "url(#arrow-conclusion)" : (isActive ? "url(#arrow-active)" : "url(#arrow)")}
+                                />
+                                
+                                {/* Animated Flow Line (Data traveling) */}
+                                {(isActive || isSuggested) && !isConclusionLine && (
+                                    <path
+                                        d={path}
+                                        fill="none"
+                                        stroke="rgb(var(--primary))"
+                                        strokeWidth={2}
+                                        strokeOpacity={0.8}
+                                        className="mindmap-line-flow"
+                                    />
+                                )}
+                            </g>
                          );
                     })}
                 </svg>
-                {positionedNodes.map((node, index) => (
-                    <NodeComponent key={node.id} node={node} index={index} />
-                ))}
+                {positionedNodes.map((node, index) => {
+                    const status = progress[node.id];
+                    const isLocked = node.locked && status !== 'completed';
+                    const isSuggestedAndIncomplete = showSuggestedPath && suggestedPath?.includes(node.id) && status !== 'completed';
+                    const suggestedIndex = showSuggestedPath && suggestedPath ? suggestedPath.indexOf(node.id) : -1;
+                    const isActive = activeNodeId === node.id;
+                    const isRemedial = node.type === 'remedial';
+                    const isIntro = node.parentId === null;
+                    const isConclusion = node.title.includes('نتیجه‌گیری') || node.title.includes('جمع‌بندی') || node.title.toLowerCase().includes('conclusion');
+
+                    return (
+                        <MindMapNodeItem
+                            key={node.id}
+                            node={node}
+                            index={index}
+                            status={status}
+                            isLocked={isLocked}
+                            isSuggestedAndIncomplete={isSuggestedAndIncomplete}
+                            suggestedIndex={suggestedIndex}
+                            isActive={isActive}
+                            isRemedial={isRemedial}
+                            isIntro={isIntro}
+                            isConclusion={isConclusion}
+                            width={nodeWidth}
+                            height={nodeHeight}
+                            isVisible={isVisible}
+                            isPortrait={isPortrait}
+                            onSelect={onSelectNode}
+                            onTakeQuiz={onTakeQuiz}
+                        />
+                    );
+                })}
             </div>
         </div>
     );

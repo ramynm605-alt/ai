@@ -200,6 +200,8 @@ export interface MindMapNode {
     currentUser: UserProfile | null;
     isUserPanelOpen: boolean;
     savedSessions: SavedSession[];
+    currentSessionId: string | null; // Tracks the active session for auto-save
+    isAutoSaving: boolean;
   }
 
   export interface SavableState {
