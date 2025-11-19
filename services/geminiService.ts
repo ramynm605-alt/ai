@@ -437,8 +437,10 @@ export async function generateNodeContent(
         `;
 
         const imageParts = images.map(img => ({ inlineData: { mimeType: img.mimeType, data: img.data } }));
+        
+        // SWITCH TO FLASH FOR SPEED
         const stream = await ai.models.generateContentStream({
-            model: "gemini-2.5-pro",
+            model: "gemini-2.5-flash",
             contents: { parts: [{ text: prompt }, ...imageParts] },
         });
 
@@ -466,7 +468,13 @@ export async function generateNodeContent(
                 questions: '###QUESTIONS###'
             };
 
-            // Simple parsing logic (optimized for streaming)
+            // ROBUST PARSING:
+            // If we are at the beginning and no header is found yet, treat everything as Introduction
+            if (!fullText.includes('###INTRODUCTION###') && !fullText.includes('###THEORY###') && fullText.length > 20) {
+                 contentObj.introduction = fullText;
+            }
+
+            // Standard parsing
             for (const [key, header] of Object.entries(headers)) {
                 const start = fullText.lastIndexOf(header);
                 if (start !== -1) {
@@ -494,7 +502,6 @@ export async function generateNodeContent(
                 }
             }
 
-            // Only parse markdown for text sections, not the array
             onStreamUpdate({
                 introduction: await marked.parse(processReminders(contentObj.introduction)),
                 theory: await marked.parse(processReminders(contentObj.theory)),
@@ -503,6 +510,11 @@ export async function generateNodeContent(
                 conclusion: await marked.parse(processReminders(contentObj.conclusion)),
                 suggestedQuestions: contentObj.suggestedQuestions
             });
+        }
+
+        // FINAL FALLBACK: If headers failed completely but text exists, dump it all in Theory
+        if (!contentObj.introduction && !contentObj.theory && fullText.trim().length > 0) {
+             contentObj.theory = fullText;
         }
         
         // Final pass

@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { MindMapNode, NodeContent, Reward } from '../types';
-import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle } from './icons';
+import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle, BrainCircuit, Edit } from './icons';
 
 interface NodeViewProps {
     node: MindMapNode;
@@ -15,14 +15,33 @@ interface NodeViewProps {
     isIntroNode: boolean;
     onCompleteIntro?: () => void;
     unlockedReward?: Reward;
+    isStreaming?: boolean;
 }
 
-const LoadingSkeleton: React.FC = () => (
-    <div className="space-y-6 animate-pulse max-w-3xl mx-auto mt-8">
-        <div className="h-4 rounded bg-muted/20 w-3/4"></div>
-        <div className="h-4 rounded bg-muted/20 w-full"></div>
-        <div className="h-4 rounded bg-muted/20 w-5/6"></div>
-        <div className="h-48 rounded-xl bg-muted/10 w-full mt-8"></div>
+const HeroLoader: React.FC<{ text?: string }> = ({ text = "در حال طراحی درس برای شما..." }) => (
+    <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
+        <div className="relative w-24 h-24 mb-6">
+            <div className="absolute inset-0 bg-primary/20 rounded-full animate-ping opacity-75"></div>
+            <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-sm rounded-full border-2 border-primary shadow-[0_0_15px_rgba(var(--primary),0.3)]">
+                 <BrainCircuit className="w-10 h-10 text-primary animate-pulse" />
+            </div>
+        </div>
+        <h3 className="text-xl font-bold text-foreground animate-pulse">{text}</h3>
+        <div className="mt-2 flex gap-1">
+             <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+             <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+             <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+        </div>
+    </div>
+);
+
+const StreamLoader: React.FC<{ text: string }> = ({ text }) => (
+    <div className="flex items-center gap-3 p-4 rounded-xl bg-secondary/30 border border-dashed border-primary/30 animate-pulse my-4">
+        <div className="w-8 h-8 flex items-center justify-center bg-primary/10 rounded-full">
+             <Edit className="w-4 h-4 text-primary" />
+        </div>
+        <span className="text-sm font-medium text-muted-foreground">{text}</span>
+        <div className="w-1.5 h-4 bg-primary/50 ml-auto animate-pulse rounded-full"></div>
     </div>
 );
 
@@ -35,12 +54,16 @@ const Section: React.FC<{ title: string; content: string; delay: number }> = ({ 
         {content ? (
             <div className="node-content-section markdown-content leading-loose text-lg text-card-foreground/90" dangerouslySetInnerHTML={{ __html: content }} />
         ) : (
-            <LoadingSkeleton />
+            <div className="space-y-3 animate-pulse">
+                 <div className="h-4 bg-muted/20 rounded w-3/4"></div>
+                 <div className="h-4 bg-muted/20 rounded w-full"></div>
+                 <div className="h-4 bg-muted/20 rounded w-5/6"></div>
+            </div>
         )}
     </div>
 );
 
-const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz, onNavigate, prevNode, nextNode, onExplainRequest, isIntroNode, onCompleteIntro, unlockedReward }) => {
+const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz, onNavigate, prevNode, nextNode, onExplainRequest, isIntroNode, onCompleteIntro, unlockedReward, isStreaming }) => {
     const [selectionPopup, setSelectionPopup] = useState<{ x: number; y: number; text: string } | null>(null);
     const [reminderPopup, setReminderPopup] = useState<{ x: number; y: number; content: string } | null>(null);
     const [activeTab, setActiveTab] = useState<'content' | 'reward'>('content');
@@ -52,7 +75,6 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
             const text = selection.toString().trim();
             const range = selection.getRangeAt(0);
             const rect = range.getBoundingClientRect();
-            // Use window coordinates since we are in a fixed overlay
             setReminderPopup(null); 
             setSelectionPopup({
                 x: rect.left + rect.width / 2,
@@ -82,7 +104,6 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                 const reminderContent = target.dataset.reminderText;
                 if (reminderContent) {
                     const rect = target.getBoundingClientRect();
-                    // Use window coordinates
                     setReminderPopup(null);
                     setReminderPopup({
                         content: reminderContent,
@@ -129,10 +150,6 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                 <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
                      <div className="flex items-center gap-3 flex-1 overflow-hidden">
                         <button onClick={onBack} className="p-2 rounded-full hover:bg-accent transition-colors group shrink-0">
-                            {/* In RTL, ArrowRight (>) points to the Left if not rotated, which is usually 'Forward'. 
-                                But standard Back button usually points 'Away' from current view.
-                                In standard RTL UI, Back button is usually Right Arrow (→). 
-                                ArrowRight icon is (→). So no rotation needed. */}
                             <ArrowRight className="w-6 h-6 text-muted-foreground group-hover:text-primary" />
                         </button>
                         <h2 className="text-lg sm:text-xl font-bold truncate">{activeTab === 'content' ? node.title : unlockedReward?.title}</h2>
@@ -170,25 +187,63 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                      <h1 className="text-3xl md:text-5xl font-black leading-tight text-transparent bg-clip-text bg-gradient-to-r from-primary to-indigo-600 mb-4">
                         {activeTab === 'content' ? node.title : unlockedReward?.title}
                      </h1>
-                     {activeTab === 'content' && (
+                     {activeTab === 'content' && !isStreaming && (
                          <p className="text-muted-foreground">برای درک بهتر، می‌توانید روی هر کلمه‌ای کلیک کنید.</p>
                      )}
                 </div>
                 
                 {activeTab === 'content' ? (
                     isIntroNode ? (
-                        content.introduction ? (
-                             <div className="node-content-section markdown-content leading-loose text-lg text-card-foreground/90 animate-slide-up p-6 border border-border/50 rounded-3xl bg-card/30 shadow-sm" dangerouslySetInnerHTML={{ __html: content.introduction }} />
+                        (!content.introduction && isStreaming) ? (
+                             <HeroLoader text="در حال آماده‌سازی نقشه راه..." />
                         ) : (
-                            <LoadingSkeleton />
+                             content.introduction ? (
+                                <div className="node-content-section markdown-content leading-loose text-lg text-card-foreground/90 animate-slide-up p-6 border border-border/50 rounded-3xl bg-card/30 shadow-sm" dangerouslySetInnerHTML={{ __html: content.introduction }} />
+                             ) : (
+                                <HeroLoader />
+                             )
                         )
                     ) : (
                         <div className="space-y-12">
-                            {content.introduction && <Section title="مقدمه" content={content.introduction} delay={0} />}
-                            {content.theory && <Section title="تئوری و مفاهیم" content={content.theory} delay={100} />}
-                            {content.example && <Section title="مثال کاربردی" content={content.example} delay={200} />}
-                            {content.connection && <Section title="ارتباط با سایر مفاهیم" content={content.connection} delay={300} />}
-                            {content.conclusion && <Section title="نتیجه‌گیری" content={content.conclusion} delay={400} />}
+                             {/* Introduction Section */}
+                             {(content.introduction || isStreaming) && (
+                                <div className="min-h-[100px]">
+                                    {content.introduction && <Section title="مقدمه" content={content.introduction} delay={0} />}
+                                    {!content.introduction && isStreaming && <HeroLoader />}
+                                </div>
+                             )}
+
+                             {/* Theory Section */}
+                             {(content.theory || (isStreaming && content.introduction)) && (
+                                <div className="min-h-[100px]">
+                                     {content.theory && <Section title="تئوری و مفاهیم" content={content.theory} delay={100} />}
+                                     {!content.theory && isStreaming && content.introduction && <StreamLoader text="در حال تشریح مفاهیم..." />}
+                                </div>
+                             )}
+
+                             {/* Example Section */}
+                             {(content.example || (isStreaming && content.theory)) && (
+                                <div className="min-h-[100px]">
+                                     {content.example && <Section title="مثال کاربردی" content={content.example} delay={200} />}
+                                     {!content.example && isStreaming && content.theory && <StreamLoader text="در حال یافتن مثال‌های کاربردی..." />}
+                                </div>
+                             )}
+
+                             {/* Connection Section */}
+                             {(content.connection || (isStreaming && content.example)) && (
+                                <div className="min-h-[100px]">
+                                     {content.connection && <Section title="ارتباط با سایر مفاهیم" content={content.connection} delay={300} />}
+                                     {!content.connection && isStreaming && content.example && <StreamLoader text="در حال بررسی ارتباطات موضوعی..." />}
+                                </div>
+                             )}
+
+                             {/* Conclusion Section */}
+                             {(content.conclusion || (isStreaming && content.connection)) && (
+                                <div className="min-h-[100px]">
+                                     {content.conclusion && <Section title="نتیجه‌گیری" content={content.conclusion} delay={400} />}
+                                     {!content.conclusion && isStreaming && content.connection && <StreamLoader text="در حال جمع‌بندی نهایی..." />}
+                                </div>
+                             )}
                         </div>
                     )
                 ) : (
@@ -228,43 +283,45 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                             </div>
                         )}
 
-                        {/* Navigation Buttons - Not Fixed Anymore */}
-                        <div className="w-full mt-12 p-6 bg-card/50 border border-border/50 rounded-2xl animate-slide-up" style={{ animationDelay: '600ms' }}>
-                            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                                {isIntroNode ? (
-                                     <button 
-                                        onClick={() => onCompleteIntro ? onCompleteIntro() : onBack()} 
-                                        className="w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 font-bold text-white text-lg transition-all duration-300 rounded-2xl bg-gradient-to-r from-primary to-indigo-600 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-95">
-                                        <span>شروع یادگیری و مشاهده نقشه راه</span>
-                                        <ArrowRight className="w-6 h-6 transform rotate-180" />
-                                    </button>
-                                ) : (
-                                    <>
-                                        <button 
-                                            onClick={() => prevNode && onNavigate(prevNode.id)} 
-                                            disabled={!prevNode}
-                                            className="w-full sm:w-auto px-6 py-3 font-semibold transition-all duration-200 rounded-xl text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed active:scale-95">
-                                            درس قبلی
+                        {/* Navigation Buttons */}
+                        {(!isStreaming || content.conclusion) && (
+                            <div className="w-full mt-12 p-6 bg-card/50 border border-border/50 rounded-2xl animate-slide-up" style={{ animationDelay: '600ms' }}>
+                                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                                    {isIntroNode ? (
+                                         <button 
+                                            onClick={() => onCompleteIntro ? onCompleteIntro() : onBack()} 
+                                            className="w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 font-bold text-white text-lg transition-all duration-300 rounded-2xl bg-gradient-to-r from-primary to-indigo-600 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-95">
+                                            <span>شروع یادگیری و مشاهده نقشه راه</span>
+                                            <ArrowRight className="w-6 h-6 transform rotate-180" />
                                         </button>
-                                        
-                                        <button 
-                                            onClick={onStartQuiz} 
-                                            className="w-full sm:w-auto flex-grow max-w-md px-8 py-4 font-bold text-lg text-white transition-all duration-300 rounded-2xl bg-gradient-to-r from-primary to-indigo-600 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2">
-                                            <span>آماده‌ام، برویم برای آزمون!</span>
-                                            <ArrowRight className="w-5 h-5 transform rotate-180" />
-                                        </button>
+                                    ) : (
+                                        <>
+                                            <button 
+                                                onClick={() => prevNode && onNavigate(prevNode.id)} 
+                                                disabled={!prevNode}
+                                                className="w-full sm:w-auto px-6 py-3 font-semibold transition-all duration-200 rounded-xl text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed active:scale-95">
+                                                درس قبلی
+                                            </button>
+                                            
+                                            <button 
+                                                onClick={onStartQuiz} 
+                                                className="w-full sm:w-auto flex-grow max-w-md px-8 py-4 font-bold text-lg text-white transition-all duration-300 rounded-2xl bg-gradient-to-r from-primary to-indigo-600 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2">
+                                                <span>آماده‌ام، برویم برای آزمون!</span>
+                                                <ArrowRight className="w-5 h-5 transform rotate-180" />
+                                            </button>
 
-                                        <button 
-                                            onClick={() => nextNode && onNavigate(nextNode.id)} 
-                                            disabled={!nextNode || nextNode.locked}
-                                            className="w-full sm:w-auto px-6 py-3 font-semibold transition-all duration-200 rounded-xl text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
-                                            >
-                                            درس بعدی
-                                        </button>
-                                    </>
-                                )}
+                                            <button 
+                                                onClick={() => nextNode && onNavigate(nextNode.id)} 
+                                                disabled={!nextNode || nextNode.locked}
+                                                className="w-full sm:w-auto px-6 py-3 font-semibold transition-all duration-200 rounded-xl text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+                                                >
+                                                درس بعدی
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </>
                 )}
             </div>

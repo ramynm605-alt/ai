@@ -1177,6 +1177,7 @@ function App() {
                                     isIntroNode={state.mindMap.find(n => n.id === state.activeNodeId)?.parentId === null}
                                     onCompleteIntro={handleCompleteIntro}
                                     unlockedReward={state.rewards.find(r => r.relatedNodeId === state.activeNodeId)}
+                                    isStreaming={!!state.streamingNodeContent}
                                 />
                             )}
 
