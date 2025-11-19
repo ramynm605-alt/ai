@@ -117,7 +117,7 @@ const ParticleBackground: React.FC<ParticleBackgroundProps> = ({ theme }) => {
     return (
         <canvas
             ref={canvasRef}
-            className="absolute top-0 left-0 z-0 w-full h-full"
+            className="absolute top-0 left-0 z-0 w-full h-full pointer-events-none"
         />
     );
 };

@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { MindMapNode, NodeContent, Reward } from '../types';
-import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle, BrainCircuit, Edit } from './icons';
+import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle, BrainCircuit, Edit, Shuffle } from './icons';
 
 interface NodeViewProps {
     node: MindMapNode;
@@ -26,7 +26,7 @@ const HeroLoader: React.FC<{ text?: string }> = ({ text = "در حال طراح�
                  <BrainCircuit className="w-10 h-10 text-primary animate-pulse" />
             </div>
         </div>
-        <h3 className="text-xl font-bold text-foreground animate-pulse">{text}</h3>
+        <h3 className="text-xl font-bold text-foreground animate-pulse text-center px-4">{text}</h3>
         <div className="mt-2 flex gap-1">
              <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
              <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
@@ -52,7 +52,7 @@ const Section: React.FC<{ title: string; content: string; delay: number }> = ({ 
             {title}
         </h3>
         {content ? (
-            <div className="node-content-section markdown-content leading-loose text-lg text-card-foreground/90" dangerouslySetInnerHTML={{ __html: content }} />
+            <div className="node-content-section markdown-content leading-loose text-lg text-card-foreground/90 select-text" dangerouslySetInnerHTML={{ __html: content }} />
         ) : (
             <div className="space-y-3 animate-pulse">
                  <div className="h-4 bg-muted/20 rounded w-3/4"></div>
@@ -69,21 +69,37 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
     const [activeTab, setActiveTab] = useState<'content' | 'reward'>('content');
     const viewRef = useRef<HTMLDivElement>(null);
 
-    const handleMouseUp = () => {
+    const handleSelection = () => {
         const selection = window.getSelection();
-        if (selection && selection.toString().trim().length > 5) {
+        if (selection && selection.toString().trim().length > 3) {
             const text = selection.toString().trim();
-            const range = selection.getRangeAt(0);
-            const rect = range.getBoundingClientRect();
-            setReminderPopup(null); 
-            setSelectionPopup({
-                x: rect.left + rect.width / 2,
-                y: rect.top - 10, 
-                text: text,
-            });
+            try {
+                const range = selection.getRangeAt(0);
+                const rect = range.getBoundingClientRect();
+                setReminderPopup(null); 
+                
+                // Ensure popup stays within screen bounds on mobile
+                let x = rect.left + rect.width / 2;
+                let y = rect.top - 10;
+                
+                if (x < 50) x = 50;
+                if (x > window.innerWidth - 50) x = window.innerWidth - 50;
+                if (y < 60) y = rect.bottom + 10; // Show below if too close to top
+
+                setSelectionPopup({ x, y, text });
+            } catch (e) {
+                console.log("Selection error", e);
+            }
         } else {
             setSelectionPopup(null);
         }
+    };
+
+    const handleTouchEnd = (e: React.TouchEvent) => {
+        // Allow browser native selection first, then check
+        setTimeout(() => {
+            handleSelection();
+        }, 100);
     };
 
     useEffect(() => {
@@ -92,56 +108,78 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
             if (reminderPopup) setReminderPopup(null);
         };
         document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('touchstart', handleClickOutside);
         return () => {
             document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('touchstart', handleClickOutside);
         };
     }, [selectionPopup, reminderPopup]);
 
     useEffect(() => {
-        const handleReminderClick = (event: MouseEvent) => {
+        const handleReminderClick = (event: MouseEvent | TouchEvent) => {
             const target = event.target as HTMLElement;
             if (target.classList.contains('reminder-trigger')) {
+                event.preventDefault(); // Prevent default link/button behavior
+                event.stopPropagation();
                 const reminderContent = target.dataset.reminderText;
                 if (reminderContent) {
                     const rect = target.getBoundingClientRect();
                     setReminderPopup(null);
+                    
+                    let x = rect.left + rect.width / 2;
+                    let y = rect.top;
+                    
+                    // Mobile adjust
+                    if (x < 100) x = 100;
+                    if (x > window.innerWidth - 100) x = window.innerWidth - 100;
+                    
                     setReminderPopup({
                         content: reminderContent,
-                        x: rect.left + rect.width / 2,
-                        y: rect.top,
+                        x: x,
+                        y: y,
                     });
-                    event.stopPropagation(); 
                 }
             }
         };
         const container = viewRef.current;
+        // Add both click and touchend
         container?.addEventListener('click', handleReminderClick);
-        return () => container?.removeEventListener('click', handleReminderClick);
+        container?.addEventListener('touchend', handleReminderClick);
+        return () => {
+            container?.removeEventListener('click', handleReminderClick);
+            container?.removeEventListener('touchend', handleReminderClick);
+        };
     }, []);
 
+    const isEmpty = !content.introduction && !content.theory && !content.example && !isStreaming;
+
     return (
-        <div className="min-h-screen bg-background/95" ref={viewRef} onMouseUp={handleMouseUp}>
+        <div className="min-h-screen bg-background/95" ref={viewRef} onMouseUp={handleSelection} onTouchEnd={handleTouchEnd}>
              {selectionPopup && (
                 <div
-                    className="selection-popup animate-pop-in fixed"
+                    className="selection-popup animate-pop-in fixed z-[200] bg-foreground text-background px-4 py-2 rounded-lg shadow-xl flex items-center gap-2 cursor-pointer"
                     style={{ left: selectionPopup.x, top: selectionPopup.y, transform: 'translateX(-50%) translateY(-100%)' }}
                     onMouseDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
                     onClick={() => {
                         onExplainRequest(selectionPopup.text);
                         setSelectionPopup(null);
                     }}
                 >
                     <MessageSquare className="w-4 h-4" />
-                    <span>توضیح بیشتر توسط مربی</span>
+                    <span className="text-sm font-bold whitespace-nowrap">پرسش از مربی</span>
                 </div>
             )}
             {reminderPopup && (
                  <div
-                    className="reminder-popup fixed"
-                    style={{ left: reminderPopup.x, top: reminderPopup.y }}
+                    className="reminder-popup fixed z-[200] bg-card border border-border shadow-2xl p-3 rounded-xl text-sm max-w-[250px] text-center"
+                    style={{ left: reminderPopup.x, top: reminderPopup.y, transform: 'translateX(-50%) translateY(-110%)' }}
                     onMouseDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
                 >
+                    <div className="font-bold mb-1 text-primary">یادآوری</div>
                     {reminderPopup.content}
+                    <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 w-3 h-3 bg-card border-r border-b border-border rotate-45"></div>
                 </div>
             )}
 
@@ -188,9 +226,22 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                         {activeTab === 'content' ? node.title : unlockedReward?.title}
                      </h1>
                      {activeTab === 'content' && !isStreaming && (
-                         <p className="text-muted-foreground">برای درک بهتر، می‌توانید روی هر کلمه‌ای کلیک کنید.</p>
+                         <p className="text-muted-foreground text-sm sm:text-base">برای درک بهتر، قسمتی از متن را انتخاب کنید.</p>
                      )}
                 </div>
+
+                {isEmpty && (
+                    <div className="text-center py-10 animate-fade-in">
+                        <p className="text-muted-foreground mb-4">محتوای این درس بارگذاری نشد.</p>
+                        <button 
+                            onClick={() => onNavigate(node.id)} 
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors"
+                        >
+                            <Shuffle className="w-4 h-4" />
+                            <span>تلاش مجدد</span>
+                        </button>
+                    </div>
+                )}
                 
                 {activeTab === 'content' ? (
                     isIntroNode ? (
@@ -198,7 +249,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                              <HeroLoader text="در حال آماده‌سازی نقشه راه..." />
                         ) : (
                              content.introduction ? (
-                                <div className="node-content-section markdown-content leading-loose text-lg text-card-foreground/90 animate-slide-up p-6 border border-border/50 rounded-3xl bg-card/30 shadow-sm" dangerouslySetInnerHTML={{ __html: content.introduction }} />
+                                <div className="node-content-section markdown-content leading-loose text-lg text-card-foreground/90 animate-slide-up p-6 border border-border/50 rounded-3xl bg-card/30 shadow-sm select-text" dangerouslySetInnerHTML={{ __html: content.introduction }} />
                              ) : (
                                 <HeroLoader />
                              )

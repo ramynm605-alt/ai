@@ -97,13 +97,14 @@ const MindMapNodeItem = React.memo(({
         zIndex: isActive ? 40 : (isLocked ? 10 : 20),
         opacity: isLocked ? 0.6 : 1,
         filter: isLocked ? 'grayscale(0.8) blur(0.5px)' : 'none',
+        touchAction: 'manipulation', // Important for mobile responsiveness
     };
 
     // 1. Introduction Node
     if (isIntro) {
         return (
             <div
-                className={`mindmap-node group ${isVisible ? 'mindmap-node-visible' : ''} absolute cursor-pointer`}
+                className={`mindmap-node group ${isVisible ? 'mindmap-node-visible' : ''} absolute cursor-pointer select-none`}
                 style={baseStyle}
                 onClick={handleNodeClick}
                 role="button"
@@ -135,7 +136,7 @@ const MindMapNodeItem = React.memo(({
     if (isConclusion) {
          return (
             <div
-                className={`mindmap-node group ${isVisible ? 'mindmap-node-visible' : ''} absolute cursor-pointer`}
+                className={`mindmap-node group ${isVisible ? 'mindmap-node-visible' : ''} absolute cursor-pointer select-none`}
                 style={baseStyle}
                 onClick={handleNodeClick}
                 role="button"
@@ -157,7 +158,7 @@ const MindMapNodeItem = React.memo(({
     // 3. Standard Node (Glassmorphism)
     return (
         <div
-            className={`mindmap-node group ${isVisible ? 'mindmap-node-visible' : ''} ${isActive ? 'active-node' : ''} ${isSuggestedAndIncomplete ? 'suggested-node' : ''} absolute rounded-xl cursor-pointer`}
+            className={`mindmap-node group ${isVisible ? 'mindmap-node-visible' : ''} ${isActive ? 'active-node' : ''} ${isSuggestedAndIncomplete ? 'suggested-node' : ''} absolute rounded-xl cursor-pointer select-none`}
             style={baseStyle}
             onClick={handleNodeClick}
             role="button"
