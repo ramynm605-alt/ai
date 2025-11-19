@@ -149,6 +149,7 @@ export interface MindMapNode {
       passwordHash: string; // Added for Security
       avatarColor: string;
       joinDate: string;
+      isVerified: boolean; // NEW: Email verification status
   }
 
   export interface SavedSession {

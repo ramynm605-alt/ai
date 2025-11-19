@@ -420,12 +420,33 @@ function App() {
     dispatch({ type: 'SET_THEME', payload: theme });
   };
 
-  // --- User Management Handlers (Secure) ---
+  // --- Auth Handlers with Email Verification Simulation ---
+  
+  const checkEmailExists = async (email: string): Promise<boolean> => {
+      const usersStr = localStorage.getItem('zehngah_users');
+      const users: UserProfile[] = usersStr ? JSON.parse(usersStr) : [];
+      return users.some(u => u.email.toLowerCase() === email.toLowerCase());
+  };
+
+  const sendVerificationCode = async (email: string): Promise<string> => {
+      // SIMULATION: In a real app, this calls an API to send email
+      // We will generate a code and alert it to the user
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      console.log(`[SIMULATION] Verification email sent to ${email}. Code: ${code}`);
+      
+      // Small delay to simulate network
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Alert the code so the user can actually "use" it
+      alert(`کد تایید ایمیل شما (شبیه‌سازی): ${code}`);
+      return code;
+  };
+
   const handleLogin = async (email: string, password: string) => {
       const usersStr = localStorage.getItem('zehngah_users');
       let users: UserProfile[] = usersStr ? JSON.parse(usersStr) : [];
       
-      const user = users.find(u => u.email === email);
+      const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
       
       if (!user) {
           throw new Error('کاربری با این ایمیل یافت نشد.');
@@ -450,7 +471,7 @@ function App() {
       const usersStr = localStorage.getItem('zehngah_users');
       let users: UserProfile[] = usersStr ? JSON.parse(usersStr) : [];
       
-      if (users.some(u => u.email === email)) {
+      if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
           throw new Error('این ایمیل قبلاً ثبت شده است.');
       }
 
@@ -460,11 +481,12 @@ function App() {
 
       const newUser: UserProfile = {
           id: Math.random().toString(36).substr(2, 9),
-          name,
-          email,
+          name: name || email.split('@')[0],
+          email: email.toLowerCase(),
           passwordHash: passHash,
           avatarColor: randomColor,
-          joinDate: new Date().toISOString()
+          joinDate: new Date().toISOString(),
+          isVerified: true // Since they passed the verification step
       };
 
       users.push(newUser);
@@ -928,6 +950,8 @@ function App() {
           user={state.currentUser}
           onLogin={handleLogin}
           onRegister={handleRegister}
+          onCheckEmail={checkEmailExists}
+          onSendVerification={sendVerificationCode}
           onLogout={handleLogout}
           savedSessions={state.savedSessions}
           onLoadSession={handleLoadSession}

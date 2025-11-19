@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserProfile, SavedSession } from '../types';
-import { User, LogOut, History, BrainCircuit, Trash, Save, CheckCircle, ArrowRight, XCircle, Shield, Key, Upload, ClipboardList } from './icons';
+import { User, LogOut, History, BrainCircuit, Trash, Save, CheckCircle, ArrowRight, XCircle, Shield, Key, Upload, ClipboardList, ChevronDown } from './icons';
 
 interface UserPanelProps {
     isOpen: boolean;
@@ -9,6 +9,8 @@ interface UserPanelProps {
     user: UserProfile | null;
     onLogin: (email: string, password: string) => Promise<void>;
     onRegister: (email: string, password: string, name: string) => Promise<void>;
+    onCheckEmail: (email: string) => Promise<boolean>;
+    onSendVerification: (email: string) => Promise<string>;
     onLogout: () => void;
     savedSessions: SavedSession[];
     onLoadSession: (session: SavedSession) => void;
@@ -19,12 +21,16 @@ interface UserPanelProps {
     onImportData: (data: string) => boolean;
 }
 
+type AuthStep = 'email' | 'verification' | 'register-password' | 'login-password';
+
 const UserPanel: React.FC<UserPanelProps> = ({ 
     isOpen, 
     onClose, 
     user, 
     onLogin, 
-    onRegister, 
+    onRegister,
+    onCheckEmail,
+    onSendVerification, 
     onLogout, 
     savedSessions, 
     onLoadSession,
@@ -34,34 +40,95 @@ const UserPanel: React.FC<UserPanelProps> = ({
     onExportData,
     onImportData
 }) => {
-    const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+    const [step, setStep] = useState<AuthStep>('email');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [verificationCode, setVerificationCode] = useState('');
+    const [actualCode, setActualCode] = useState('');
     const [name, setName] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    
     const [sessionTitle, setSessionTitle] = useState('');
     const [showSaveInput, setShowSaveInput] = useState(false);
     const [error, setError] = useState<string | null>(null);
     
     // Sync States
+    const [showSyncOptions, setShowSyncOptions] = useState(false);
     const [showExport, setShowExport] = useState(false);
     const [exportString, setExportString] = useState('');
     const [showImport, setShowImport] = useState(false);
     const [importString, setImportString] = useState('');
     const [syncMsg, setSyncMsg] = useState('');
 
+    // Reset state when panel opens
+    useEffect(() => {
+        if (isOpen && !user) {
+            setStep('email');
+            setPassword('');
+            setVerificationCode('');
+            setError(null);
+        }
+    }, [isOpen, user]);
+
     if (!isOpen) return null;
 
-    const handleAuthSubmit = async (e: React.FormEvent) => {
+    const handleEmailSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!email.includes('@')) {
+            setError('لطفاً یک ایمیل معتبر وارد کنید.');
+            return;
+        }
+        setIsLoading(true);
         setError(null);
         try {
-            if (authMode === 'login') {
-                await onLogin(email, password);
+            const exists = await onCheckEmail(email);
+            if (exists) {
+                setStep('login-password');
             } else {
-                await onRegister(email, password, name);
+                // New user -> Send verification
+                const code = await onSendVerification(email);
+                setActualCode(code);
+                setStep('verification');
             }
         } catch (err: any) {
-            setError(err.message || 'خطایی رخ داد');
+            setError(err.message || 'خطا در بررسی ایمیل.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleVerificationSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (verificationCode === actualCode) {
+            setStep('register-password');
+            setError(null);
+        } else {
+            setError('کد وارد شده اشتباه است.');
+        }
+    };
+
+    const handleRegisterSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsLoading(true);
+        try {
+            await onRegister(email, password, name);
+            // Automatically logs in via App logic
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleLoginSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsLoading(true);
+        try {
+            await onLogin(email, password);
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -102,7 +169,7 @@ const UserPanel: React.FC<UserPanelProps> = ({
                 <div className="flex items-center justify-between p-4 border-b border-border bg-secondary/30 shrink-0">
                     <h2 className="text-lg font-bold flex items-center gap-2">
                         <User className="w-5 h-5 text-primary" />
-                        <span>{user ? 'داشبورد کاربری' : 'حساب کاربری'}</span>
+                        <span>{user ? 'حساب کاربری من' : 'ورود / ثبت نام'}</span>
                     </h2>
                     <button onClick={onClose} className="p-2 rounded-full hover:bg-secondary transition-colors">
                         <XCircle className="w-6 h-6 text-muted-foreground" />
@@ -112,142 +179,208 @@ const UserPanel: React.FC<UserPanelProps> = ({
                 {/* Content */}
                 <div className="flex-grow overflow-y-auto p-6">
                     {!user ? (
-                        // Auth View
-                        <div className="flex flex-col items-center justify-center h-full max-w-sm mx-auto">
-                            <div className="mb-8 text-center">
-                                <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 text-primary">
-                                    <User className="w-10 h-10" />
+                        // Auth View (Simplified Flow)
+                        <div className="flex flex-col items-center justify-center h-full max-w-sm mx-auto animate-slide-up">
+                            <div className="mb-6 text-center">
+                                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 text-primary">
+                                    <User className="w-8 h-8" />
                                 </div>
-                                <h3 className="text-2xl font-bold mb-2">{authMode === 'login' ? 'ورود به حساب' : 'ساخت حساب جدید'}</h3>
-                                <p className="text-muted-foreground">برای ذخیره ایمن پیشرفت و دسترسی به نقشه‌های ذهنی خود وارد شوید.</p>
+                                <h3 className="text-xl font-bold mb-2">
+                                    {step === 'email' && 'شروع کنید'}
+                                    {step === 'verification' && 'تایید ایمیل'}
+                                    {step === 'register-password' && 'تکمیل حساب'}
+                                    {step === 'login-password' && 'خوش آمدید'}
+                                </h3>
+                                <p className="text-sm text-muted-foreground">
+                                    {step === 'email' && 'برای دسترسی به تمام دیوایس‌ها ایمیل خود را وارد کنید.'}
+                                    {step === 'verification' && `کد ۶ رقمی ارسال شده به ${email} را وارد کنید.`}
+                                    {step === 'register-password' && 'یک رمز عبور برای حساب خود انتخاب کنید.'}
+                                    {step === 'login-password' && 'رمز عبور خود را وارد کنید.'}
+                                </p>
                             </div>
 
-                            {/* Security Assurance */}
-                            <div className="w-full mb-6 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg flex gap-3 items-start text-left" dir="rtl">
-                                <Shield className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
-                                <div>
-                                    <p className="text-xs font-bold text-blue-600 dark:text-blue-400 mb-1">تضمین امنیت حریم خصوصی</p>
-                                    <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                        رمز عبور شما با الگوریتم پیشرفته <span className="font-mono bg-background px-1 rounded">SHA-256</span> هش می‌شود. 
-                                        تمامی اطلاعات حساب و تاریخچه یادگیری شما <strong>فقط در حافظه مرورگر خودتان</strong> (Local Storage) ذخیره می‌شود و به هیچ سروری ارسال نمی‌گردد.
-                                    </p>
-                                </div>
-                            </div>
+                            {error && <div className="w-full p-3 mb-4 text-sm text-center text-destructive bg-destructive/10 rounded-lg animate-pulse">{error}</div>}
 
-                            {error && <div className="w-full p-3 mb-4 text-sm text-destructive bg-destructive/10 rounded-lg">{error}</div>}
-
-                            <form onSubmit={handleAuthSubmit} className="w-full space-y-4">
-                                {authMode === 'register' && (
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">نام کامل</label>
-                                        <input 
-                                            type="text" 
-                                            required 
-                                            className="w-full p-3 rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary"
-                                            value={name}
-                                            onChange={e => setName(e.target.value)}
-                                        />
-                                    </div>
+                            <div className="w-full space-y-4">
+                                {/* Step 1: Email Input */}
+                                {step === 'email' && (
+                                    <form onSubmit={handleEmailSubmit} className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">ایمیل</label>
+                                            <input 
+                                                type="email" 
+                                                required 
+                                                autoFocus
+                                                dir="ltr"
+                                                placeholder="name@example.com"
+                                                className="w-full p-3 rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary text-center"
+                                                value={email}
+                                                onChange={e => setEmail(e.target.value)}
+                                            />
+                                        </div>
+                                        <button disabled={isLoading} className="w-full py-3 bg-primary text-white font-bold rounded-lg hover:bg-primary-hover transition-all shadow-lg shadow-primary/20 flex justify-center">
+                                            {isLoading ? 'در حال بررسی...' : 'ادامه'}
+                                        </button>
+                                    </form>
                                 )}
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">ایمیل</label>
-                                    <input 
-                                        type="email" 
-                                        required 
-                                        className="w-full p-3 rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary"
-                                        value={email}
-                                        onChange={e => setEmail(e.target.value)}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">رمز عبور</label>
-                                    <div className="relative">
-                                        <input 
-                                            type="password" 
-                                            required 
-                                            minLength={4}
-                                            className="w-full p-3 pl-10 rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary"
-                                            value={password}
-                                            onChange={e => setPassword(e.target.value)}
-                                        />
-                                        <Key className="absolute left-3 top-3.5 w-5 h-5 text-muted-foreground" />
-                                    </div>
-                                </div>
-                                <button className="w-full py-3 bg-primary text-white font-bold rounded-lg hover:bg-primary-hover transition-all shadow-lg shadow-primary/20">
-                                    {authMode === 'login' ? 'ورود امن' : 'ثبت نام و رمزنگاری'}
-                                </button>
-                            </form>
 
-                            <div className="mt-6 text-center text-sm">
-                                {authMode === 'login' ? (
-                                    <p>حساب ندارید؟ <button onClick={() => { setAuthMode('register'); setError(null); }} className="text-primary font-bold hover:underline">ثبت نام کنید</button></p>
-                                ) : (
-                                    <p>حساب دارید؟ <button onClick={() => { setAuthMode('login'); setError(null); }} className="text-primary font-bold hover:underline">وارد شوید</button></p>
+                                {/* Step 2: Verification Code (Only for New Users) */}
+                                {step === 'verification' && (
+                                    <form onSubmit={handleVerificationSubmit} className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">کد تایید</label>
+                                            <input 
+                                                type="text" 
+                                                required 
+                                                autoFocus
+                                                maxLength={6}
+                                                placeholder="123456"
+                                                className="w-full p-3 text-xl tracking-widest text-center rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary"
+                                                value={verificationCode}
+                                                onChange={e => setVerificationCode(e.target.value)}
+                                            />
+                                        </div>
+                                        <button className="w-full py-3 bg-primary text-white font-bold rounded-lg hover:bg-primary-hover transition-all">
+                                            تایید و ادامه
+                                        </button>
+                                        <button type="button" onClick={() => setStep('email')} className="w-full py-2 text-sm text-muted-foreground hover:text-foreground">
+                                            تغییر ایمیل
+                                        </button>
+                                    </form>
+                                )}
+
+                                {/* Step 3a: Set Password (Register) */}
+                                {step === 'register-password' && (
+                                    <form onSubmit={handleRegisterSubmit} className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">نام شما (اختیاری)</label>
+                                            <input 
+                                                type="text" 
+                                                className="w-full p-3 rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary"
+                                                value={name}
+                                                onChange={e => setName(e.target.value)}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">رمز عبور</label>
+                                            <input 
+                                                type="password" 
+                                                required 
+                                                minLength={4}
+                                                className="w-full p-3 rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary"
+                                                value={password}
+                                                onChange={e => setPassword(e.target.value)}
+                                            />
+                                        </div>
+                                        <button disabled={isLoading} className="w-full py-3 bg-success text-white font-bold rounded-lg hover:bg-success/90 transition-all">
+                                            {isLoading ? 'در حال ساخت حساب...' : 'تکمیل ثبت نام'}
+                                        </button>
+                                    </form>
+                                )}
+
+                                {/* Step 3b: Enter Password (Login) */}
+                                {step === 'login-password' && (
+                                    <form onSubmit={handleLoginSubmit} className="space-y-4">
+                                        <div className="text-center text-sm font-medium text-foreground bg-secondary/50 p-2 rounded">
+                                            {email}
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">رمز عبور</label>
+                                            <div className="relative">
+                                                <input 
+                                                    type="password" 
+                                                    required 
+                                                    autoFocus
+                                                    className="w-full p-3 pl-10 rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary"
+                                                    value={password}
+                                                    onChange={e => setPassword(e.target.value)}
+                                                />
+                                                <Key className="absolute left-3 top-3.5 w-5 h-5 text-muted-foreground" />
+                                            </div>
+                                        </div>
+                                        <button disabled={isLoading} className="w-full py-3 bg-primary text-white font-bold rounded-lg hover:bg-primary-hover transition-all">
+                                            {isLoading ? 'در حال ورود...' : 'ورود به حساب'}
+                                        </button>
+                                        <button type="button" onClick={() => setStep('email')} className="w-full py-2 text-sm text-muted-foreground hover:text-foreground">
+                                            این ایمیل من نیست
+                                        </button>
+                                    </form>
                                 )}
                             </div>
                         </div>
                     ) : (
                         // Dashboard View
-                        <div className="space-y-8">
+                        <div className="space-y-8 animate-slide-up">
                             {/* Profile Summary */}
                             <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary/10 to-secondary rounded-xl border border-primary/20 relative overflow-hidden">
                                 <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white shadow-lg z-10`} style={{ backgroundColor: user.avatarColor }}>
                                     {user.name.charAt(0).toUpperCase()}
                                 </div>
                                 <div className="z-10">
-                                    <h3 className="text-xl font-bold">{user.name}</h3>
-                                    <p className="text-muted-foreground text-sm">{user.email}</p>
-                                    <div className="flex gap-2 mt-1">
-                                        <p className="text-xs text-muted-foreground opacity-70">عضویت: {new Date(user.joinDate).toLocaleDateString('fa-IR')}</p>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-xl font-bold">{user.name}</h3>
+                                        {user.isVerified && <CheckCircle className="w-4 h-4 text-blue-500" />}
                                     </div>
+                                    <p className="text-muted-foreground text-sm">{user.email}</p>
                                 </div>
                                 <Shield className="absolute -left-4 -bottom-4 w-32 h-32 text-primary/5 z-0" />
                             </div>
                             
-                            {/* Sync & Transfer Section */}
-                            <div className="p-4 border border-indigo-500/20 bg-indigo-500/5 rounded-lg">
-                                <h4 className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mb-2 flex items-center gap-2">
-                                    <ClipboardList className="w-4 h-4" />
-                                    همگام‌سازی بین دستگاه‌ها
-                                </h4>
-                                <p className="text-xs text-muted-foreground mb-3">
-                                    برای انتقال پیشرفت خود به دستگاه دیگر (موبایل/لپتاپ)، از گزینه‌های زیر استفاده کنید:
-                                </p>
-                                <div className="flex gap-2 mb-3">
-                                    <button onClick={handleGenerateExport} className="flex-1 px-3 py-2 text-xs font-bold bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors">
-                                        دریافت کد انتقال (Export)
-                                    </button>
-                                    <button onClick={() => { setShowImport(true); setShowExport(false); }} className="flex-1 px-3 py-2 text-xs font-bold border border-indigo-600 text-indigo-600 rounded hover:bg-indigo-600 hover:text-white transition-colors">
-                                        وارد کردن کد (Import)
-                                    </button>
-                                </div>
+                            {/* Cloud Sync Section (Hidden by default to keep it simple) */}
+                            <div className="border border-border rounded-lg overflow-hidden">
+                                <button 
+                                    onClick={() => setShowSyncOptions(!showSyncOptions)}
+                                    className="w-full flex items-center justify-between p-4 bg-secondary/30 hover:bg-secondary/50 transition-colors"
+                                >
+                                    <div className="flex items-center gap-2 text-sm font-bold">
+                                        <ClipboardList className="w-4 h-4 text-primary" />
+                                        <span>مدیریت دستگاه‌ها و همگام‌سازی</span>
+                                    </div>
+                                    <ChevronDown className={`w-4 h-4 transition-transform ${showSyncOptions ? 'rotate-180' : ''}`} />
+                                </button>
+                                
+                                {showSyncOptions && (
+                                    <div className="p-4 bg-secondary/10 animate-slide-up">
+                                        <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+                                            از آنجایی که ذهن‌گاه برای حفظ حریم خصوصی شما دیتایی را روی سرور ذخیره نمی‌کند، برای انتقال اطلاعات به دستگاه جدید (مثل موبایل) از این کد استفاده کنید:
+                                        </p>
+                                        <div className="flex gap-2 mb-3">
+                                            <button onClick={handleGenerateExport} className="flex-1 px-3 py-2 text-xs font-bold bg-primary text-white rounded hover:bg-primary-hover transition-colors">
+                                                دریافت کد انتقال (Export)
+                                            </button>
+                                            <button onClick={() => { setShowImport(true); setShowExport(false); }} className="flex-1 px-3 py-2 text-xs font-bold border border-primary text-primary rounded hover:bg-primary hover:text-white transition-colors">
+                                                وارد کردن کد (Import)
+                                            </button>
+                                        </div>
 
-                                {showExport && (
-                                    <div className="animate-slide-up">
-                                        <p className="text-xs mb-1 text-muted-foreground">این کد را کپی کرده و در دستگاه جدید در بخش "Import" وارد کنید:</p>
-                                        <textarea 
-                                            readOnly 
-                                            value={exportString} 
-                                            className="w-full h-20 p-2 text-xs font-mono bg-background border border-border rounded select-all"
-                                            onClick={(e) => e.currentTarget.select()}
-                                        />
+                                        {showExport && (
+                                            <div className="animate-slide-up">
+                                                <textarea 
+                                                    readOnly 
+                                                    value={exportString} 
+                                                    className="w-full h-24 p-2 text-[10px] font-mono bg-background border border-border rounded select-all"
+                                                    onClick={(e) => e.currentTarget.select()}
+                                                />
+                                                <p className="text-[10px] text-muted-foreground mt-1">این کد را کپی کرده و در دستگاه جدید وارد کنید.</p>
+                                            </div>
+                                        )}
+
+                                        {showImport && (
+                                            <div className="animate-slide-up flex flex-col gap-2">
+                                                <textarea 
+                                                    placeholder="کد انتقال را اینجا پیست کنید..."
+                                                    value={importString}
+                                                    onChange={(e) => setImportString(e.target.value)}
+                                                    className="w-full h-24 p-2 text-[10px] font-mono bg-background border border-border rounded"
+                                                />
+                                                <button onClick={handleExecuteImport} className="self-end px-4 py-1 text-xs bg-green-600 text-white rounded font-bold">
+                                                    بارگذاری اطلاعات
+                                                </button>
+                                            </div>
+                                        )}
+                                        {syncMsg && <p className="text-xs text-green-600 font-bold mt-2">{syncMsg}</p>}
                                     </div>
                                 )}
-
-                                {showImport && (
-                                    <div className="animate-slide-up flex flex-col gap-2">
-                                        <textarea 
-                                            placeholder="کد انتقال را اینجا پیست کنید..."
-                                            value={importString}
-                                            onChange={(e) => setImportString(e.target.value)}
-                                            className="w-full h-20 p-2 text-xs font-mono bg-background border border-border rounded"
-                                        />
-                                        <button onClick={handleExecuteImport} className="self-end px-4 py-1 text-xs bg-green-600 text-white rounded font-bold">
-                                            اعمال تغییرات
-                                        </button>
-                                    </div>
-                                )}
-                                {syncMsg && <p className="text-xs text-green-600 font-bold mt-2">{syncMsg}</p>}
                             </div>
 
                             {/* Stats Row */}
