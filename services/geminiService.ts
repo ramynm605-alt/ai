@@ -910,17 +910,26 @@ export async function generateDeepAnalysis(
 ): Promise<string> {
     return withRetry(async () => {
         const prompt = `
-        Create a high-value "Premium Reward" content (Markdown) for the topic: "${nodeTitle}".
-        This is a reward for a top-performing student (mastery level).
-
-        Structure as a "Smart Notebook" or "Deep Analysis".
-        Include:
-        1. **Nuance & Misconceptions**: Subtle details experts know.
-        2. **Advanced Application**: Real-world complex usage.
-        3. **Quick Cheat Sheet**: A very concise bulleted summary for rapid review (The "Notebook" part).
+        Act as a world-class expert on the topic "${nodeTitle}".
         
-        Base context: ${nodeContent}
-        Language: Persian. Professional tone.
+        The student has mastered the basics. Now, provide a "Deep Dive Analysis" reward content (Markdown).
+        Language: Persian (Farsi).
+
+        **Strict Output Structure:**
+        
+        ### 🔬 تحلیل میکروسکوپی (Micro-Analysis)
+        Deconstruct the concept into its smallest mechanics. Explain *exactly* how it works under the hood, removing abstraction.
+        
+        ### 💡 نکات طلایی و کنکوری (Golden Tips)
+        Provide exactly 3 non-obvious, expert-level tips in bullet points. These should be practical "aha moments".
+        
+        ### ⚠️ دام‌های پنهان (Hidden Pitfalls)
+        What is the #1 mistake people make with this concept, even after learning it? How to avoid it?
+        
+        ### 🔗 زنجیره دانش (Knowledge Chain)
+        Briefly explain how this specific concept connects to a more advanced topic they haven't learned yet.
+
+        Content Context: ${nodeContent.substring(0, 4000)}
         `;
 
         const response = await ai.models.generateContent({

@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { MindMapNode as MindMapNodeType } from '../types';
 import { CheckCircle, Lock, FileQuestion, Target, Flag, Trophy, Sparkles, BrainCircuit } from './icons';
@@ -169,11 +168,12 @@ const MindMapNodeItem = React.memo(({
 
              <div className={`absolute inset-0 rounded-xl border transition-all duration-300 overflow-hidden flex flex-col shadow-sm hover:shadow-xl glass
                 ${isActive ? 'border-primary/80 bg-card/90' : 'border-white/40 dark:border-white/10 hover:border-primary/50 bg-card/70'} 
+                ${status === 'failed' ? 'border-destructive/60 bg-destructive/10' : ''}
                 ${isRemedial ? 'border-purple-400/50 bg-purple-50/80 dark:bg-purple-900/20' : ''}
              `}>
                 
                 {/* Top Gradient Line */}
-                <div className={`h-1 w-full ${difficultyColor} opacity-80`} />
+                <div className={`h-1 w-full ${status === 'failed' ? 'bg-destructive' : difficultyColor} opacity-80`} />
 
                 <div className="flex-1 p-3 flex flex-col justify-between relative z-10">
                     {/* Header */}
@@ -194,7 +194,7 @@ const MindMapNodeItem = React.memo(({
                             )}
                          </div>
 
-                        {!isLocked && status !== 'completed' && (
+                        {!isLocked && status !== 'completed' && status !== 'failed' && (
                              <div className="bg-primary/10 p-1 rounded-md text-primary opacity-0 group-hover:opacity-100 transition-all transform translate-y-2 group-hover:translate-y-0">
                                  {isRemedial ? <Sparkles className="w-4 h-4 text-purple-500" /> : <BrainCircuit className="w-4 h-4" />}
                              </div>

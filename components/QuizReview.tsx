@@ -1,14 +1,14 @@
 
-
 import React from 'react';
 import { QuizResult, QuizQuestion } from '../types';
-import { CheckCircle, XCircle, Lock } from './icons';
+import { CheckCircle, XCircle, Lock, Diamond } from './icons';
 
 interface QuizReviewProps {
     results: QuizResult[];
     onFinish: () => void;
     attempts?: number;
     onForceUnlock?: () => void;
+    rewardUnlocked?: boolean;
 }
 
 const getAnswerText = (question: QuizQuestion, answer: any): string => {
@@ -24,7 +24,6 @@ const getAnswerText = (question: QuizQuestion, answer: any): string => {
 
 const QuestionReviewCard: React.FC<{ result: QuizResult }> = ({ result }) => {
     const { question, userAnswer, isCorrect, analysis, score } = result;
-    // ... (Render logic same as before)
      const renderAnswers = () => {
         if (question.type === 'multiple-choice') {
             return (
@@ -75,7 +74,7 @@ const QuestionReviewCard: React.FC<{ result: QuizResult }> = ({ result }) => {
 };
 
 
-const QuizReview: React.FC<QuizReviewProps> = ({ results, onFinish, attempts = 0, onForceUnlock }) => {
+const QuizReview: React.FC<QuizReviewProps> = ({ results, onFinish, attempts = 0, onForceUnlock, rewardUnlocked }) => {
     const totalScore = results.reduce((sum, r) => sum + r.score, 0);
     const maxScore = results.reduce((sum, r) => sum + r.question.points, 0);
     const percentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
@@ -114,6 +113,25 @@ const QuizReview: React.FC<QuizReviewProps> = ({ results, onFinish, attempts = 0
                     </div>
                 )}
             </div>
+
+            {/* REWARD UNLOCKED CARD */}
+            {rewardUnlocked && (
+                <div className="p-6 mb-8 bg-purple-50/80 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-700 rounded-xl shadow-lg animate-slide-up flex flex-col sm:flex-row items-center gap-4 text-center sm:text-right">
+                     <div className="w-16 h-16 bg-purple-200 dark:bg-purple-800 rounded-full flex items-center justify-center shrink-0 animate-bounce">
+                         <Diamond className="w-8 h-8 text-purple-600 dark:text-purple-200" />
+                     </div>
+                     <div>
+                         <h3 className="text-xl font-bold text-purple-700 dark:text-purple-200">تبریک! پاداش ویژه باز شد 💎</h3>
+                         <p className="text-purple-600/80 dark:text-purple-300/80 mt-1">به دلیل عملکرد فوق‌العاده شما (بالای ۸۵٪)، تحلیل عمیق و نکات محرمانه این درس باز شد.</p>
+                     </div>
+                     <button 
+                        onClick={onFinish}
+                        className="mr-auto sm:mr-0 w-full sm:w-auto px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg transition-colors"
+                     >
+                        مشاهده پاداش
+                     </button>
+                </div>
+            )}
 
             <div className="space-y-6">
                 {results.map(result => (

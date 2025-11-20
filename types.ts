@@ -144,12 +144,12 @@ export interface MindMapNode {
   // --- User Panel & Account Additions ---
   export interface UserProfile {
       id: string;
+      googleId?: string; // Added for Google Auth
       name: string;
       email: string;
-      passwordHash: string; // Added for Security
+      avatarUrl?: string; // Added for Google Avatar
       avatarColor: string;
       joinDate: string;
-      isVerified: boolean; // NEW: Email verification status
   }
 
   export interface SavedSession {

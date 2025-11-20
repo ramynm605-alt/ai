@@ -1,15 +1,13 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, SavedSession } from '../types';
-import { User, LogOut, History, BrainCircuit, Trash, Save, CheckCircle, ArrowRight, XCircle, Shield, Key, ClipboardList, ChevronDown } from './icons';
+import { User, LogOut, History, BrainCircuit, Trash, Save, CheckCircle, ArrowRight, XCircle, Shield, ClipboardList, ChevronDown } from './icons';
 
 interface UserPanelProps {
     isOpen: boolean;
     onClose: () => void;
     user: UserProfile | null;
-    onLogin: (email: string, password: string) => Promise<void>;
-    onRegister: (email: string, password: string, name: string) => Promise<void>;
-    onCheckEmail: (email: string) => Promise<boolean>;
+    onLogin: (user: UserProfile) => Promise<void>;
     onLogout: () => void;
     savedSessions: SavedSession[];
     onLoadSession: (session: SavedSession) => void;
@@ -20,15 +18,23 @@ interface UserPanelProps {
     onImportData: (data: string) => boolean;
 }
 
-type AuthStep = 'email' | 'register-password' | 'login-password';
+declare var google: any;
+
+// --- Google Icon Component (Used for badges) ---
+const GoogleIcon = () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+    </svg>
+);
 
 const UserPanel: React.FC<UserPanelProps> = ({ 
     isOpen, 
     onClose, 
     user, 
     onLogin, 
-    onRegister,
-    onCheckEmail,
     onLogout, 
     savedSessions, 
     onLoadSession,
@@ -38,15 +44,9 @@ const UserPanel: React.FC<UserPanelProps> = ({
     onExportData,
     onImportData
 }) => {
-    const [step, setStep] = useState<AuthStep>('email');
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [name, setName] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    
     const [sessionTitle, setSessionTitle] = useState('');
     const [showSaveInput, setShowSaveInput] = useState(false);
-    const [error, setError] = useState<string | null>(null);
     
     // Sync States
     const [showSyncOptions, setShowSyncOptions] = useState(false);
@@ -56,64 +56,104 @@ const UserPanel: React.FC<UserPanelProps> = ({
     const [importString, setImportString] = useState('');
     const [syncMsg, setSyncMsg] = useState('');
 
-    // Reset state when panel opens
-    useEffect(() => {
-        if (isOpen && !user) {
-            setStep('email');
-            setPassword('');
-            setError(null);
-        }
-    }, [isOpen, user]);
+    const googleButtonRef = useRef<HTMLDivElement>(null);
 
-    if (!isOpen) return null;
-
-    const handleEmailSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!email.includes('@')) {
-            setError('لطفاً یک ایمیل معتبر وارد کنید.');
-            return;
-        }
-        setIsLoading(true);
-        setError(null);
+    // Robust JWT Parser to handle UTF-8 strings (like Farsi names)
+    const parseJwt = (token: string) => {
         try {
-            const exists = await onCheckEmail(email);
-            if (exists) {
-                setStep('login-password');
-            } else {
-                // Direct to registration without verification
-                setStep('register-password');
+            const base64Url = token.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+            return JSON.parse(jsonPayload);
+        } catch (e) {
+            console.error("Failed to parse JWT", e);
+            return null;
+        }
+    };
+
+    const handleGoogleCallback = async (response: any) => {
+        setIsLoading(true);
+        try {
+            const credential = response.credential;
+            const profile = parseJwt(credential);
+
+            if (profile) {
+                const newUser: UserProfile = {
+                    id: profile.sub, // Unique Google ID
+                    googleId: profile.sub,
+                    name: profile.name || 'کاربر بدون نام',
+                    email: profile.email,
+                    avatarUrl: profile.picture,
+                    avatarColor: '#4285F4',
+                    joinDate: new Date().toISOString(),
+                };
+                await onLogin(newUser);
             }
-        } catch (err: any) {
-            setError(err.message || 'خطا در بررسی ایمیل.');
+        } catch (error) {
+            console.error("Login failed", error);
         } finally {
             setIsLoading(false);
         }
     };
 
-    const handleRegisterSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsLoading(true);
-        try {
-            await onRegister(email, password, name);
-            // Automatically logs in via App logic
-        } catch (err: any) {
-            setError(err.message);
-        } finally {
-            setIsLoading(false);
-        }
-    };
+    // Initialize Google Button
+    useEffect(() => {
+        const initGoogleButton = () => {
+            if (typeof google !== 'undefined' && googleButtonRef.current && !user) {
+                try {
+                    const clientId = "732055395775-73muf7ge9l1lfknk2fg9qujvp7im7qn5.apps.googleusercontent.com";
+                    
+                    google.accounts.id.initialize({
+                        client_id: clientId,
+                        callback: handleGoogleCallback,
+                        auto_select: false,
+                        cancel_on_tap_outside: true,
+                        ui_mode: "bottom_sheet"
+                    });
 
-    const handleLoginSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsLoading(true);
-        try {
-            await onLogin(email, password);
-        } catch (err: any) {
-            setError(err.message);
-        } finally {
-            setIsLoading(false);
+                    google.accounts.id.renderButton(
+                        googleButtonRef.current,
+                        { 
+                            theme: "outline", 
+                            size: "large", 
+                            type: "standard",
+                            shape: "pill",
+                            text: "signin_with",
+                            width: googleButtonRef.current.offsetWidth
+                        }
+                    );
+                } catch (e) {
+                    console.error("Google Sign-In Initialization Error:", e);
+                }
+            }
+        };
+
+        // Check for google global periodically until loaded
+        const intervalId = setInterval(() => {
+            if (typeof google !== 'undefined') {
+                initGoogleButton();
+                clearInterval(intervalId);
+            }
+        }, 500);
+
+        // Resize observer to make button responsive
+        let resizeObserver: ResizeObserver;
+        if (googleButtonRef.current) {
+            resizeObserver = new ResizeObserver(() => {
+                 if (typeof google !== 'undefined' && !user) {
+                     // Trigger re-render if needed, handled by Google library usually
+                 }
+            });
+            resizeObserver.observe(googleButtonRef.current);
         }
-    };
+
+        return () => {
+            clearInterval(intervalId);
+            resizeObserver?.disconnect();
+        };
+    }, [user, isOpen]);
 
     const handleSaveSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -144,6 +184,8 @@ const UserPanel: React.FC<UserPanelProps> = ({
         }
     };
 
+    if (!isOpen) return null;
+
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm fade-in" onClick={onClose}>
             <div className="w-full max-w-2xl h-[85vh] flex flex-col bg-card border border-border rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -152,7 +194,7 @@ const UserPanel: React.FC<UserPanelProps> = ({
                 <div className="flex items-center justify-between p-4 border-b border-border bg-secondary/30 shrink-0">
                     <h2 className="text-lg font-bold flex items-center gap-2">
                         <User className="w-5 h-5 text-primary" />
-                        <span>{user ? 'حساب کاربری من' : 'ورود / ثبت نام'}</span>
+                        <span>{user ? 'پروفایل کاربری' : 'ورود به حساب'}</span>
                     </h2>
                     <button onClick={onClose} className="p-2 rounded-full hover:bg-secondary transition-colors">
                         <XCircle className="w-6 h-6 text-muted-foreground" />
@@ -162,150 +204,96 @@ const UserPanel: React.FC<UserPanelProps> = ({
                 {/* Content */}
                 <div className="flex-grow overflow-y-auto p-6">
                     {!user ? (
-                        // Auth View (Simplified Flow)
-                        <div className="flex flex-col items-center justify-center h-full max-w-sm mx-auto animate-slide-up">
-                            <div className="mb-6 text-center">
-                                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 text-primary">
-                                    <User className="w-8 h-8" />
+                        // Login View
+                        <div className="flex flex-col items-center justify-center h-full max-w-sm mx-auto animate-slide-up space-y-8">
+                            <div className="text-center space-y-4">
+                                <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto text-primary shadow-inner animate-pulse">
+                                    <BrainCircuit className="w-10 h-10" />
                                 </div>
-                                <h3 className="text-xl font-bold mb-2">
-                                    {step === 'email' && 'شروع کنید'}
-                                    {step === 'register-password' && 'تکمیل حساب'}
-                                    {step === 'login-password' && 'خوش آمدید'}
-                                </h3>
-                                <p className="text-sm text-muted-foreground">
-                                    {step === 'email' && 'برای دسترسی به تمام دیوایس‌ها ایمیل خود را وارد کنید.'}
-                                    {step === 'register-password' && 'یک رمز عبور برای حساب خود انتخاب کنید.'}
-                                    {step === 'login-password' && 'رمز عبور خود را وارد کنید.'}
+                                <h3 className="text-2xl font-bold">ورود به ذهن‌گاه</h3>
+                                <p className="text-muted-foreground">
+                                    برای ذخیره پیشرفت و دسترسی به تاریخچه یادگیری خود وارد شوید.
                                 </p>
                             </div>
 
-                            {error && <div className="w-full p-3 mb-4 text-sm text-center text-destructive bg-destructive/10 rounded-lg animate-pulse">{error}</div>}
-
                             <div className="w-full space-y-4">
-                                {/* Step 1: Email Input */}
-                                {step === 'email' && (
-                                    <form onSubmit={handleEmailSubmit} className="space-y-4">
-                                        <div>
-                                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">ایمیل</label>
-                                            <input 
-                                                type="email" 
-                                                required 
-                                                autoFocus
-                                                dir="ltr"
-                                                placeholder="name@example.com"
-                                                className="w-full p-3 rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary text-center"
-                                                value={email}
-                                                onChange={e => setEmail(e.target.value)}
-                                            />
-                                        </div>
-                                        <button disabled={isLoading} className="w-full py-3 bg-primary text-white font-bold rounded-lg hover:bg-primary-hover transition-all shadow-lg shadow-primary/20 flex justify-center">
-                                            {isLoading ? 'در حال بررسی...' : 'ادامه'}
-                                        </button>
-                                    </form>
+                                {isLoading ? (
+                                     <div className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-full border border-border bg-secondary/50 text-muted-foreground">
+                                        <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                                        <span>در حال پردازش...</span>
+                                    </div>
+                                ) : (
+                                    <div className="w-full flex justify-center">
+                                        <div ref={googleButtonRef} className="w-full h-[44px]"></div>
+                                    </div>
                                 )}
-
-                                {/* Step 2: Set Password (Register) */}
-                                {step === 'register-password' && (
-                                    <form onSubmit={handleRegisterSubmit} className="space-y-4">
-                                        <div>
-                                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">نام شما (اختیاری)</label>
-                                            <input 
-                                                type="text" 
-                                                className="w-full p-3 rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary"
-                                                value={name}
-                                                onChange={e => setName(e.target.value)}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">رمز عبور</label>
-                                            <input 
-                                                type="password" 
-                                                required 
-                                                minLength={4}
-                                                className="w-full p-3 rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary"
-                                                value={password}
-                                                onChange={e => setPassword(e.target.value)}
-                                            />
-                                        </div>
-                                        <button disabled={isLoading} className="w-full py-3 bg-success text-white font-bold rounded-lg hover:bg-success/90 transition-all">
-                                            {isLoading ? 'در حال ساخت حساب...' : 'تکمیل ثبت نام'}
-                                        </button>
-                                        <button type="button" onClick={() => setStep('email')} className="w-full py-2 text-sm text-muted-foreground hover:text-foreground">
-                                            بازگشت
-                                        </button>
-                                    </form>
-                                )}
-
-                                {/* Step 3: Enter Password (Login) */}
-                                {step === 'login-password' && (
-                                    <form onSubmit={handleLoginSubmit} className="space-y-4">
-                                        <div className="text-center text-sm font-medium text-foreground bg-secondary/50 p-2 rounded">
-                                            {email}
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">رمز عبور</label>
-                                            <div className="relative">
-                                                <input 
-                                                    type="password" 
-                                                    required 
-                                                    autoFocus
-                                                    className="w-full p-3 pl-10 rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary"
-                                                    value={password}
-                                                    onChange={e => setPassword(e.target.value)}
-                                                />
-                                                <Key className="absolute left-3 top-3.5 w-5 h-5 text-muted-foreground" />
-                                            </div>
-                                        </div>
-                                        <button disabled={isLoading} className="w-full py-3 bg-primary text-white font-bold rounded-lg hover:bg-primary-hover transition-all">
-                                            {isLoading ? 'در حال ورود...' : 'ورود به حساب'}
-                                        </button>
-                                        <button type="button" onClick={() => setStep('email')} className="w-full py-2 text-sm text-muted-foreground hover:text-foreground">
-                                            این ایمیل من نیست
-                                        </button>
-                                    </form>
-                                )}
+                                
+                                <p className="text-[10px] text-center text-muted-foreground">
+                                    با ورود به سیستم، اطلاعات شما صرفاً برای ذخیره‌سازی پیشرفت درسی در مرورگر شما استفاده می‌شود.
+                                </p>
                             </div>
                         </div>
                     ) : (
                         // Dashboard View
                         <div className="space-y-8 animate-slide-up">
                             {/* Profile Summary */}
-                            <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary/10 to-secondary rounded-xl border border-primary/20 relative overflow-hidden">
-                                <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white shadow-lg z-10`} style={{ backgroundColor: user.avatarColor }}>
-                                    {user.name.charAt(0).toUpperCase()}
-                                </div>
+                            <div className="flex items-center gap-4 p-6 bg-gradient-to-br from-primary/10 via-card to-secondary rounded-2xl border border-primary/10 relative overflow-hidden shadow-sm">
+                                {user.avatarUrl ? (
+                                     <img src={user.avatarUrl} alt={user.name} className="w-16 h-16 rounded-full shadow-lg z-10 ring-4 ring-background object-cover" />
+                                ) : (
+                                    <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white shadow-lg z-10 ring-4 ring-background`} style={{ backgroundColor: user.avatarColor }}>
+                                        {user.name.charAt(0).toUpperCase()}
+                                    </div>
+                                )}
                                 <div className="z-10">
                                     <div className="flex items-center gap-2">
                                         <h3 className="text-xl font-bold">{user.name}</h3>
-                                        {user.isVerified && <CheckCircle className="w-4 h-4 text-blue-500" />}
+                                        <div className="px-2 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-[10px] font-bold rounded-full flex items-center gap-1">
+                                            <div className="w-3 h-3"><GoogleIcon /></div>
+                                            <span>حساب گوگل</span>
+                                        </div>
                                     </div>
-                                    <p className="text-muted-foreground text-sm">{user.email}</p>
+                                    <p className="text-muted-foreground text-sm mt-1">{user.email}</p>
                                 </div>
-                                <Shield className="absolute -left-4 -bottom-4 w-32 h-32 text-primary/5 z-0" />
+                                <Shield className="absolute -right-6 -bottom-6 w-40 h-40 text-primary/5 z-0 rotate-12" />
+                            </div>
+
+                            {/* Cloud Sync Indicator */}
+                            <div className="flex items-center justify-between p-4 bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-900/30 rounded-xl">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-green-100 dark:bg-green-800/30 rounded-full">
+                                        <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-sm text-green-800 dark:text-green-300">همگام‌سازی فعال است</h4>
+                                        <p className="text-xs text-green-700/70 dark:text-green-400/70">
+                                            پیشرفت شما به صورت خودکار در این مرورگر ذخیره می‌شود.
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
                             
-                            {/* Cloud Sync Section (Hidden by default to keep it simple) */}
+                            {/* Manual Sync Backup (Hidden by default) */}
                             <div className="border border-border rounded-lg overflow-hidden">
                                 <button 
                                     onClick={() => setShowSyncOptions(!showSyncOptions)}
-                                    className="w-full flex items-center justify-between p-4 bg-secondary/30 hover:bg-secondary/50 transition-colors"
+                                    className="w-full flex items-center justify-between p-3 bg-secondary/30 hover:bg-secondary/50 transition-colors"
                                 >
-                                    <div className="flex items-center gap-2 text-sm font-bold">
-                                        <ClipboardList className="w-4 h-4 text-primary" />
-                                        <span>مدیریت دستگاه‌ها و همگام‌سازی</span>
+                                    <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+                                        <ClipboardList className="w-4 h-4" />
+                                        <span>انتقال دستی اطلاعات به دستگاه دیگر</span>
                                     </div>
-                                    <ChevronDown className={`w-4 h-4 transition-transform ${showSyncOptions ? 'rotate-180' : ''}`} />
+                                    <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${showSyncOptions ? 'rotate-180' : ''}`} />
                                 </button>
                                 
                                 {showSyncOptions && (
                                     <div className="p-4 bg-secondary/10 animate-slide-up">
-                                        <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
-                                            از آنجایی که ذهن‌گاه برای حفظ حریم خصوصی شما دیتایی را روی سرور ذخیره نمی‌کند، برای انتقال اطلاعات به دستگاه جدید (مثل موبایل) از این کد استفاده کنید:
+                                        <p className="text-[10px] text-muted-foreground mb-3">
+                                            می‌توانید از این کد برای انتقال تمام اطلاعات و پیشرفت خود به یک مرورگر یا دستگاه دیگر استفاده کنید:
                                         </p>
                                         <div className="flex gap-2 mb-3">
                                             <button onClick={handleGenerateExport} className="flex-1 px-3 py-2 text-xs font-bold bg-primary text-white rounded hover:bg-primary-hover transition-colors">
-                                                دریافت کد انتقال (Export)
+                                                کپی کد انتقال (Export)
                                             </button>
                                             <button onClick={() => { setShowImport(true); setShowExport(false); }} className="flex-1 px-3 py-2 text-xs font-bold border border-primary text-primary rounded hover:bg-primary hover:text-white transition-colors">
                                                 وارد کردن کد (Import)
@@ -320,20 +308,19 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                                     className="w-full h-24 p-2 text-[10px] font-mono bg-background border border-border rounded select-all"
                                                     onClick={(e) => e.currentTarget.select()}
                                                 />
-                                                <p className="text-[10px] text-muted-foreground mt-1">این کد را کپی کرده و در دستگاه جدید وارد کنید.</p>
                                             </div>
                                         )}
 
                                         {showImport && (
                                             <div className="animate-slide-up flex flex-col gap-2">
                                                 <textarea 
-                                                    placeholder="کد انتقال را اینجا پیست کنید..."
+                                                    placeholder="کد انتقال را اینجا وارد کنید..."
                                                     value={importString}
                                                     onChange={(e) => setImportString(e.target.value)}
                                                     className="w-full h-24 p-2 text-[10px] font-mono bg-background border border-border rounded"
                                                 />
                                                 <button onClick={handleExecuteImport} className="self-end px-4 py-1 text-xs bg-green-600 text-white rounded font-bold">
-                                                    بارگذاری اطلاعات
+                                                    اعمال و بارگذاری
                                                 </button>
                                             </div>
                                         )}
@@ -344,34 +331,38 @@ const UserPanel: React.FC<UserPanelProps> = ({
 
                             {/* Stats Row */}
                             <div className="grid grid-cols-3 gap-4">
-                                <div className="p-4 bg-card border border-border rounded-lg text-center">
+                                <div className="p-4 bg-card border border-border rounded-xl text-center shadow-sm">
                                     <div className="text-2xl font-bold text-primary">{savedSessions.length}</div>
-                                    <div className="text-xs text-muted-foreground">نقشه‌های ذخیره شده</div>
+                                    <div className="text-xs text-muted-foreground font-medium mt-1">دروس فعال</div>
                                 </div>
-                                <div className="p-4 bg-card border border-border rounded-lg text-center">
-                                    <div className="text-2xl font-bold text-success">0</div>
-                                    <div className="text-xs text-muted-foreground">دوره تکمیل شده</div>
+                                <div className="p-4 bg-card border border-border rounded-xl text-center shadow-sm">
+                                    <div className="text-2xl font-bold text-success">
+                                        {savedSessions.filter(s => s.progressPercentage === 100).length}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground font-medium mt-1">تکمیل شده</div>
                                 </div>
-                                <div className="p-4 bg-card border border-border rounded-lg text-center">
-                                    <div className="text-2xl font-bold text-orange-500">1</div>
-                                    <div className="text-xs text-muted-foreground">روز تداوم</div>
+                                <div className="p-4 bg-card border border-border rounded-xl text-center shadow-sm">
+                                    <div className="text-2xl font-bold text-orange-500">
+                                        {Math.floor((new Date().getTime() - new Date(user.joinDate).getTime()) / (1000 * 3600 * 24)) + 1}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground font-medium mt-1">روز عضویت</div>
                                 </div>
                             </div>
 
                             {/* Current Session Save Action */}
                             {hasCurrentSession && (
-                                <div className="p-4 border border-dashed border-primary/50 rounded-lg bg-primary/5">
+                                <div className="p-4 border border-dashed border-primary/50 rounded-xl bg-primary/5">
                                     {!showSaveInput ? (
                                         <button onClick={() => setShowSaveInput(true)} className="w-full flex items-center justify-center gap-2 py-2 text-primary font-semibold hover:bg-primary/10 rounded-md transition-colors">
                                             <Save className="w-5 h-5" />
-                                            <span>تغییر نام جلسه فعلی</span>
+                                            <span>ذخیره و نام‌گذاری درس فعلی</span>
                                         </button>
                                     ) : (
                                         <form onSubmit={handleSaveSubmit} className="flex gap-2">
                                             <input 
                                                 type="text" 
                                                 placeholder="عنوان درس (مثال: تاریخ ایران)" 
-                                                className="flex-grow p-2 rounded-md border border-border bg-background"
+                                                className="flex-grow p-2 rounded-md border border-border bg-background focus:ring-2 focus:ring-primary"
                                                 value={sessionTitle}
                                                 onChange={e => setSessionTitle(e.target.value)}
                                                 autoFocus
@@ -380,25 +371,25 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                             <button type="button" onClick={() => setShowSaveInput(false)} className="px-3 py-2 text-muted-foreground hover:bg-secondary rounded-md">لغو</button>
                                         </form>
                                     )}
-                                    <p className="text-[10px] text-center mt-2 text-muted-foreground opacity-70">تغییرات شما به صورت خودکار ذخیره می‌شوند.</p>
+                                    <p className="text-[10px] text-center mt-2 text-muted-foreground opacity-70">وضعیت شما به صورت خودکار در فضای ابری ذخیره می‌شود.</p>
                                 </div>
                             )}
 
                             {/* History List */}
                             <div>
                                 <h4 className="text-lg font-bold mb-4 flex items-center gap-2">
-                                    <History className="w-5 h-5" />
+                                    <History className="w-5 h-5 text-primary" />
                                     <span>تاریخچه یادگیری</span>
                                 </h4>
                                 {savedSessions.length === 0 ? (
-                                    <div className="text-center py-8 text-muted-foreground bg-secondary/20 rounded-lg border border-dashed border-border">
+                                    <div className="text-center py-10 text-muted-foreground bg-secondary/20 rounded-xl border border-dashed border-border">
                                         <BrainCircuit className="w-12 h-12 mx-auto mb-2 opacity-20" />
-                                        <p>هنوز هیچ درسی ذخیره نکرده‌اید.</p>
+                                        <p>هنوز درسی را شروع نکرده‌اید.</p>
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
                                         {savedSessions.map(session => (
-                                            <div key={session.id} className="flex items-center justify-between p-4 bg-card border border-border rounded-lg hover:shadow-md transition-all group">
+                                            <div key={session.id} className="flex items-center justify-between p-4 bg-card border border-border rounded-xl hover:shadow-md transition-all group">
                                                 <div>
                                                     <h5 className="font-bold text-foreground">{session.title}</h5>
                                                     <p className="text-xs text-muted-foreground mt-1">
@@ -408,14 +399,14 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                                 <div className="flex items-center gap-2">
                                                     <button 
                                                         onClick={() => { onLoadSession(session); onClose(); }}
-                                                        className="px-3 py-1.5 text-sm font-medium bg-secondary hover:bg-primary hover:text-white text-secondary-foreground rounded-md transition-colors flex items-center gap-1"
+                                                        className="px-3 py-1.5 text-sm font-medium bg-secondary hover:bg-primary hover:text-white text-secondary-foreground rounded-lg transition-colors flex items-center gap-1"
                                                     >
                                                         <span>ادامه</span>
                                                         <ArrowRight className="w-4 h-4" />
                                                     </button>
                                                     <button 
                                                         onClick={() => onDeleteSession(session.id)}
-                                                        className="p-2 text-destructive hover:bg-destructive/10 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+                                                        className="p-2 text-destructive hover:bg-destructive/10 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
                                                     >
                                                         <Trash className="w-4 h-4" />
                                                     </button>
@@ -431,10 +422,13 @@ const UserPanel: React.FC<UserPanelProps> = ({
 
                 {/* Footer (Logout) */}
                 {user && (
-                    <div className="p-4 border-t border-border bg-secondary/30 shrink-0">
-                        <button onClick={onLogout} className="flex items-center gap-2 text-destructive hover:text-destructive/80 font-medium text-sm">
+                    <div className="p-4 border-t border-border bg-secondary/30 shrink-0 flex justify-between items-center">
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                            User ID: {user.googleId?.substring(0, 8)}...
+                        </span>
+                        <button onClick={onLogout} className="flex items-center gap-2 text-destructive hover:text-destructive/80 font-medium text-sm transition-colors">
                             <LogOut className="w-4 h-4" />
-                            <span>خروج از حساب کاربری</span>
+                            <span>خروج از حساب</span>
                         </button>
                     </div>
                 )}

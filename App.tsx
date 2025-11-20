@@ -1,9 +1,8 @@
 
-
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef, Suspense } from 'react';
 import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse, generateRemedialNode, generateDailyChallenge, generateDeepAnalysis } from './services/geminiService';
-import { ArrowRight, BookOpen, Brain, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize, SlidersHorizontal, ChevronDown, Sparkles, Trash, Edit, Flame, Diamond, Scroll, User, LogOut, Wand } from './components/icons';
+import { ArrowRight, BookOpen, Brain, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize, SlidersHorizontal, ChevronDown, Sparkles, Trash, Edit, Flame, Diamond, Scroll, User, LogOut, Wand, Bell } from './components/icons';
 import Spinner from './components/Spinner';
 import StartupScreen from './components/StartupScreen';
 import ParticleBackground from './components/ParticleBackground';
@@ -20,18 +19,10 @@ const ChatPanel = React.lazy(() => import('./components/ChatPanel'));
 const DailyBriefing = React.lazy(() => import('./components/DailyBriefing'));
 const UserPanel = React.lazy(() => import('./components/UserPanel'));
 const PersonalizationWizard = React.lazy(() => import('./components/PersonalizationWizard'));
+const DebugPanel = React.lazy(() => import('./components/DebugPanel'));
 
 const CURRENT_APP_VERSION = 7;
 declare var pdfjsLib: any;
-
-// --- Security Utility ---
-const hashPassword = async (password: string): Promise<string> => {
-    const msgBuffer = new TextEncoder().encode(password);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-};
-// ------------------------
 
 const DEFAULT_BEHAVIOR: UserBehavior = {
     lastLoginDate: new Date().toISOString(),
@@ -355,16 +346,42 @@ function appReducer(state: AppState, action: any): AppState {
       return { ...state, chatHistory: [...state.chatHistory, action.payload] };
     case 'SET_ERROR':
       return { ...state, error: action.payload, status: AppStatus.ERROR, loadingMessage: null };
+    // --- DEBUG ACTION ---
+    case 'DEBUG_UPDATE':
+      return { ...state, ...action.payload };
     default:
       return state;
   }
+}
+
+const NotificationToast = ({ message, onClose }: { message: string, onClose: () => void }) => {
+    useEffect(() => {
+        const timer = setTimeout(onClose, 3000);
+        return () => clearTimeout(timer);
+    }, [message, onClose]);
+
+    return (
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[10000] bg-card border border-border shadow-2xl rounded-xl px-4 py-3 flex items-center gap-3 animate-slide-up">
+            <div className="p-1.5 bg-green-500/10 rounded-full text-green-500">
+                <CheckCircle className="w-5 h-5" />
+            </div>
+            <span className="text-sm font-bold text-foreground">{message}</span>
+        </div>
+    );
 }
 
 function App() {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [showStartup, setShowStartup] = useState(true);
   const [textInput, setTextInput] = useState('');
+  const [isDebugOpen, setIsDebugOpen] = useState(false);
+  const [logoClickCount, setLogoClickCount] = useState(0); 
+  const [notification, setNotification] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const showNotification = (msg: string) => {
+      setNotification(msg);
+  };
 
   useEffect(() => {
       // Initialize Theme
@@ -372,25 +389,25 @@ function App() {
       document.documentElement.setAttribute('data-theme', storedTheme);
       dispatch({ type: 'SET_THEME', payload: storedTheme });
 
-      // Initialize User from LocalStorage
+      // Initialize User from LocalStorage (Simulating persistent login)
       const storedUser = localStorage.getItem('zehngah_current_user');
       if (storedUser) {
           try {
               const user: UserProfile = JSON.parse(storedUser);
               dispatch({ type: 'SET_USER', payload: user });
               
-              // Load sessions
+              // Load sessions associated with this user
               const storedSessions = localStorage.getItem(`zehngah_sessions_${user.id}`);
               if (storedSessions) {
                   dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: JSON.parse(storedSessions) });
               }
-          } catch (e) {
+          } catch (e: any) {
               console.error("Error parsing stored user", e);
           }
       }
   }, []);
 
-  // Persist behavior changes to local storage for the current user if logged in, or generic storage
+  // Persist behavior changes to local storage for the current user if logged in
   useEffect(() => {
       if (state.currentUser) {
           localStorage.setItem(`zehngah_behavior_${state.currentUser.id}`, JSON.stringify(state.behavior));
@@ -410,10 +427,31 @@ function App() {
       if (state.showDailyBriefing && !state.dailyChallengeContent && state.mindMap.length > 0) {
           generateDailyChallenge(state.weaknesses, state.sourceContent)
               .then(content => dispatch({ type: 'SET_DAILY_CHALLENGE', payload: content }))
-              .catch(err => console.error("Challenge gen failed", err));
+              .catch((err: any) => console.error("Challenge gen failed", err));
       }
   }, [state.showDailyBriefing, state.dailyChallengeContent, state.mindMap, state.weaknesses, state.sourceContent]);
 
+  // --- Debug Keyboard Shortcut ---
+  useEffect(() => {
+      const handleKeyDown = (event: KeyboardEvent) => {
+          // Ctrl + Shift + X (Secret Key)
+          if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'x') {
+              setIsDebugOpen(prev => !prev);
+          }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const handleLogoClick = () => {
+      const newCount = logoClickCount + 1;
+      setLogoClickCount(newCount);
+      if (newCount >= 5) {
+          setIsDebugOpen(true);
+          showNotification("حالت اشکال‌زدایی فعال شد");
+          setLogoClickCount(0);
+      }
+  };
 
   const handleThemeChange = (theme: 'light' | 'balanced' | 'dark') => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -421,73 +459,30 @@ function App() {
     dispatch({ type: 'SET_THEME', payload: theme });
   };
 
-  // --- Auth Handlers ---
+  // --- Auth Handlers (Replaced with Google Flow) ---
   
-  const checkEmailExists = async (email: string): Promise<boolean> => {
-      const usersStr = localStorage.getItem('zehngah_users');
-      const users: UserProfile[] = usersStr ? JSON.parse(usersStr) : [];
-      return users.some(u => u.email.toLowerCase() === email.toLowerCase());
-  };
-
-  const handleLogin = async (email: string, password: string) => {
-      const usersStr = localStorage.getItem('zehngah_users');
-      let users: UserProfile[] = usersStr ? JSON.parse(usersStr) : [];
+  const handleLogin = async (user: UserProfile) => {
+      // In a real app, we would verify the token here. 
+      // For this demo, we trust the mock object passed from UserPanel.
       
-      const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-      
-      if (!user) {
-          throw new Error('کاربری با این ایمیل یافت نشد.');
-      }
-
-      const inputHash = await hashPassword(password);
-      if (user.passwordHash !== inputHash) {
-          throw new Error('رمز عبور اشتباه است.');
-      }
-
       localStorage.setItem('zehngah_current_user', JSON.stringify(user));
       dispatch({ type: 'SET_USER', payload: user });
       
-      // Load sessions
+      // Load sessions for this Google User
       const storedSessions = localStorage.getItem(`zehngah_sessions_${user.id}`);
       if (storedSessions) {
           dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: JSON.parse(storedSessions) });
+      } else {
+          dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: [] });
       }
-  };
-
-  const handleRegister = async (email: string, password: string, name: string) => {
-      const usersStr = localStorage.getItem('zehngah_users');
-      let users: UserProfile[] = usersStr ? JSON.parse(usersStr) : [];
       
-      if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
-          throw new Error('این ایمیل قبلاً ثبت شده است.');
-      }
-
-      const passHash = await hashPassword(password);
-      const colors = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef'];
-      const randomColor = colors[Math.floor(Math.random() * colors.length)];
-
-      const newUser: UserProfile = {
-          id: Math.random().toString(36).substr(2, 9),
-          name: name || email.split('@')[0],
-          email: email.toLowerCase(),
-          passwordHash: passHash,
-          avatarColor: randomColor,
-          joinDate: new Date().toISOString(),
-          isVerified: true // Since they passed the verification step
-      };
-
-      users.push(newUser);
-      localStorage.setItem('zehngah_users', JSON.stringify(users));
-      
-      // Auto login
-      localStorage.setItem('zehngah_current_user', JSON.stringify(newUser));
-      dispatch({ type: 'SET_USER', payload: newUser });
-      dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: [] });
+      showNotification(`خوش آمدید، ${user.name}`);
   };
 
   const handleLogout = () => {
       localStorage.removeItem('zehngah_current_user');
       dispatch({ type: 'LOGOUT' });
+      showNotification("با موفقیت خارج شدید");
   };
 
   const handleSaveSession = (title: string, isAutoSave = false) => {
@@ -530,7 +525,6 @@ function App() {
                   title: (title && !isAutoSave) ? title : newSessions[index].title
               };
           } else {
-              // Session ID exists but not found in list (shouldn't happen, but safety fallback)
               sessionId = null;
           }
       }
@@ -605,24 +599,15 @@ function App() {
           
           if (!userData.user || !userData.sessions) throw new Error("فرمت نامعتبر");
           
-          // 1. Update/Merge User
-          const usersStr = localStorage.getItem('zehngah_users');
-          let users: UserProfile[] = usersStr ? JSON.parse(usersStr) : [];
-          // Check if user exists, if not add them
-          if (!users.some(u => u.email === userData.user.email)) {
-              users.push(userData.user);
-              localStorage.setItem('zehngah_users', JSON.stringify(users));
-          }
-          
-          // 2. Set Current User
+          // 1. Set Current User
           localStorage.setItem('zehngah_current_user', JSON.stringify(userData.user));
           dispatch({ type: 'SET_USER', payload: userData.user });
 
-          // 3. Update Sessions
+          // 2. Update Sessions
           localStorage.setItem(`zehngah_sessions_${userData.user.id}`, JSON.stringify(userData.sessions));
           dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: userData.sessions });
           
-          // 4. Update Behavior
+          // 3. Update Behavior
           if (userData.behavior) {
              localStorage.setItem(`zehngah_behavior_${userData.user.id}`, JSON.stringify(userData.behavior));
           }
@@ -809,17 +794,19 @@ function App() {
               };
           });
 
-          dispatch({ type: 'QUIZ_ANALYSIS_LOADED', payload: { results } });
-          
+          // Determine if reward should be unlocked BEFORE switching state
           const totalScore = results.reduce((sum, r) => sum + r.score, 0);
           const maxScore = results.reduce((sum, r) => sum + r.question.points, 0);
           const percentage = maxScore > 0 ? (totalScore / maxScore) : 0;
+          let newReward: Reward | null = null;
 
           if (percentage >= 0.85) {
-              const nodeContentText = state.nodeContents[node.id]?.theory || '';
+              const nodeContentText = state.nodeContents[node.id]?.theory || state.sourceContent.substring(0, 1000); // Fallback if theory is empty
+              
+              // IMPORTANT: Wait for reward generation before showing results so the user sees "Reward Unlocked" immediately
               const rewardContent = await generateDeepAnalysis(node.title, nodeContentText);
               
-              const reward: Reward = {
+              newReward = {
                   id: `reward_${node.id}`,
                   type: 'deep_analysis',
                   title: `تحلیل عمیق: ${node.title}`,
@@ -828,8 +815,10 @@ function App() {
                   relatedNodeId: node.id
               };
               
-              dispatch({ type: 'UNLOCK_REWARD', payload: reward });
+              dispatch({ type: 'UNLOCK_REWARD', payload: newReward });
           }
+
+          dispatch({ type: 'QUIZ_ANALYSIS_LOADED', payload: { results } });
           
       } catch (err: any) {
           console.error(err);
@@ -895,7 +884,7 @@ function App() {
                  remedialNode.parentId = parentNode.parentId; 
                  dispatch({ type: 'ADD_REMEDIAL_NODE', payload: { remedialNode, originalNodeId: parentNode.id } });
             })
-            .catch(() => dispatch({ type: 'CANCEL_REMEDIAL_GENERATION' }));
+            .catch((err: any) => dispatch({ type: 'CANCEL_REMEDIAL_GENERATION' }));
       } else {
            dispatch({ type: 'RETRY_QUIZ_IMMEDIATELY' });
            dispatch({ type: 'START_PERSONALIZED_LEARNING' });
@@ -910,6 +899,19 @@ function App() {
       <ParticleBackground theme={state.theme} />
 
       <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center z-[2000]"><Spinner size={50} /></div>}>
+
+      {/* Notification Toast */}
+      {notification && <NotificationToast message={notification} onClose={() => setNotification(null)} />}
+
+      {/* Debug Panel Overlay */}
+      {isDebugOpen && (
+          <DebugPanel 
+              state={state}
+              dispatch={dispatch}
+              onClose={() => setIsDebugOpen(false)}
+              onNotify={showNotification}
+          />
+      )}
 
       {/* Daily Briefing Overlay */}
       {state.showDailyBriefing && (
@@ -937,8 +939,6 @@ function App() {
           onClose={() => dispatch({ type: 'TOGGLE_USER_PANEL' })}
           user={state.currentUser}
           onLogin={handleLogin}
-          onRegister={handleRegister}
-          onCheckEmail={checkEmailExists}
           onLogout={handleLogout}
           savedSessions={state.savedSessions}
           onLoadSession={handleLoadSession}
@@ -951,7 +951,7 @@ function App() {
 
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-border/50 bg-card/80 backdrop-blur-md z-50 shadow-sm">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 cursor-pointer select-none" onClick={handleLogoClick}>
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-primary/20">
                  <Brain className="w-5 h-5 text-primary-foreground" />
             </div>
@@ -979,7 +979,7 @@ function App() {
                ) : (
                    <>
                        <User className="w-5 h-5 text-muted-foreground" />
-                       <span className="text-sm font-medium text-muted-foreground hidden sm:block">ورود / ثبت نام</span>
+                       <span className="text-sm font-medium text-muted-foreground hidden sm:block">ورود</span>
                    </>
                )}
            </button>
@@ -1180,6 +1180,7 @@ function App() {
                                 <div className="flex flex-col items-center justify-center h-full space-y-4">
                                     <Spinner size={80} />
                                     <p className="text-lg font-medium">در حال تصحیح و تحلیل پاسخ‌ها...</p>
+                                    <p className="text-sm text-muted-foreground animate-pulse">اگر عملکردتان عالی باشد، پاداش دریافت می‌کنید...</p>
                                 </div>
                             )}
 
@@ -1189,6 +1190,7 @@ function App() {
                                     onFinish={handleRetryQuiz} 
                                     attempts={state.userProgress[state.activeNodeId!]?.attempts || 1}
                                     onForceUnlock={() => dispatch({ type: 'FORCE_UNLOCK_NODE' })}
+                                    rewardUnlocked={!!state.rewards.find(r => r.relatedNodeId === state.activeNodeId && new Date(r.unlockedAt).getTime() > Date.now() - 60000)} // Show diamond if unlocked in last minute
                                 />
                             )}
                         </div>
