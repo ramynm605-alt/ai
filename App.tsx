@@ -294,19 +294,39 @@ function appReducer(state: AppState, action: any): AppState {
         return { ...state, status: AppStatus.GRADING_QUIZ };
     case 'SUMMARY_LOADED':
         return { ...state, status: AppStatus.SUMMARY, finalExam: null, correctiveSummary: action.payload.summary };
+    case 'RESET':
+        return { 
+            ...initialState, 
+            currentUser: state.currentUser, 
+            savedSessions: state.savedSessions, 
+            behavior: state.behavior,
+            theme: state.theme
+        };
     case 'LOAD_STATE': {
         const loadedState = action.payload;
         
         // --- VALIDATION: Ensure critical data exists ---
         if (!loadedState || typeof loadedState !== 'object') {
-            return { ...state, error: "فایل جلسه نامعتبر است." };
+            return { ...state, error: "فایل جلسه نامعتبر است.", status: AppStatus.IDLE };
         }
         
         const hasMindMap = loadedState.mindMap && Array.isArray(loadedState.mindMap) && loadedState.mindMap.length > 0;
         if (!hasMindMap) {
-             return { ...state, error: "اطلاعات نقشه ذهنی در این جلسه یافت نشد." };
+             return { ...state, error: "اطلاعات نقشه ذهنی در این جلسه یافت نشد.", status: AppStatus.IDLE };
         }
         // ----------------------------------------------
+
+        // Validate activeNodeId: Ensure the node actually exists in the mind map
+        let activeNodeId = loadedState.activeNodeId;
+        if (activeNodeId && Array.isArray(loadedState.mindMap)) {
+             const exists = loadedState.mindMap.some((n: any) => n.id === activeNodeId);
+             if (!exists) {
+                 console.warn(`Active node ${activeNodeId} not found in mind map. Resetting.`);
+                 activeNodeId = null;
+             }
+        } else {
+            activeNodeId = null;
+        }
 
         let nextStatus = AppStatus.PLAN_REVIEW; // Default fallback if mindmap exists
 
@@ -317,11 +337,12 @@ function appReducer(state: AppState, action: any): AppState {
             nextStatus = AppStatus.QUIZ_REVIEW;
         } else if (loadedState.activeQuiz) {
             nextStatus = AppStatus.TAKING_QUIZ;
-        } else if (loadedState.activeNodeId) {
+        } else if (activeNodeId) {
              // If active node exists, check if content is loaded
-             if (loadedState.nodeContents && loadedState.nodeContents[loadedState.activeNodeId]) {
+             if (loadedState.nodeContents && loadedState.nodeContents[activeNodeId]) {
                  nextStatus = AppStatus.VIEWING_NODE;
              } else {
+                 // Fallback to learning if no content loaded for active node
                  nextStatus = AppStatus.LEARNING;
              }
         } else if (loadedState.userProgress && Object.keys(loadedState.userProgress).length > 0) {
@@ -336,11 +357,13 @@ function appReducer(state: AppState, action: any): AppState {
         return { 
             ...initialState, 
             ...loadedState, 
+            activeNodeId, // Use validated id
             currentUser: state.currentUser, 
             savedSessions: state.savedSessions, 
             currentSessionId: action.sessionId, 
             status: nextStatus,
-            loadingMessage: null
+            loadingMessage: null,
+            error: null
         };
     }
     case 'CHECK_DAILY_STATUS': {
@@ -409,16 +432,18 @@ function appReducer(state: AppState, action: any): AppState {
   }
 }
 
-const NotificationToast = ({ message, onClose }: { message: string, onClose: () => void }) => {
+const NotificationToast = ({ message, type = 'success', onClose }: { message: string, type?: 'success' | 'error', onClose: () => void }) => {
     useEffect(() => {
-        const timer = setTimeout(onClose, 3000);
+        const timer = setTimeout(onClose, 4000);
         return () => clearTimeout(timer);
     }, [message, onClose]);
 
+    const isError = type === 'error';
+
     return (
-        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[10000] bg-card border border-border shadow-2xl rounded-xl px-4 py-3 flex items-center gap-3 animate-slide-up">
-            <div className="p-1.5 bg-green-500/10 rounded-full text-green-500">
-                <CheckCircle className="w-5 h-5" />
+        <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 z-[10000] bg-card border shadow-2xl rounded-xl px-4 py-3 flex items-center gap-3 animate-slide-up ${isError ? 'border-destructive/50' : 'border-border'}`}>
+            <div className={`p-1.5 rounded-full ${isError ? 'bg-destructive/10 text-destructive' : 'bg-green-500/10 text-green-500'}`}>
+                {isError ? <XCircle className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
             </div>
             <span className="text-sm font-bold text-foreground">{message}</span>
         </div>
@@ -431,12 +456,19 @@ function App() {
   const [textInput, setTextInput] = useState('');
   const [isDebugOpen, setIsDebugOpen] = useState(false);
   const [logoClickCount, setLogoClickCount] = useState(0); 
-  const [notification, setNotification] = useState<string | null>(null);
+  const [notification, setNotification] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const showNotification = (msg: string) => {
-      setNotification(msg);
+  const showNotification = (msg: string, type: 'success' | 'error' = 'success') => {
+      setNotification({ message: msg, type });
   };
+
+  // Watch for app-level errors
+  useEffect(() => {
+      if (state.error) {
+          showNotification(state.error, 'error');
+      }
+  }, [state.error]);
 
   useEffect(() => {
       // Initialize Theme
@@ -557,7 +589,7 @@ function App() {
       if (state.currentUser) {
           handleCloudLoad(state.currentUser.id);
       } else {
-          showNotification("لطفاً ابتدا وارد حساب شوید.");
+          showNotification("لطفاً ابتدا وارد حساب شوید.", 'error');
       }
   };
 
@@ -1073,7 +1105,7 @@ function App() {
       <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center z-[2000]"><Spinner size={50} /></div>}>
 
       {/* Notification Toast */}
-      {notification && <NotificationToast message={notification} onClose={() => setNotification(null)} />}
+      {notification && <NotificationToast message={notification.message} type={notification.type} onClose={() => setNotification(null)} />}
 
       {/* Debug Panel Overlay */}
       {isDebugOpen && (
@@ -1258,6 +1290,24 @@ function App() {
                 </div>
             )}
 
+            {/* Error State */}
+            {state.status === AppStatus.ERROR && (
+                <div className="flex flex-col items-center justify-center h-full space-y-6 fade-in p-8 text-center">
+                    <div className="w-20 h-20 bg-destructive/10 rounded-full flex items-center justify-center text-destructive">
+                         <XCircle className="w-10 h-10" />
+                    </div>
+                    <h2 className="text-2xl font-bold">خطایی رخ داده است</h2>
+                    <p className="text-muted-foreground max-w-md">{state.error || 'مشکلی پیش آمده.'}</p>
+                    <button 
+                        onClick={() => dispatch({ type: 'RESET' })}
+                        className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover font-bold flex items-center gap-2"
+                    >
+                        <span>بازگشت به خانه</span>
+                        <ArrowRight className="w-5 h-5" />
+                    </button>
+                </div>
+            )}
+
             {/* Loading State */}
             {(state.status === AppStatus.LOADING || state.status === AppStatus.GENERATING_REMEDIAL || state.status === AppStatus.GRADING_PRE_ASSESSMENT) && (
                 <div className="flex flex-col items-center justify-center h-full space-y-6 fade-in">
@@ -1292,7 +1342,7 @@ function App() {
                                 >
                                     <span>تایید و شروع پیش‌آزمون</span>
                                     <ArrowRight className="w-5 h-5" />
-                                 </button>
+                                </button>
                              </div>
                          </div>
                     </div>
