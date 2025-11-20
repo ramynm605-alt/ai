@@ -1,4 +1,5 @@
 
+
 export interface ChatMessage {
   role: 'user' | 'model';
   message: string;
@@ -203,6 +204,11 @@ export interface MindMapNode {
     savedSessions: SavedSession[];
     currentSessionId: string | null; // Tracks the active session for auto-save
     isAutoSaving: boolean;
+    
+    // Cloud Sync State
+    cloudSyncStatus: 'idle' | 'syncing' | 'error' | 'success';
+    cloudAccessToken: string | null;
+    cloudLastSync: string | null;
   }
 
   export interface SavableState {

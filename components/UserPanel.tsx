@@ -1,7 +1,10 @@
 
+
+
+
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, SavedSession } from '../types';
-import { User, LogOut, History, BrainCircuit, Trash, Save, CheckCircle, ArrowRight, XCircle, Shield, ClipboardList, ChevronDown } from './icons';
+import { User, LogOut, History, BrainCircuit, Trash, Save, CheckCircle, ArrowRight, XCircle, Shield, ClipboardList, ChevronDown, Upload } from './icons';
 
 interface UserPanelProps {
     isOpen: boolean;
@@ -16,6 +19,9 @@ interface UserPanelProps {
     hasCurrentSession: boolean;
     onExportData: () => string;
     onImportData: (data: string) => boolean;
+    cloudStatus: 'idle' | 'syncing' | 'error' | 'success';
+    lastSyncTime: string | null;
+    onEnableCloudSync: () => void;
 }
 
 declare var google: any;
@@ -42,7 +48,10 @@ const UserPanel: React.FC<UserPanelProps> = ({
     onSaveCurrentSession,
     hasCurrentSession,
     onExportData,
-    onImportData
+    onImportData,
+    cloudStatus,
+    lastSyncTime,
+    onEnableCloudSync
 }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [sessionTitle, setSessionTitle] = useState('');
@@ -212,7 +221,7 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                 </div>
                                 <h3 className="text-2xl font-bold">ورود به ذهن‌گاه</h3>
                                 <p className="text-muted-foreground">
-                                    برای ذخیره پیشرفت و دسترسی به تاریخچه یادگیری خود وارد شوید.
+                                    برای ذخیره خودکار پیشرفت، دسترسی به تاریخچه یادگیری و همگام‌سازی بین دستگاه‌ها وارد شوید.
                                 </p>
                             </div>
 
@@ -229,7 +238,7 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                 )}
                                 
                                 <p className="text-[10px] text-center text-muted-foreground">
-                                    با ورود به سیستم، اطلاعات شما صرفاً برای ذخیره‌سازی پیشرفت درسی در مرورگر شما استفاده می‌شود.
+                                    اطلاعات شما به صورت امن در فضای ابری گوگل (Firebase) ذخیره می‌شود.
                                 </p>
                             </div>
                         </div>
@@ -258,19 +267,37 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                 <Shield className="absolute -right-6 -bottom-6 w-40 h-40 text-primary/5 z-0 rotate-12" />
                             </div>
 
-                            {/* Cloud Sync Indicator */}
-                            <div className="flex items-center justify-between p-4 bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-900/30 rounded-xl">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-green-100 dark:bg-green-800/30 rounded-full">
-                                        <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+                            {/* Cloud Sync Status - AUTOMATIC */}
+                            <div className={`p-4 border rounded-xl ${cloudStatus === 'success' ? 'bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800' : 'bg-card border-border'}`}>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`p-2 rounded-full ${cloudStatus === 'success' ? 'bg-green-100 text-green-600' : 'bg-secondary text-muted-foreground'}`}>
+                                            {cloudStatus === 'syncing' ? (
+                                                <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin text-blue-500" />
+                                            ) : (
+                                                <Upload className="w-5 h-5" />
+                                            )}
+                                        </div>
+                                        <div>
+                                            <h4 className="font-bold text-sm">وضعیت همگام‌سازی ابری</h4>
+                                            <p className="text-xs text-muted-foreground">
+                                                {cloudStatus === 'success' 
+                                                    ? `آخرین ذخیره خودکار: ${lastSyncTime ? new Date(lastSyncTime).toLocaleTimeString('fa-IR') : 'همین الان'}` 
+                                                    : cloudStatus === 'error' ? 'خطا در اتصال به سرور' : 'در حال برقراری ارتباط...'}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h4 className="font-bold text-sm text-green-800 dark:text-green-300">همگام‌سازی فعال است</h4>
-                                        <p className="text-xs text-green-700/70 dark:text-green-400/70">
-                                            پیشرفت شما به صورت خودکار در این مرورگر ذخیره می‌شود.
-                                        </p>
-                                    </div>
+                                    
+                                    {cloudStatus === 'success' && (
+                                        <div className="px-3 py-1 text-xs font-bold text-green-700 bg-green-100 rounded-full flex items-center gap-1">
+                                            <CheckCircle className="w-3 h-3" />
+                                            <span>فعال</span>
+                                        </div>
+                                    )}
                                 </div>
+                                <p className="text-[10px] text-muted-foreground mt-2 px-1">
+                                    اطلاعات شما به صورت خودکار با حساب کاربری گوگل همگام‌سازی می‌شود.
+                                </p>
                             </div>
                             
                             {/* Manual Sync Backup (Hidden by default) */}
@@ -281,7 +308,7 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                 >
                                     <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
                                         <ClipboardList className="w-4 h-4" />
-                                        <span>انتقال دستی اطلاعات به دستگاه دیگر</span>
+                                        <span>ابزارهای پیشرفته (Export/Import)</span>
                                     </div>
                                     <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${showSyncOptions ? 'rotate-180' : ''}`} />
                                 </button>
@@ -371,7 +398,6 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                             <button type="button" onClick={() => setShowSaveInput(false)} className="px-3 py-2 text-muted-foreground hover:bg-secondary rounded-md">لغو</button>
                                         </form>
                                     )}
-                                    <p className="text-[10px] text-center mt-2 text-muted-foreground opacity-70">وضعیت شما به صورت خودکار در فضای ابری ذخیره می‌شود.</p>
                                 </div>
                             )}
 

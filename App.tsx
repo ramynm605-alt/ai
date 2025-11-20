@@ -1,7 +1,11 @@
 
+
+
+
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef, Suspense } from 'react';
 import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse, generateRemedialNode, generateDailyChallenge, generateDeepAnalysis } from './services/geminiService';
+import { FirebaseService } from './services/firebaseService';
 import { ArrowRight, BookOpen, Brain, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize, SlidersHorizontal, ChevronDown, Sparkles, Trash, Edit, Flame, Diamond, Scroll, User, LogOut, Wand, Bell } from './components/icons';
 import Spinner from './components/Spinner';
 import StartupScreen from './components/StartupScreen';
@@ -23,6 +27,7 @@ const DebugPanel = React.lazy(() => import('./components/DebugPanel'));
 
 const CURRENT_APP_VERSION = 7;
 declare var pdfjsLib: any;
+declare var google: any;
 
 const DEFAULT_BEHAVIOR: UserBehavior = {
     lastLoginDate: new Date().toISOString(),
@@ -76,7 +81,11 @@ const initialState: AppState = {
   isUserPanelOpen: false,
   savedSessions: [],
   currentSessionId: null,
-  isAutoSaving: false
+  isAutoSaving: false,
+  // Cloud Sync
+  cloudSyncStatus: 'idle',
+  cloudAccessToken: null,
+  cloudLastSync: null
 };
 
 function appReducer(state: AppState, action: any): AppState {
@@ -331,13 +340,15 @@ function appReducer(state: AppState, action: any): AppState {
     case 'SET_USER':
         return { ...state, currentUser: action.payload };
     case 'LOGOUT':
-        return { ...state, currentUser: null, savedSessions: [], currentSessionId: null };
+        return { ...state, currentUser: null, savedSessions: [], currentSessionId: null, cloudAccessToken: null, cloudSyncStatus: 'idle' };
     case 'UPDATE_SAVED_SESSIONS':
         return { ...state, savedSessions: action.payload };
     case 'SET_CURRENT_SESSION_ID':
         return { ...state, currentSessionId: action.payload };
     case 'SET_AUTO_SAVING':
         return { ...state, isAutoSaving: action.payload };
+    case 'SET_CLOUD_STATUS':
+        return { ...state, cloudSyncStatus: action.payload.status, cloudLastSync: action.payload.lastSync || state.cloudLastSync };
     case 'TOGGLE_CHAT':
       return { ...state, isChatOpen: !state.isChatOpen };
     case 'TOGGLE_FULLSCREEN_CHAT':
@@ -396,16 +407,82 @@ function App() {
               const user: UserProfile = JSON.parse(storedUser);
               dispatch({ type: 'SET_USER', payload: user });
               
-              // Load sessions associated with this user
+              // Load sessions associated with this user from localStorage
               const storedSessions = localStorage.getItem(`zehngah_sessions_${user.id}`);
               if (storedSessions) {
                   dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: JSON.parse(storedSessions) });
               }
+
+              // --- AUTO SYNC START (Firebase) ---
+              // Attempt to load from cloud when app starts if user is logged in
+              handleCloudLoad(user.id);
+
           } catch (e: any) {
               console.error("Error parsing stored user", e);
           }
       }
   }, []);
+
+  // Init Firebase Config Check
+  useEffect(() => {
+      FirebaseService.initialize();
+  }, []);
+
+  // --- Cloud Sync Functions (Firebase) ---
+
+  const handleCloudLoad = async (userId: string) => {
+       dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'syncing' } });
+       try {
+           const cloudData = await FirebaseService.loadUserData(userId);
+           if (cloudData) {
+                // Merge cloud sessions with local? For now, let's trust cloud if it has more recent data or simply overwrite.
+                // In a robust app, we'd compare timestamps. Here we assume Cloud is source of truth on load.
+                if (cloudData.sessions && Array.isArray(cloudData.sessions)) {
+                     dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: cloudData.sessions });
+                     localStorage.setItem(`zehngah_sessions_${userId}`, JSON.stringify(cloudData.sessions));
+                }
+                if (cloudData.behavior) {
+                     dispatch({ type: 'DEBUG_UPDATE', payload: { behavior: cloudData.behavior } });
+                }
+                dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'success', lastSync: new Date().toISOString() } });
+           } else {
+                // No cloud data yet, that's fine.
+                dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'idle' } });
+           }
+       } catch (e) {
+           console.error("Cloud Load Error", e);
+           dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'error' } });
+       }
+  };
+
+  const handleCloudSave = async (userId: string, sessions: SavedSession[], behavior: UserBehavior) => {
+      dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'syncing' } });
+      try {
+          const dataToSave = {
+              sessions,
+              behavior,
+              lastModified: new Date().toISOString()
+          };
+          const success = await FirebaseService.saveUserData(userId, dataToSave);
+          if (success) {
+              dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'success', lastSync: new Date().toISOString() } });
+          } else {
+               dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'error' } });
+          }
+      } catch (e) {
+           console.error("Cloud Save Error", e);
+           dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'error' } });
+      }
+  };
+
+  const handleEnableCloudSync = () => {
+      // For Firebase, we just trigger a save/load retry since auth is implicit via user ID in this simplified model
+      if (state.currentUser) {
+          handleCloudLoad(state.currentUser.id);
+      } else {
+          showNotification("لطفاً ابتدا وارد حساب شوید.");
+      }
+  };
 
   // Persist behavior changes to local storage for the current user if logged in
   useEffect(() => {
@@ -459,16 +536,13 @@ function App() {
     dispatch({ type: 'SET_THEME', payload: theme });
   };
 
-  // --- Auth Handlers (Replaced with Google Flow) ---
+  // --- Auth Handlers ---
   
   const handleLogin = async (user: UserProfile) => {
-      // In a real app, we would verify the token here. 
-      // For this demo, we trust the mock object passed from UserPanel.
-      
       localStorage.setItem('zehngah_current_user', JSON.stringify(user));
       dispatch({ type: 'SET_USER', payload: user });
       
-      // Load sessions for this Google User
+      // Load local sessions first
       const storedSessions = localStorage.getItem(`zehngah_sessions_${user.id}`);
       if (storedSessions) {
           dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: JSON.parse(storedSessions) });
@@ -477,6 +551,9 @@ function App() {
       }
       
       showNotification(`خوش آمدید، ${user.name}`);
+      
+      // Trigger Cloud Sync (Load)
+      await handleCloudLoad(user.id);
   };
 
   const handleLogout = () => {
@@ -485,7 +562,7 @@ function App() {
       showNotification("با موفقیت خارج شدید");
   };
 
-  const handleSaveSession = (title: string, isAutoSave = false) => {
+  const handleSaveSession = async (title: string, isAutoSave = false) => {
       if (!state.currentUser) return;
       
       if (isAutoSave) dispatch({ type: 'SET_AUTO_SAVING', payload: true });
@@ -545,8 +622,13 @@ function App() {
           dispatch({ type: 'SET_CURRENT_SESSION_ID', payload: sessionId });
       }
 
+      // 1. Save to Local Storage (Backup/Offline)
       localStorage.setItem(`zehngah_sessions_${state.currentUser.id}`, JSON.stringify(newSessions));
       dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: newSessions });
+
+      // 2. Save to Cloud (Firebase)
+      // Debounce cloud save slightly or just fire and forget
+      handleCloudSave(state.currentUser.id, newSessions, state.behavior);
 
       if (isAutoSave) {
           setTimeout(() => {
@@ -560,6 +642,10 @@ function App() {
        const newSessions = state.savedSessions.filter(s => s.id !== sessionId);
        localStorage.setItem(`zehngah_sessions_${state.currentUser.id}`, JSON.stringify(newSessions));
        dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: newSessions });
+       
+       // Trigger cloud update
+       handleCloudSave(state.currentUser.id, newSessions, state.behavior);
+
        if (state.currentSessionId === sessionId) {
            dispatch({ type: 'SET_CURRENT_SESSION_ID', payload: null });
        }
@@ -611,6 +697,9 @@ function App() {
           if (userData.behavior) {
              localStorage.setItem(`zehngah_behavior_${userData.user.id}`, JSON.stringify(userData.behavior));
           }
+          
+          // 4. Trigger Cloud Save immediately to sync this imported data
+          handleCloudSave(userData.user.id, userData.sessions, userData.behavior || state.behavior);
 
           return true;
       } catch (e) {
@@ -947,6 +1036,9 @@ function App() {
           hasCurrentSession={state.mindMap.length > 0}
           onExportData={handleExportUserData}
           onImportData={handleImportUserData}
+          cloudStatus={state.cloudSyncStatus}
+          lastSyncTime={state.cloudLastSync}
+          onEnableCloudSync={handleEnableCloudSync}
       />
 
       {/* Header */}
@@ -956,12 +1048,26 @@ function App() {
                  <Brain className="w-5 h-5 text-primary-foreground" />
             </div>
             <h1 className="text-xl font-extrabold tracking-tight text-foreground">ذهن گاه</h1>
-            {state.isAutoSaving && (
-                 <div className="flex items-center gap-2 mr-4 text-xs text-muted-foreground animate-pulse">
-                     <Save className="w-3 h-3" />
-                     <span>ذخیره خودکار...</span>
-                 </div>
-            )}
+            <div className="flex items-center gap-3 mr-4">
+                {state.isAutoSaving && (
+                     <div className="flex items-center gap-2 text-xs text-muted-foreground animate-pulse">
+                         <Save className="w-3 h-3" />
+                         <span>ذخیره خودکار...</span>
+                     </div>
+                )}
+                {state.cloudSyncStatus === 'syncing' && (
+                     <div className="flex items-center gap-2 text-xs text-blue-500 animate-pulse">
+                         <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                         <span>همگام‌سازی ابری...</span>
+                     </div>
+                )}
+                 {state.cloudSyncStatus === 'success' && !state.isAutoSaving && (
+                     <div className="flex items-center gap-2 text-xs text-green-500/70">
+                         <CheckCircle className="w-3 h-3" />
+                         <span>ذخیره در ابر</span>
+                     </div>
+                )}
+            </div>
         </div>
         
         <div className="flex items-center gap-3">
@@ -996,6 +1102,7 @@ function App() {
       </header>
 
       <main className="flex-grow relative overflow-hidden flex flex-col md:flex-row main-content">
+        {/* ... (rest of main layout is identical) ... */}
         
         <div className="flex-grow relative z-10 overflow-y-auto scroll-smooth">
              
