@@ -1,5 +1,4 @@
 
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, GradingResult, PreAssessmentAnalysis, ChatMessage, Weakness } from '../types';
 import { marked } from 'marked';
@@ -94,13 +93,33 @@ export async function generateLearningPlan(
     return withRetry(async () => {
         const preferenceInstructions = getPreferenceInstructions(preferences);
         
+        // Check if this is "Topic Mode" (short content, no pages)
+        const isTopicMode = content.length < 500 && !pageContents && images.length === 0;
+        
+        let contextInstruction = "";
+        if (isTopicMode) {
+            contextInstruction = `
+            *** حالت تحقیق موضوعی (Topic Mode) ***
+            متن ورودی کاربر کوتاه است: "${content}".
+            وظیفه تو این است که به عنوان یک متخصص، خودت یک برنامه درسی (Curriculum) جامع و سلسله‌مراتبی برای یادگیری این موضوع طراحی کنی.
+            از دانش داخلی خودت استفاده کن. سرفصل‌ها باید از مقدماتی تا پیشرفته باشند.
+            `;
+        } else {
+            contextInstruction = `
+            *** حالت استخراج محتوا (Extraction Mode) ***
+            وظیفه تو استخراج ساختار و نقشه ذهنی بر اساس محتوای متنی ارائه شده در پایین است.
+            فقط از مطالبی که در متن وجود دارد استفاده کن.
+            `;
+        }
+
         const pageContentForPrompt = pageContents
             ? `محتوای زیر بر اساس صفحه تفکک شده است. هنگام ایجاد گره‌ها، شماره صفحات مرتبط را در فیلد sourcePages مشخص کن.\n\n` + pageContents.map((text, i) => `--- صفحه ${i + 1} ---\n${text}`).join('\n\n')
             : `متن:\n---\n${content}\n---`;
         
         const prompt = `
         **وظیفه اول: ایجاد نقشه ذهنی (Chunking)**
-        بر اساس محتوای زیر و اولویت‌های کاربر، یک طرح درس به صورت نقشه ذهنی سلسله مراتبی ایجاد کن.
+        ${contextInstruction}
+        بر اساس اولویت‌های کاربر، یک طرح درس به صورت نقشه ذهنی سلسله مراتبی ایجاد کن.
         
         **قوانین ساختاری (بسیار مهم - تفکیک محتوا):**
         1. **اصل عدم هم‌پوشانی (Mutually Exclusive):** موضوعات را به گونه‌ای خرد کن که محتوای هر گره کاملاً متمایز باشد. گره فرزند نباید کل محتوای گره پدر را تکرار کند، بلکه باید جزئی از آن باشد.
@@ -108,7 +127,7 @@ export async function generateLearningPlan(
         3.  **گره‌های اصلی:** سایر گره‌ها باید به طور مستقیم یا غیرمستقیم فرزند این گره باشند.
         4.  **گره پایان (اجباری):** آخرین گره در مسیر یادگیری باید "جمع‌بندی و نتیجه‌گیری" باشد.
         5.  **تشخیص نوع محتوا:** اگر متن ریاضی است، گره‌ها باید "قضیه/اثبات" باشند. اگر تاریخ است، "رویداد/تحلیل". ساختار را هوشمندانه انتخاب کن.
-        6.  **فشردگی:** بین ۳ تا ۱۰ گره کل.
+        6.  **فشردگی:** بین ۵ تا ۱۲ گره کل.
 
         **وظیفه دوم: ایجاد پیش‌آزمون تطبیقی**
         ۵ سوال طراحی کن که دانش اولیه کاربر را بسنجد.
@@ -401,6 +420,9 @@ export async function generateNodeContent(
     return withRetry(async () => {
         const preferenceInstructions = getPreferenceInstructions(preferences);
         
+        // Check if this is "Topic Mode" (short content)
+        const isTopicMode = fullContent.length < 500 && images.length === 0;
+
         let specificInstruction = '';
         
         if (nodeType === 'remedial') {
@@ -418,18 +440,32 @@ export async function generateNodeContent(
             4. یک مثال بسیار ساده و متفاوت از درس اصلی بزن تا گره ذهنی باز شود.
             `;
         } else {
-            // CRITICAL FIX FOR CORE NODES:
-            // Ensure distinct content extraction (Chunking).
-            specificInstruction = `
-            *** حالت درس اصلی (Core Lesson) ***
-            عنوان درس: "${nodeTitle}"
-            
-            دستورالعمل ویژه (جلوگیری از تکرار):
-            1. **فقط** مطالبی را از متن استخراج کن که **دقیقاً** زیرمجموعه "${nodeTitle}" هستند.
-            2. از نوشتن مقدمه‌های کلی که مربوط به کل کتاب/مقاله است خودداری کن.
-            3. از نوشتن مطالبی که احتمالا در گره‌های والد یا فرزند این گره می‌آید پرهیز کن.
-            4. تمرکز مطلق روی جزئیات همین بخش داشته باش.
-            `;
+            if (isTopicMode) {
+                // GENERATIVE CONTENT INSTRUCTION
+                specificInstruction = `
+                *** حالت تولید محتوا (Generative Mode) ***
+                عنوان درس: "${nodeTitle}"
+                موضوع کلی: "${fullContent}" (این متن ممکن است فقط یک تیتر باشد).
+                
+                دستورالعمل ویژه:
+                1. شما باید محتوای آموزشی کامل و دقیق برای این بخش را **تولید** کنید.
+                2. فرض کن منبع متنی وجود ندارد و تو مرجع دانش هستی.
+                3. مطالب باید دقیق، علمی و ساختاریافته باشند.
+                4. تمرکز مطلق روی جزئیات همین بخش ("${nodeTitle}") داشته باش.
+                `;
+            } else {
+                 // EXTRACTION CONTENT INSTRUCTION
+                specificInstruction = `
+                *** حالت درس اصلی (Core Lesson) ***
+                عنوان درس: "${nodeTitle}"
+                
+                دستورالعمل ویژه (جلوگیری از تکرار):
+                1. **فقط** مطالبی را از متن استخراج کن که **دقیقاً** زیرمجموعه "${nodeTitle}" هستند.
+                2. از نوشتن مقدمه‌های کلی که مربوط به کل کتاب/مقاله است خودداری کن.
+                3. از نوشتن مطالبی که احتمالا در گره‌های والد یا فرزند این گره می‌آید پرهیز کن.
+                4. تمرکز مطلق روی جزئیات همین بخش داشته باش.
+                `;
+            }
         }
 
         let adaptiveInstruction = '';

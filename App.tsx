@@ -3,7 +3,7 @@ import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef, S
 import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse, generateRemedialNode, generateDailyChallenge, generateDeepAnalysis } from './services/geminiService';
 import { FirebaseService } from './services/firebaseService';
-import { ArrowRight, BookOpen, Brain, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize, SlidersHorizontal, ChevronDown, Sparkles, Trash, Edit, Flame, Diamond, Scroll, User, LogOut, Wand, Bell } from './components/icons';
+import { ArrowRight, BookOpen, Brain, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize, SlidersHorizontal, ChevronDown, Sparkles, Trash, Edit, Flame, Diamond, Scroll, User, LogOut, Wand, Bell, Shuffle, FileQuestion } from './components/icons';
 import Spinner from './components/Spinner';
 import StartupScreen from './components/StartupScreen';
 import ParticleBackground from './components/ParticleBackground';
@@ -33,6 +33,21 @@ const DEFAULT_BEHAVIOR: UserBehavior = {
     gritScore: 0,
     totalPoints: 0
 };
+
+const RANDOM_TOPICS = [
+    "مبانی اقتصاد رفتاری",
+    "تاریخچه اینترنت و وب",
+    "نظریه بازی‌ها (Game Theory)",
+    "هوش مصنوعی و اخلاق",
+    "فلسفه رواقی‌گری (Stoicism)",
+    "مکانیک کوانتوم به زبان ساده",
+    "تاریخ جنگ جهانی دوم",
+    "تکنیک‌های مدیریت زمان",
+    "روانشناسی شناختی و خطاهای ذهنی",
+    "مبانی بلاکچین و کریپتوکارنسی",
+    "هنر متقاعدسازی",
+    "نجوم و سیاه‌چاله‌ها"
+];
 
 const initialState: AppState = {
   theme: 'dark',
@@ -454,6 +469,7 @@ function App() {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [showStartup, setShowStartup] = useState(true);
   const [textInput, setTextInput] = useState('');
+  const [topicInput, setTopicInput] = useState('');
   const [isDebugOpen, setIsDebugOpen] = useState(false);
   const [logoClickCount, setLogoClickCount] = useState(0); 
   const [notification, setNotification] = useState<{message: string, type: 'success' | 'error'} | null>(null);
@@ -882,6 +898,20 @@ function App() {
       }
   };
 
+  const handleTopicStudy = () => {
+      if (topicInput.trim().length > 2) {
+          dispatch({ type: 'INIT_WIZARD', payload: { sourceContent: topicInput, sourcePageContents: null, sourceImages: [] } });
+      } else {
+          dispatch({ type: 'SET_ERROR', payload: 'لطفاً یک موضوع معتبر وارد کنید.' });
+      }
+  };
+
+  const handleRandomStudy = () => {
+      const randomTopic = RANDOM_TOPICS[Math.floor(Math.random() * RANDOM_TOPICS.length)];
+      setTopicInput(randomTopic);
+      dispatch({ type: 'INIT_WIZARD', payload: { sourceContent: randomTopic, sourcePageContents: null, sourceImages: [] } });
+  };
+
   const handleWizardComplete = (prefs: LearningPreferences) => {
       dispatch({ type: 'FINISH_WIZARD', payload: prefs });
       // The useEffect below will trigger handleGeneratePlan because status becomes LOADING
@@ -1223,17 +1253,17 @@ function App() {
              
              {/* Status: IDLE / Input */}
             {state.status === AppStatus.IDLE && (
-                <div className="max-w-4xl mx-auto mt-10 p-6 space-y-8 animate-slide-up pb-32">
+                <div className="max-w-5xl mx-auto mt-10 p-6 space-y-8 animate-slide-up pb-32">
                     <div className="text-center space-y-4">
                         <h2 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-600 py-2">
                            یادگیری عمیق با طعم هوش مصنوعی
                         </h2>
                         <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-                            محتوای آموزشی خود را بارگذاری کنید تا ذهن‌گاه آن را به یک نقشه ذهنی تعاملی، آزمون‌های هوشمند و مسیر یادگیری شخصی‌سازی شده تبدیل کند.
+                            محتوای آموزشی خود را بارگذاری کنید یا یک موضوع را انتخاب کنید تا ذهن‌گاه آن را به یک نقشه ذهنی تعاملی و مسیر یادگیری شخصی‌سازی شده تبدیل کند.
                         </p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {/* Text Input */}
                          <div className="stylish-textarea-wrapper p-1 bg-gradient-to-br from-border to-transparent">
                             <div className="bg-card rounded-xl p-4 h-full flex flex-col relative">
@@ -1253,8 +1283,43 @@ function App() {
                                         disabled={!textInput.trim()}
                                         className="w-full py-2 flex items-center justify-center gap-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
                                     >
-                                        <span>شروع و شخصی‌سازی</span>
+                                        <span>شروع پردازش</span>
                                         <Wand className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                         {/* Topic/Random Study */}
+                         <div className="stylish-textarea-wrapper p-1 bg-gradient-to-b from-border to-transparent">
+                            <div className="bg-card rounded-xl p-4 h-full flex flex-col relative">
+                                <div className="flex items-center justify-between gap-2 mb-3 text-purple-500">
+                                    <div className="flex items-center gap-2">
+                                        <FileQuestion className="w-5 h-5" />
+                                        <span className="font-bold">کاوش موضوعی</span>
+                                    </div>
+                                    <button 
+                                        onClick={handleRandomStudy}
+                                        className="p-1.5 bg-purple-500/10 rounded-full hover:bg-purple-500/20 transition-colors"
+                                        title="موضوع شانسی"
+                                    >
+                                        <Shuffle className="w-4 h-4" />
+                                    </button>
+                                </div>
+                                <textarea 
+                                    className="w-full flex-grow bg-transparent border-none resize-none focus:ring-0 text-foreground placeholder:text-muted-foreground/50 min-h-[150px] mb-12" 
+                                    placeholder="موضوعی که دوست دارید یاد بگیرید را بنویسید (مثلاً: تاریخ روم باستان، فیزیک کوانتوم)..."
+                                    value={topicInput}
+                                    onChange={(e) => setTopicInput(e.target.value)}
+                                />
+                                <div className="absolute bottom-4 left-4 right-4">
+                                    <button 
+                                        onClick={handleTopicStudy}
+                                        disabled={!topicInput.trim()}
+                                        className="w-full py-2 flex items-center justify-center gap-2 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                                    >
+                                        <span>تحقیق و ساخت مسیر</span>
+                                        <BrainCircuit className="w-4 h-4" />
                                     </button>
                                 </div>
                             </div>
