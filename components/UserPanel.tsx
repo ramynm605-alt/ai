@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { UserProfile, SavedSession } from '../types';
-import { User, LogOut, History, BrainCircuit, Trash, Save, CheckCircle, ArrowRight, XCircle, Shield, Key, Upload, ClipboardList, ChevronDown } from './icons';
+import { User, LogOut, History, BrainCircuit, Trash, Save, CheckCircle, ArrowRight, XCircle, Shield, Key, ClipboardList, ChevronDown } from './icons';
 
 interface UserPanelProps {
     isOpen: boolean;
@@ -10,7 +10,6 @@ interface UserPanelProps {
     onLogin: (email: string, password: string) => Promise<void>;
     onRegister: (email: string, password: string, name: string) => Promise<void>;
     onCheckEmail: (email: string) => Promise<boolean>;
-    onSendVerification: (email: string) => Promise<string>;
     onLogout: () => void;
     savedSessions: SavedSession[];
     onLoadSession: (session: SavedSession) => void;
@@ -21,7 +20,7 @@ interface UserPanelProps {
     onImportData: (data: string) => boolean;
 }
 
-type AuthStep = 'email' | 'verification' | 'register-password' | 'login-password';
+type AuthStep = 'email' | 'register-password' | 'login-password';
 
 const UserPanel: React.FC<UserPanelProps> = ({ 
     isOpen, 
@@ -30,7 +29,6 @@ const UserPanel: React.FC<UserPanelProps> = ({
     onLogin, 
     onRegister,
     onCheckEmail,
-    onSendVerification, 
     onLogout, 
     savedSessions, 
     onLoadSession,
@@ -43,8 +41,6 @@ const UserPanel: React.FC<UserPanelProps> = ({
     const [step, setStep] = useState<AuthStep>('email');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [verificationCode, setVerificationCode] = useState('');
-    const [actualCode, setActualCode] = useState('');
     const [name, setName] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     
@@ -65,7 +61,6 @@ const UserPanel: React.FC<UserPanelProps> = ({
         if (isOpen && !user) {
             setStep('email');
             setPassword('');
-            setVerificationCode('');
             setError(null);
         }
     }, [isOpen, user]);
@@ -85,25 +80,13 @@ const UserPanel: React.FC<UserPanelProps> = ({
             if (exists) {
                 setStep('login-password');
             } else {
-                // New user -> Send verification
-                const code = await onSendVerification(email);
-                setActualCode(code);
-                setStep('verification');
+                // Direct to registration without verification
+                setStep('register-password');
             }
         } catch (err: any) {
             setError(err.message || 'خطا در بررسی ایمیل.');
         } finally {
             setIsLoading(false);
-        }
-    };
-
-    const handleVerificationSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (verificationCode === actualCode) {
-            setStep('register-password');
-            setError(null);
-        } else {
-            setError('کد وارد شده اشتباه است.');
         }
     };
 
@@ -187,13 +170,11 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                 </div>
                                 <h3 className="text-xl font-bold mb-2">
                                     {step === 'email' && 'شروع کنید'}
-                                    {step === 'verification' && 'تایید ایمیل'}
                                     {step === 'register-password' && 'تکمیل حساب'}
                                     {step === 'login-password' && 'خوش آمدید'}
                                 </h3>
                                 <p className="text-sm text-muted-foreground">
                                     {step === 'email' && 'برای دسترسی به تمام دیوایس‌ها ایمیل خود را وارد کنید.'}
-                                    {step === 'verification' && `کد ۶ رقمی ارسال شده به ${email} را وارد کنید.`}
                                     {step === 'register-password' && 'یک رمز عبور برای حساب خود انتخاب کنید.'}
                                     {step === 'login-password' && 'رمز عبور خود را وارد کنید.'}
                                 </p>
@@ -224,32 +205,7 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                     </form>
                                 )}
 
-                                {/* Step 2: Verification Code (Only for New Users) */}
-                                {step === 'verification' && (
-                                    <form onSubmit={handleVerificationSubmit} className="space-y-4">
-                                        <div>
-                                            <label className="block text-xs font-medium mb-1.5 text-muted-foreground">کد تایید</label>
-                                            <input 
-                                                type="text" 
-                                                required 
-                                                autoFocus
-                                                maxLength={6}
-                                                placeholder="123456"
-                                                className="w-full p-3 text-xl tracking-widest text-center rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary"
-                                                value={verificationCode}
-                                                onChange={e => setVerificationCode(e.target.value)}
-                                            />
-                                        </div>
-                                        <button className="w-full py-3 bg-primary text-white font-bold rounded-lg hover:bg-primary-hover transition-all">
-                                            تایید و ادامه
-                                        </button>
-                                        <button type="button" onClick={() => setStep('email')} className="w-full py-2 text-sm text-muted-foreground hover:text-foreground">
-                                            تغییر ایمیل
-                                        </button>
-                                    </form>
-                                )}
-
-                                {/* Step 3a: Set Password (Register) */}
+                                {/* Step 2: Set Password (Register) */}
                                 {step === 'register-password' && (
                                     <form onSubmit={handleRegisterSubmit} className="space-y-4">
                                         <div>
@@ -275,10 +231,13 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                         <button disabled={isLoading} className="w-full py-3 bg-success text-white font-bold rounded-lg hover:bg-success/90 transition-all">
                                             {isLoading ? 'در حال ساخت حساب...' : 'تکمیل ثبت نام'}
                                         </button>
+                                        <button type="button" onClick={() => setStep('email')} className="w-full py-2 text-sm text-muted-foreground hover:text-foreground">
+                                            بازگشت
+                                        </button>
                                     </form>
                                 )}
 
-                                {/* Step 3b: Enter Password (Login) */}
+                                {/* Step 3: Enter Password (Login) */}
                                 {step === 'login-password' && (
                                     <form onSubmit={handleLoginSubmit} className="space-y-4">
                                         <div className="text-center text-sm font-medium text-foreground bg-secondary/50 p-2 rounded">

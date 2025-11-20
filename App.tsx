@@ -420,26 +420,12 @@ function App() {
     dispatch({ type: 'SET_THEME', payload: theme });
   };
 
-  // --- Auth Handlers with Email Verification Simulation ---
+  // --- Auth Handlers ---
   
   const checkEmailExists = async (email: string): Promise<boolean> => {
       const usersStr = localStorage.getItem('zehngah_users');
       const users: UserProfile[] = usersStr ? JSON.parse(usersStr) : [];
       return users.some(u => u.email.toLowerCase() === email.toLowerCase());
-  };
-
-  const sendVerificationCode = async (email: string): Promise<string> => {
-      // SIMULATION: In a real app, this calls an API to send email
-      // We will generate a code and alert it to the user
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      console.log(`[SIMULATION] Verification email sent to ${email}. Code: ${code}`);
-      
-      // Small delay to simulate network
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Alert the code so the user can actually "use" it
-      alert(`کد تایید ایمیل شما (شبیه‌سازی): ${code}`);
-      return code;
   };
 
   const handleLogin = async (email: string, password: string) => {
@@ -671,7 +657,7 @@ function App() {
                 }
                  // TRIGGER WIZARD INSTEAD OF GENERATION
                  dispatch({ type: 'INIT_WIZARD', payload: { sourceContent: fullText, sourcePageContents: pageContents, sourceImages: [] } });
-            } catch (error) {
+            } catch (error: any) {
                 console.error("PDF Error:", error);
                 dispatch({ type: 'SET_ERROR', payload: 'خطا در خواندن فایل PDF.' });
             }
@@ -727,7 +713,7 @@ function App() {
           if (state.currentUser) {
                handleSaveSession(`جلسه جدید ${new Date().toLocaleDateString('fa-IR')}`, true);
           }
-      }).catch(error => {
+      }).catch((error: any) => {
           dispatch({ type: 'SET_ERROR', payload: 'خطا در ارتباط با هوش مصنوعی. لطفاً دوباره تلاش کنید.' });
       });
   };
@@ -770,7 +756,7 @@ function App() {
                 (partialContent) => dispatch({ type: 'NODE_CONTENT_STREAM_UPDATE', payload: partialContent })
             ).then(content => {
                 dispatch({ type: 'NODE_CONTENT_STREAM_END', payload: { nodeId, content } });
-            }).catch(err => {
+            }).catch((err: any) => {
                 console.error(err);
             });
        }
@@ -793,7 +779,7 @@ function App() {
 
       generateQuiz(node.title, nodeContext, state.sourceImages, (q) => dispatch({ type: 'QUIZ_QUESTION_STREAMED', payload: q }))
         .then(() => dispatch({ type: 'QUIZ_STREAM_END' }))
-        .catch(err => console.error(err));
+        .catch((err: any) => console.error(err));
   };
 
   const handleQuizSubmit = async (answers: Record<string, UserAnswer>) => {
@@ -843,7 +829,7 @@ function App() {
               dispatch({ type: 'UNLOCK_REWARD', payload: reward });
           }
           
-      } catch (err) {
+      } catch (err: any) {
           console.error(err);
       }
   };
@@ -854,7 +840,7 @@ function App() {
           try {
             const analysis = await analyzePreAssessment(state.preAssessment.questions, answers, state.sourceContent);
             dispatch({ type: 'PRE_ASSESSMENT_ANALYSIS_LOADED', payload: analysis });
-          } catch (err) {
+          } catch (err: any) {
               console.error(err);
           }
       }
@@ -870,7 +856,7 @@ function App() {
 
       generateChatResponse([...state.chatHistory, msg], text, activeNodeTitle, state.sourceContent)
         .then(response => dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'model', message: response } }))
-        .catch(err => console.error(err));
+        .catch((err: any) => console.error(err));
   };
 
   const handleChatSend = (message: string) => {
@@ -879,7 +865,7 @@ function App() {
       const activeNodeTitle = state.activeNodeId ? state.mindMap.find(n => n.id === state.activeNodeId)?.title || null : null;
       generateChatResponse([...state.chatHistory, msg], message, activeNodeTitle, state.sourceContent)
         .then(response => dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'model', message: response } }))
-        .catch(err => console.error(err));
+        .catch((err: any) => console.error(err));
   };
 
   const handleRetryQuiz = () => {
@@ -951,7 +937,6 @@ function App() {
           onLogin={handleLogin}
           onRegister={handleRegister}
           onCheckEmail={checkEmailExists}
-          onSendVerification={sendVerificationCode}
           onLogout={handleLogout}
           savedSessions={state.savedSessions}
           onLoadSession={handleLoadSession}
