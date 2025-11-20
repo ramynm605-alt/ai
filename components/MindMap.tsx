@@ -94,11 +94,11 @@ const MindMapNodeItem = React.memo(({
         top: node.y,
         width: width,
         height: height,
-        transitionDelay: `${index * 30}ms`,
+        transitionDelay: `${index * 20}ms`, // Reduced delay for snappier feel
         // Use specific z-index hierarchy but rely on hover CSS for lift
         zIndex: isActive ? 40 : (isLocked ? 10 : 20),
         opacity: isLocked ? 0.6 : 1,
-        filter: isLocked ? 'grayscale(0.8) blur(0.5px)' : 'none',
+        filter: isLocked ? 'grayscale(0.8)' : 'none', // Removed blur filter for performance
         touchAction: 'manipulation', // Important for mobile responsiveness
     };
 
@@ -115,7 +115,8 @@ const MindMapNodeItem = React.memo(({
                     ${isActive ? 'border-primary ring-4 ring-primary/20 scale-105' : 'border-white/10 hover:scale-105'} 
                     bg-gradient-to-br from-indigo-600 via-indigo-700 to-slate-800 text-white overflow-hidden`}>
                     
-                    <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuMDUiLz4KPC9zdmc+')] opacity-20"></div>
+                    {/* Reduced opacity background for better mobile performance */}
+                    <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuMDUiLz4KPC9zdmc+')] opacity-10"></div>
                     
                     <div className="relative z-10">
                         <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-white/10 flex items-center justify-center backdrop-blur-sm">
@@ -158,6 +159,7 @@ const MindMapNodeItem = React.memo(({
     }
 
     // 3. Standard Node (Glassmorphism)
+    // Note: The 'glass' class is modified in index.html to remove backdrop-filter on mobile
     return (
         <div
             className={`mindmap-node group ${isVisible ? 'mindmap-node-visible' : ''} ${isActive ? 'active-node' : ''} ${isSuggestedAndIncomplete ? 'suggested-node' : ''} absolute rounded-xl cursor-pointer select-none`}
@@ -166,7 +168,7 @@ const MindMapNodeItem = React.memo(({
             role="button"
             tabIndex={isLocked ? -1 : 0}
         >
-             {/* Active Pulse Ring */}
+             {/* Active Pulse Ring - Hidden on locked nodes */}
              {isActive && <div className="absolute inset-0 rounded-xl ring-4 ring-primary/30 animate-pulse"></div>}
 
              <div className={`absolute inset-0 rounded-xl border transition-all duration-300 overflow-hidden flex flex-col shadow-sm hover:shadow-xl glass
@@ -242,17 +244,26 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
     }, []);
 
     useEffect(() => {
+        // Debounced Resize Observer to prevent excessive re-renders on mobile browser bar toggle
+        let timeoutId: any;
         const resizeObserver = new ResizeObserver(entries => {
             if (entries[0]) {
                 const { width, height } = entries[0].contentRect;
-                setContainerSize(prev => {
-                    if (Math.abs(prev.width - width) < 10 && Math.abs(prev.height - height) < 50) return prev;
-                    return { width, height };
-                });
+                clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => {
+                    setContainerSize(prev => {
+                        // Tolerance for small mobile height changes (address bar)
+                        if (Math.abs(prev.width - width) < 10 && Math.abs(prev.height - height) < 80) return prev;
+                        return { width, height };
+                    });
+                }, 200);
             }
         });
         if (containerRef.current) resizeObserver.observe(containerRef.current);
-        return () => resizeObserver.disconnect();
+        return () => {
+            resizeObserver.disconnect();
+            clearTimeout(timeoutId);
+        };
     }, []);
 
     const { positionedNodes, lines, width, height, isPortrait, nodeWidth, nodeHeight } = useMemo(() => {
@@ -440,7 +451,8 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
             </button>
 
             <div className="relative mx-auto transition-all duration-500 ease-out" style={{ width: Math.max(width, containerSize.width), height: Math.max(height, containerSize.height) }}>
-                <svg className="absolute top-0 left-0 pointer-events-none" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
+                {/* Optimize SVG Rendering for Mobile */}
+                <svg className="absolute top-0 left-0 pointer-events-none" style={{ width: '100%', height: '100%', overflow: 'visible' }} shapeRendering="optimizeSpeed">
                     <defs>
                         <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                             <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(var(--muted-foreground))" opacity="0.5" />
@@ -456,7 +468,7 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
                          const isActive = activeNodeId === line.parentId || activeNodeId === line.childId;
                          const isSuggested = showSuggestedPath && suggestedNodeIds.has(line.parentId) && suggestedNodeIds.has(line.childId);
                          const isConclusionLine = line.type === 'conclusion';
-                         // Smooth bezier curve with slight randomness for organic feel
+                         // Smooth bezier curve
                          const cpY = (line.y2 - line.y1) * 0.5;
                          const path = `M${line.x1},${line.y1} C${line.x1},${line.y1 + cpY} ${line.x2},${line.y2 - cpY} ${line.x2},${line.y2}`;
                          
@@ -470,7 +482,7 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
                                     strokeWidth={isActive ? 3 : 2}
                                     strokeOpacity={isConclusionLine ? 0.4 : 0.3}
                                     className={`mindmap-line ${isVisible ? 'opacity-100' : 'opacity-0'}`}
-                                    style={{ transitionDelay: `${i * 20}ms` }}
+                                    style={{ transitionDelay: `${i * 10}ms` }}
                                     markerEnd={isConclusionLine ? "url(#arrow-conclusion)" : (isActive ? "url(#arrow-active)" : "url(#arrow)")}
                                 />
                                 

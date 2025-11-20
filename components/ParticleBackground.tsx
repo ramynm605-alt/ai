@@ -16,7 +16,10 @@ const ParticleBackground: React.FC<ParticleBackgroundProps> = ({ theme }) => {
 
         let animationFrameId: number;
         let particles: any[] = [];
-        const particleCount = 80;
+        
+        // Reduce particles significantly on mobile to prevent lag
+        const isMobile = window.innerWidth < 768;
+        const particleCount = isMobile ? 20 : 80;
 
         const setCanvasDimensions = () => {
             canvas.width = canvas.offsetWidth;

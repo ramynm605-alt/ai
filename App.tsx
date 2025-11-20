@@ -1,5 +1,4 @@
 
-
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef, Suspense } from 'react';
 import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse, generateRemedialNode, generateDailyChallenge, generateDeepAnalysis, generateAdaptiveModifications } from './services/geminiService';
@@ -583,7 +582,7 @@ function App() {
                 // No cloud data yet
                 dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'idle' } });
            }
-       } catch (e) {
+       } catch (e: any) {
            console.error("Cloud Load Error", e);
            dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'error' } });
        }
@@ -604,7 +603,7 @@ function App() {
           } else {
                dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'error' } });
           }
-      } catch (e) {
+      } catch (e: any) {
            console.error("Cloud Save Error", e);
            dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'error' } });
       }
@@ -843,7 +842,7 @@ function App() {
           handleCloudSave(userData.user.id, userData.sessions, userData.behavior || state.behavior);
 
           return true;
-      } catch (e) {
+      } catch (e: any) {
           console.error("Import failed", e);
           return false;
       }
