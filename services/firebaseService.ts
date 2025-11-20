@@ -79,7 +79,8 @@ export const FirebaseService = {
             }
         } catch (error) {
             console.error("Firestore Load Error:", error);
-            throw error;
+            // Return null to indicate failure gracefully rather than crashing
+            return null;
         }
     }
 };

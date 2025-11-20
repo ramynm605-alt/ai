@@ -466,19 +466,51 @@ function App() {
        dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'syncing' } });
        try {
            const cloudData = await FirebaseService.loadUserData(userId);
-           if (cloudData) {
-                // Merge cloud sessions with local? For now, let's trust cloud if it has more recent data or simply overwrite.
-                // In a robust app, we'd compare timestamps. Here we assume Cloud is source of truth on load.
-                if (cloudData.sessions && Array.isArray(cloudData.sessions)) {
-                     dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: cloudData.sessions });
-                     localStorage.setItem(`zehngah_sessions_${userId}`, JSON.stringify(cloudData.sessions));
+           
+           if (cloudData && cloudData.sessions) {
+                const cloudTime = new Date(cloudData.lastModified || 0).getTime();
+                
+                // Get local data time
+                const storedSessionsString = localStorage.getItem(`zehngah_sessions_${userId}`);
+                let localTime = 0;
+                let localSessions: SavedSession[] = [];
+                
+                if (storedSessionsString) {
+                    localSessions = JSON.parse(storedSessionsString);
+                    // Find the most recent modification time in local sessions
+                    if (localSessions.length > 0) {
+                        localTime = Math.max(...localSessions.map(s => new Date(s.lastModified).getTime()));
+                    }
                 }
-                if (cloudData.behavior) {
-                     dispatch({ type: 'DEBUG_UPDATE', payload: { behavior: cloudData.behavior } });
+
+                // SMART SYNC LOGIC: Compare timestamps
+                // 1. If Cloud is newer -> Load from Cloud
+                if (cloudTime > localTime) {
+                    console.log("Cloud is newer. Syncing down.");
+                    dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: cloudData.sessions });
+                    localStorage.setItem(`zehngah_sessions_${userId}`, JSON.stringify(cloudData.sessions));
+                    
+                    if (cloudData.behavior) {
+                         dispatch({ type: 'DEBUG_UPDATE', payload: { behavior: cloudData.behavior } });
+                         localStorage.setItem(`zehngah_behavior_${userId}`, JSON.stringify(cloudData.behavior));
+                    }
+                    dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'success', lastSync: cloudData.lastModified } });
+                    showNotification("اطلاعات شما با نسخه ابری به‌روز شد.");
+                } 
+                // 2. If Local is newer (e.g., worked offline) -> Push to Cloud
+                else if (localTime > cloudTime) {
+                    console.log("Local is newer. Syncing up.");
+                    // We trust local data more in this case if the user was active
+                    handleCloudSave(userId, localSessions, state.behavior);
                 }
-                dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'success', lastSync: new Date().toISOString() } });
+                // 3. Equal or Cloud Empty -> Do nothing or just set success
+                else {
+                     console.log("Data is in sync.");
+                     dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'success', lastSync: cloudData.lastModified } });
+                }
+
            } else {
-                // No cloud data yet, that's fine.
+                // No cloud data yet
                 dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'idle' } });
            }
        } catch (e) {
@@ -490,14 +522,15 @@ function App() {
   const handleCloudSave = async (userId: string, sessions: SavedSession[], behavior: UserBehavior) => {
       dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'syncing' } });
       try {
+          const timestamp = new Date().toISOString();
           const dataToSave = {
               sessions,
               behavior,
-              lastModified: new Date().toISOString()
+              lastModified: timestamp
           };
           const success = await FirebaseService.saveUserData(userId, dataToSave);
           if (success) {
-              dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'success', lastSync: new Date().toISOString() } });
+              dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'success', lastSync: timestamp } });
           } else {
                dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'error' } });
           }
@@ -621,6 +654,7 @@ function App() {
 
       let newSessions = [...state.savedSessions];
       let sessionId = state.currentSessionId;
+      const now = new Date().toISOString();
 
       if (sessionId) {
           // Update existing session
@@ -628,7 +662,7 @@ function App() {
           if (index !== -1) {
               newSessions[index] = {
                   ...newSessions[index],
-                  lastModified: new Date().toISOString(),
+                  lastModified: now,
                   progressPercentage: progress,
                   data: sessionData,
                   title: (title && !isAutoSave) ? title : newSessions[index].title
@@ -645,7 +679,7 @@ function App() {
             id: sessionId,
             userId: state.currentUser.id,
             title: title || `جلسه ${new Date().toLocaleDateString('fa-IR')}`,
-            lastModified: new Date().toISOString(),
+            lastModified: now,
             progressPercentage: progress,
             topic: state.mindMap[0]?.title || 'بدون عنوان',
             data: sessionData
@@ -659,7 +693,8 @@ function App() {
       dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: newSessions });
 
       // 2. Save to Cloud (Firebase)
-      // Debounce cloud save slightly or just fire and forget
+      // Debounce logic handles the frequency, here we just push.
+      // Since we are saving, WE are the latest version now.
       handleCloudSave(state.currentUser.id, newSessions, state.behavior);
 
       if (isAutoSave) {
@@ -687,13 +722,13 @@ function App() {
       dispatch({ type: 'LOAD_STATE', payload: session.data, sessionId: session.id });
   };
   
-  // --- Auto-Save Logic ---
+  // --- Auto-Save Logic (Debounced) ---
   useEffect(() => {
       // Only auto-save if user is logged in, has a session ID, and there is content
       if (state.status === AppStatus.LEARNING && state.currentUser && state.currentSessionId && state.mindMap.length > 0) {
           const timer = setTimeout(() => {
               handleSaveSession("", true);
-          }, 3000); // Auto-save 3 seconds after last change
+          }, 5000); // Increased to 5 seconds for less aggressive saves
           return () => clearTimeout(timer);
       }
   }, [state.userProgress, state.mindMap, state.rewards, state.behavior, state.status, state.currentUser, state.currentSessionId]);
