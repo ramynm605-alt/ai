@@ -1290,7 +1290,7 @@ function App() {
                             </div>
                         </div>
 
-                         {/* Topic/Random Study */}
+                        {/* Topic/Random Study */}
                          <div className="stylish-textarea-wrapper p-1 bg-gradient-to-b from-border to-transparent">
                             <div className="bg-card rounded-xl p-4 h-full flex flex-col relative">
                                 <div className="flex items-center justify-between gap-2 mb-3 text-purple-500">
