@@ -1,5 +1,4 @@
 
-
 export interface ChatMessage {
   role: 'user' | 'model';
   message: string;
@@ -16,6 +15,8 @@ export interface MindMapNode {
     isAdaptive?: boolean; // New: Indicates if node was added dynamically
     sourcePages: number[];
     type: 'core' | 'remedial' | 'extension';
+    learningObjective?: string; // New: The specific goal (e.g., "Distinguish between A and B")
+    targetSkill?: string; // New: The cognitive skill (e.g., "Analysis", "Synthesis")
     children?: MindMapNode[];
   }
 
@@ -27,6 +28,7 @@ export interface MindMapNode {
     difficulty: 'آسان' | 'متوسط' | 'سخت';
     points: number;
     type: QuestionType;
+    concept?: string; // New: The specific concept/dimension this question tests
   }
   
   export interface MultipleChoiceQuestion extends BaseQuestion {
@@ -70,6 +72,7 @@ export interface MindMapNode {
     connection: string;
     conclusion:string;
     suggestedQuestions: string[];
+    interactiveTask?: string; // New: A specific prompt for the user to answer
   }
 
   export interface PreAssessmentAnalysis {
@@ -80,6 +83,7 @@ export interface MindMapNode {
     // New structured data for the Adaptive Engine
     weaknessTags: string[]; 
     strengthTags: string[];
+    conceptScores?: { [key: string]: number }; // New: Score per specific concept (0-100)
   }
 
   export enum AppStatus {

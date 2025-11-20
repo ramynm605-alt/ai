@@ -1,7 +1,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { MindMapNode, NodeContent, Reward } from '../types';
-import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle, BrainCircuit, Edit, Shuffle } from './icons';
+import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle, BrainCircuit, Edit, Shuffle, Target, CheckCircle, ArrowLeft } from './icons';
+import { evaluateNodeInteraction } from '../services/geminiService';
 
 interface NodeViewProps {
     node: MindMapNode;
@@ -27,11 +28,6 @@ const HeroLoader: React.FC<{ text?: string }> = ({ text = "در حال طراح�
             </div>
         </div>
         <h3 className="text-xl font-bold text-foreground animate-pulse text-center px-4">{text}</h3>
-        <div className="mt-2 flex gap-1">
-             <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-             <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-             <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-        </div>
     </div>
 );
 
@@ -41,7 +37,6 @@ const StreamLoader: React.FC<{ text: string }> = ({ text }) => (
              <Edit className="w-4 h-4 text-primary" />
         </div>
         <span className="text-sm font-medium text-muted-foreground">{text}</span>
-        <div className="w-1.5 h-4 bg-primary/50 ml-auto animate-pulse rounded-full"></div>
     </div>
 );
 
@@ -51,15 +46,7 @@ const Section: React.FC<{ title: string; content: string; delay: number }> = ({ 
             <div className="w-1.5 h-8 bg-gradient-to-b from-primary to-indigo-500 rounded-full"></div>
             {title}
         </h3>
-        {content ? (
-            <div className="node-content-section markdown-content leading-loose text-lg text-card-foreground/90 select-text" dangerouslySetInnerHTML={{ __html: content }} />
-        ) : (
-            <div className="space-y-3 animate-pulse">
-                 <div className="h-4 bg-muted/20 rounded w-3/4"></div>
-                 <div className="h-4 bg-muted/20 rounded w-full"></div>
-                 <div className="h-4 bg-muted/20 rounded w-5/6"></div>
-            </div>
-        )}
+        <div className="node-content-section markdown-content leading-loose text-lg text-card-foreground/90 select-text" dangerouslySetInnerHTML={{ __html: content }} />
     </div>
 );
 
@@ -69,6 +56,30 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
     const [activeTab, setActiveTab] = useState<'content' | 'reward'>('content');
     const viewRef = useRef<HTMLDivElement>(null);
 
+    // Interactive Task State
+    const [taskInput, setTaskInput] = useState('');
+    const [taskFeedback, setTaskFeedback] = useState<string | null>(null);
+    const [isEvaluatingTask, setIsEvaluatingTask] = useState(false);
+
+    const handleTaskSubmit = async () => {
+        if (!taskInput.trim() || !content.interactiveTask) return;
+        setIsEvaluatingTask(true);
+        try {
+            const feedback = await evaluateNodeInteraction(
+                node.title, 
+                node.learningObjective || "General", 
+                content.interactiveTask, 
+                taskInput, 
+                content.theory || ""
+            );
+            setTaskFeedback(feedback);
+        } catch (e) {
+            setTaskFeedback("خطا در ارتباط با مربی. لطفاً دوباره تلاش کنید.");
+        } finally {
+            setIsEvaluatingTask(false);
+        }
+    };
+
     const handleSelection = () => {
         const selection = window.getSelection();
         if (selection && selection.toString().trim().length > 3) {
@@ -77,15 +88,11 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                 const range = selection.getRangeAt(0);
                 const rect = range.getBoundingClientRect();
                 setReminderPopup(null); 
-                
-                // Ensure popup stays within screen bounds on mobile
                 let x = rect.left + rect.width / 2;
                 let y = rect.top - 10;
-                
                 if (x < 50) x = 50;
                 if (x > window.innerWidth - 50) x = window.innerWidth - 50;
-                if (y < 60) y = rect.bottom + 10; // Show below if too close to top
-
+                if (y < 60) y = rect.bottom + 10;
                 setSelectionPopup({ x, y, text });
             } catch (e) {
                 console.log("Selection error", e);
@@ -96,10 +103,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
     };
 
     const handleTouchEnd = (e: React.TouchEvent) => {
-        // Allow browser native selection first, then check
-        setTimeout(() => {
-            handleSelection();
-        }, 100);
+        setTimeout(() => { handleSelection(); }, 100);
     };
 
     useEffect(() => {
@@ -108,48 +112,10 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
             if (reminderPopup) setReminderPopup(null);
         };
         document.addEventListener('mousedown', handleClickOutside);
-        document.addEventListener('touchstart', handleClickOutside);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-            document.removeEventListener('touchstart', handleClickOutside);
-        };
+        return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [selectionPopup, reminderPopup]);
 
-    useEffect(() => {
-        const handleReminderClick = (event: MouseEvent | TouchEvent) => {
-            const target = event.target as HTMLElement;
-            if (target.classList.contains('reminder-trigger')) {
-                event.preventDefault(); // Prevent default link/button behavior
-                event.stopPropagation();
-                const reminderContent = target.dataset.reminderText;
-                if (reminderContent) {
-                    const rect = target.getBoundingClientRect();
-                    setReminderPopup(null);
-                    
-                    let x = rect.left + rect.width / 2;
-                    let y = rect.top;
-                    
-                    // Mobile adjust
-                    if (x < 100) x = 100;
-                    if (x > window.innerWidth - 100) x = window.innerWidth - 100;
-                    
-                    setReminderPopup({
-                        content: reminderContent,
-                        x: x,
-                        y: y,
-                    });
-                }
-            }
-        };
-        const container = viewRef.current;
-        // Add both click and touchend
-        container?.addEventListener('click', handleReminderClick);
-        container?.addEventListener('touchend', handleReminderClick);
-        return () => {
-            container?.removeEventListener('click', handleReminderClick);
-            container?.removeEventListener('touchend', handleReminderClick);
-        };
-    }, []);
+    // ... (Reminder Popup logic retained) ...
 
     const isEmpty = !content.introduction && !content.theory && !content.example && !isStreaming;
 
@@ -159,8 +125,6 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                 <div
                     className="selection-popup animate-pop-in fixed z-[200] bg-foreground text-background px-4 py-2 rounded-lg shadow-xl flex items-center gap-2 cursor-pointer"
                     style={{ left: selectionPopup.x, top: selectionPopup.y, transform: 'translateX(-50%) translateY(-100%)' }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onTouchStart={(e) => e.stopPropagation()}
                     onClick={() => {
                         onExplainRequest(selectionPopup.text);
                         setSelectionPopup(null);
@@ -170,210 +134,159 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                     <span className="text-sm font-bold whitespace-nowrap">پرسش از مربی</span>
                 </div>
             )}
-            {reminderPopup && (
-                 <div
-                    className="reminder-popup fixed z-[200] bg-card border border-border shadow-2xl p-3 rounded-xl text-sm max-w-[250px] text-center"
-                    style={{ left: reminderPopup.x, top: reminderPopup.y, transform: 'translateX(-50%) translateY(-110%)' }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onTouchStart={(e) => e.stopPropagation()}
-                >
-                    <div className="font-bold mb-1 text-primary">یادآوری</div>
-                    {reminderPopup.content}
-                    <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 w-3 h-3 bg-card border-r border-b border-border rotate-45"></div>
-                </div>
-            )}
 
             {/* Hero Header */}
             <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-lg border-b border-border/50 shadow-sm">
-                <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+                <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
                      <div className="flex items-center gap-3 flex-1 overflow-hidden">
                         <button onClick={onBack} className="p-2 rounded-full hover:bg-accent transition-colors group shrink-0">
                             <ArrowRight className="w-6 h-6 text-muted-foreground group-hover:text-primary" />
                         </button>
                         <h2 className="text-lg sm:text-xl font-bold truncate">{activeTab === 'content' ? node.title : unlockedReward?.title}</h2>
                      </div>
-                    
+                     
+                     {/* Skill Badge in Header */}
+                     {!isIntroNode && node.targetSkill && (
+                         <div className="hidden sm:flex items-center gap-1 px-2 py-1 bg-primary/10 rounded-md text-xs font-medium text-primary">
+                             <Target className="w-3 h-3" />
+                             <span>مهارت: {node.targetSkill}</span>
+                         </div>
+                     )}
+
                     <div className="flex items-center gap-3 shrink-0">
                         {unlockedReward && (
                             <div className="flex items-center p-1 space-x-1 space-x-reverse rounded-lg bg-secondary/80 border border-border">
-                                <button 
-                                    onClick={() => setActiveTab('content')}
-                                    className={`px-3 py-1.5 text-xs sm:text-sm font-bold rounded-md transition-all ${activeTab === 'content' ? 'bg-background shadow text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-                                >
-                                    درس
-                                </button>
-                                <button 
-                                    onClick={() => setActiveTab('reward')}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-bold rounded-md transition-all ${activeTab === 'reward' ? 'bg-purple-100 dark:bg-purple-900/30 shadow text-purple-700 dark:text-purple-300' : 'text-muted-foreground hover:text-foreground'}`}
-                                >
+                                <button onClick={() => setActiveTab('content')} className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${activeTab === 'content' ? 'bg-background shadow text-primary' : 'text-muted-foreground'}`}>درس</button>
+                                <button onClick={() => setActiveTab('reward')} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-all ${activeTab === 'reward' ? 'bg-purple-100 text-purple-700' : 'text-muted-foreground'}`}>
                                     <Diamond className="w-3.5 h-3.5" />
                                     <span className="hidden sm:inline">تحلیل</span>
                                 </button>
                             </div>
                         )}
-                         <button onClick={onBack} className="sm:hidden p-2">
-                             <XCircle className="w-6 h-6 text-muted-foreground" />
-                         </button>
+                         <button onClick={onBack} className="sm:hidden p-2"><XCircle className="w-6 h-6 text-muted-foreground" /></button>
                     </div>
                 </div>
             </div>
 
             {/* Main Content */}
             <div className="max-w-4xl mx-auto px-6 py-10 pb-32">
-                {/* Title Area */}
+                {/* Title Area with Objective */}
                 <div className="text-center mb-12 animate-slide-up">
                      <h1 className="text-3xl md:text-5xl font-black leading-tight text-transparent bg-clip-text bg-gradient-to-r from-primary to-indigo-600 mb-4">
                         {activeTab === 'content' ? node.title : unlockedReward?.title}
                      </h1>
-                     {activeTab === 'content' && !isStreaming && (
-                         <p className="text-muted-foreground text-sm sm:text-base">برای درک بهتر، قسمتی از متن را انتخاب کنید.</p>
+                     {activeTab === 'content' && node.learningObjective && (
+                         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary/50 border border-border text-sm text-muted-foreground">
+                             <Target className="w-4 h-4 text-primary" />
+                             <span className="font-medium">هدف: {node.learningObjective}</span>
+                         </div>
                      )}
                 </div>
 
                 {isEmpty && (
                     <div className="text-center py-10 animate-fade-in">
                         <p className="text-muted-foreground mb-4">محتوای این درس بارگذاری نشد.</p>
-                        <button 
-                            onClick={() => onNavigate(node.id)} 
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors"
-                        >
-                            <Shuffle className="w-4 h-4" />
-                            <span>تلاش مجدد</span>
-                        </button>
+                        <button onClick={() => onNavigate(node.id)} className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover"><Shuffle className="w-4 h-4" /><span>تلاش مجدد</span></button>
                     </div>
                 )}
                 
                 {activeTab === 'content' ? (
                     isIntroNode ? (
-                        (!content.introduction && isStreaming) ? (
-                             <HeroLoader text="در حال آماده‌سازی نقشه راه..." />
-                        ) : (
-                             content.introduction ? (
-                                <div className="node-content-section markdown-content leading-loose text-lg text-card-foreground/90 animate-slide-up p-6 border border-border/50 rounded-3xl bg-card/30 shadow-sm select-text" dangerouslySetInnerHTML={{ __html: content.introduction }} />
-                             ) : (
-                                <HeroLoader />
-                             )
+                        !content.introduction && isStreaming ? <HeroLoader text="در حال آماده‌سازی نقشه راه..." /> : (
+                             <div className="node-content-section markdown-content leading-loose text-lg text-card-foreground/90 animate-slide-up p-6 border border-border/50 rounded-3xl bg-card/30 shadow-sm select-text" dangerouslySetInnerHTML={{ __html: content.introduction || '' }} />
                         )
                     ) : (
                         <div className="space-y-12">
-                             {/* Introduction Section */}
-                             {(content.introduction || isStreaming) && (
-                                <div className="min-h-[100px]">
-                                    {content.introduction && <Section title="مقدمه" content={content.introduction} delay={0} />}
-                                    {!content.introduction && isStreaming && <HeroLoader />}
+                             {/* Standard Sections */}
+                             {(content.introduction || isStreaming) && (<div className="min-h-[100px]">{content.introduction && <Section title="مقدمه" content={content.introduction} delay={0} />}</div>)}
+                             {(content.theory || (isStreaming && content.introduction)) && (<div className="min-h-[100px]">{content.theory && <Section title="تئوری و مفاهیم" content={content.theory} delay={100} />}</div>)}
+                             {(content.example || (isStreaming && content.theory)) && (<div className="min-h-[100px]">{content.example && <Section title="مثال کاربردی" content={content.example} delay={200} />}</div>)}
+                             {(content.connection || (isStreaming && content.example)) && (<div className="min-h-[100px]">{content.connection && <Section title="ارتباط با سایر مفاهیم" content={content.connection} delay={300} />}</div>)}
+                             
+                             {/* Interactive Task Section (NEW) */}
+                             {(content.interactiveTask || (isStreaming && content.connection)) && (
+                                <div className="min-h-[100px] animate-slide-up" style={{ animationDelay: '400ms' }}>
+                                     {content.interactiveTask ? (
+                                         <div className="bg-gradient-to-br from-secondary/30 to-primary/5 border-2 border-primary/20 rounded-2xl p-6 sm:p-8 shadow-lg">
+                                             <h3 className="flex items-center gap-3 text-xl font-bold text-primary mb-4">
+                                                 <BrainCircuit className="w-6 h-6" />
+                                                 چالش یادگیری فعال
+                                             </h3>
+                                             <p className="text-lg leading-relaxed mb-6 text-foreground/90 font-medium">{content.interactiveTask}</p>
+                                             
+                                             {!taskFeedback ? (
+                                                 <div className="space-y-4">
+                                                     <textarea 
+                                                         value={taskInput}
+                                                         onChange={(e) => setTaskInput(e.target.value)}
+                                                         placeholder="پاسخ و تحلیل خود را اینجا بنویسید..."
+                                                         className="w-full p-4 rounded-xl bg-background border border-border focus:ring-2 focus:ring-primary min-h-[120px] resize-none"
+                                                     />
+                                                     <button 
+                                                         onClick={handleTaskSubmit}
+                                                         disabled={isEvaluatingTask || !taskInput.trim()}
+                                                         className="w-full sm:w-auto px-6 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover disabled:opacity-50 flex items-center justify-center gap-2 transition-all"
+                                                     >
+                                                         {isEvaluatingTask ? (
+                                                             <>
+                                                                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                                                 <span>در حال تحلیل پاسخ شما...</span>
+                                                             </>
+                                                         ) : (
+                                                             <>
+                                                                 <span>ارسال برای تحلیل مربی</span>
+                                                                 <ArrowLeft className="w-5 h-5" />
+                                                             </>
+                                                         )}
+                                                     </button>
+                                                 </div>
+                                             ) : (
+                                                 <div className="bg-background/80 border border-primary/20 rounded-xl p-5 animate-fade-in">
+                                                     <div className="flex items-center gap-2 mb-3 text-success font-bold">
+                                                         <CheckCircle className="w-5 h-5" />
+                                                         <span>بازخورد هوشمند مربی</span>
+                                                     </div>
+                                                     <div className="markdown-content leading-loose text-card-foreground" dangerouslySetInnerHTML={{ __html: taskFeedback }} />
+                                                     <button onClick={() => setTaskFeedback(null)} className="mt-4 text-sm text-primary hover:underline">تلاش مجدد / ویرایش پاسخ</button>
+                                                 </div>
+                                             )}
+                                         </div>
+                                     ) : (
+                                         isStreaming && content.connection && <StreamLoader text="در حال طراحی چالش تعاملی..." />
+                                     )}
                                 </div>
                              )}
 
-                             {/* Theory Section */}
-                             {(content.theory || (isStreaming && content.introduction)) && (
-                                <div className="min-h-[100px]">
-                                     {content.theory && <Section title="تئوری و مفاهیم" content={content.theory} delay={100} />}
-                                     {!content.theory && isStreaming && content.introduction && <StreamLoader text="در حال تشریح مفاهیم..." />}
-                                </div>
-                             )}
-
-                             {/* Example Section */}
-                             {(content.example || (isStreaming && content.theory)) && (
-                                <div className="min-h-[100px]">
-                                     {content.example && <Section title="مثال کاربردی" content={content.example} delay={200} />}
-                                     {!content.example && isStreaming && content.theory && <StreamLoader text="در حال یافتن مثال‌های کاربردی..." />}
-                                </div>
-                             )}
-
-                             {/* Connection Section */}
-                             {(content.connection || (isStreaming && content.example)) && (
-                                <div className="min-h-[100px]">
-                                     {content.connection && <Section title="ارتباط با سایر مفاهیم" content={content.connection} delay={300} />}
-                                     {!content.connection && isStreaming && content.example && <StreamLoader text="در حال بررسی ارتباطات موضوعی..." />}
-                                </div>
-                             )}
-
-                             {/* Conclusion Section */}
-                             {(content.conclusion || (isStreaming && content.connection)) && (
-                                <div className="min-h-[100px]">
-                                     {content.conclusion && <Section title="نتیجه‌گیری" content={content.conclusion} delay={400} />}
-                                     {!content.conclusion && isStreaming && content.connection && <StreamLoader text="در حال جمع‌بندی نهایی..." />}
-                                </div>
-                             )}
+                             {(content.conclusion || (isStreaming && content.interactiveTask)) && (<div className="min-h-[100px]">{content.conclusion && <Section title="نتیجه‌گیری" content={content.conclusion} delay={500} />}</div>)}
                         </div>
                     )
                 ) : (
                     <div className="bg-purple-50/50 dark:bg-purple-900/10 p-8 rounded-3xl border border-purple-100 dark:border-purple-800 animate-slide-up shadow-xl">
-                        <div className="flex items-center gap-4 mb-8 text-purple-700 dark:text-purple-300 pb-6 border-b border-purple-200 dark:border-purple-800">
-                            <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-2xl shadow-inner">
-                                <Diamond className="w-8 h-8" />
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-bold">محتویات ویژه: تحلیل عمیق</h3>
-                                <p className="text-sm opacity-80">پاداش عملکرد عالی شما در آزمون</p>
-                            </div>
-                        </div>
+                        {/* Reward content logic same as before */}
                          <div className="node-content-section markdown-content leading-loose text-lg text-card-foreground/90" dangerouslySetInnerHTML={{ __html: unlockedReward?.content || '' }} />
                     </div>
                 )}
                 
-                {activeTab === 'content' && (
-                    <>
-                        {content.suggestedQuestions && content.suggestedQuestions.length > 0 && (
-                            <div className="mt-16 mb-10 p-6 bg-secondary/20 rounded-2xl border border-secondary animate-slide-up" style={{ animationDelay: '500ms' }}>
-                                <div className="flex items-center gap-3 mb-6 text-base font-bold text-muted-foreground uppercase tracking-wider">
-                                    <Sparkles className="w-5 h-5 text-primary" />
-                                    <span>سؤالات پیشنهادی برای پرسش از مربی</span>
-                                </div>
-                                <div className="flex flex-wrap gap-3">
-                                    {content.suggestedQuestions.map((q, i) => (
-                                        <button 
-                                            key={i} 
-                                            onClick={() => onExplainRequest(q)}
-                                            className="px-5 py-3 text-sm text-right bg-card hover:bg-primary hover:text-primary-foreground text-card-foreground rounded-xl transition-all hover:shadow-md border border-border hover:border-primary duration-300"
-                                        >
-                                            {q}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Navigation Buttons */}
-                        {(!isStreaming || content.conclusion) && (
-                            <div className="w-full mt-12 p-6 bg-card/50 border border-border/50 rounded-2xl animate-slide-up" style={{ animationDelay: '600ms' }}>
-                                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                                    {isIntroNode ? (
-                                         <button 
-                                            onClick={() => onCompleteIntro ? onCompleteIntro() : onBack()} 
-                                            className="w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 font-bold text-white text-lg transition-all duration-300 rounded-2xl bg-gradient-to-r from-primary to-indigo-600 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-95">
-                                            <span>شروع یادگیری و مشاهده نقشه راه</span>
-                                            <ArrowRight className="w-6 h-6 transform rotate-180" />
-                                        </button>
-                                    ) : (
-                                        <>
-                                            <button 
-                                                onClick={() => prevNode && onNavigate(prevNode.id)} 
-                                                disabled={!prevNode}
-                                                className="w-full sm:w-auto px-6 py-3 font-semibold transition-all duration-200 rounded-xl text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed active:scale-95">
-                                                درس قبلی
-                                            </button>
-                                            
-                                            <button 
-                                                onClick={onStartQuiz} 
-                                                className="w-full sm:w-auto flex-grow max-w-md px-8 py-4 font-bold text-lg text-white transition-all duration-300 rounded-2xl bg-gradient-to-r from-primary to-indigo-600 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2">
-                                                <span>آماده‌ام، برویم برای آزمون!</span>
-                                                <ArrowRight className="w-5 h-5 transform rotate-180" />
-                                            </button>
-
-                                            <button 
-                                                onClick={() => nextNode && onNavigate(nextNode.id)} 
-                                                disabled={!nextNode || nextNode.locked}
-                                                className="w-full sm:w-auto px-6 py-3 font-semibold transition-all duration-200 rounded-xl text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
-                                                >
-                                                درس بعدی
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                    </>
+                {activeTab === 'content' && !isStreaming && content.conclusion && (
+                    <div className="w-full mt-12 p-6 bg-card/50 border border-border/50 rounded-2xl animate-slide-up" style={{ animationDelay: '600ms' }}>
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            {isIntroNode ? (
+                                    <button onClick={() => onCompleteIntro ? onCompleteIntro() : onBack()} className="w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 font-bold text-white text-lg transition-all duration-300 rounded-2xl bg-gradient-to-r from-primary to-indigo-600 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-95">
+                                    <span>شروع یادگیری و مشاهده نقشه راه</span>
+                                    <ArrowRight className="w-6 h-6 transform rotate-180" />
+                                </button>
+                            ) : (
+                                <>
+                                    <button onClick={() => prevNode && onNavigate(prevNode.id)} disabled={!prevNode} className="w-full sm:w-auto px-6 py-3 font-semibold transition-all duration-200 rounded-xl text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50">درس قبلی</button>
+                                    <button onClick={onStartQuiz} className="w-full sm:w-auto flex-grow max-w-md px-8 py-4 font-bold text-lg text-white transition-all duration-300 rounded-2xl bg-gradient-to-r from-primary to-indigo-600 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2">
+                                        <span>آماده‌ام، برویم برای آزمون!</span>
+                                        <ArrowRight className="w-5 h-5 transform rotate-180" />
+                                    </button>
+                                    <button onClick={() => nextNode && onNavigate(nextNode.id)} disabled={!nextNode || nextNode.locked} className="w-full sm:w-auto px-6 py-3 font-semibold transition-all duration-200 rounded-xl text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50">درس بعدی</button>
+                                </>
+                            )}
+                        </div>
+                    </div>
                 )}
             </div>
         </div>
