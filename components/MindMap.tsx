@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { MindMapNode as MindMapNodeType } from '../types';
 import { CheckCircle, Lock, FileQuestion, Target, Flag, Trophy, Sparkles, BrainCircuit } from './icons';
@@ -47,6 +48,7 @@ const MindMapNodeItem = React.memo(({
     suggestedIndex, 
     isActive, 
     isRemedial, 
+    isAdaptive,
     isIntro, 
     isConclusion,
     width, 
@@ -64,6 +66,7 @@ const MindMapNodeItem = React.memo(({
     suggestedIndex: number;
     isActive: boolean;
     isRemedial: boolean;
+    isAdaptive: boolean;
     isIntro: boolean;
     isConclusion: boolean;
     width: number;
@@ -82,7 +85,7 @@ const MindMapNodeItem = React.memo(({
 
     // Difficulty Color Bar
     let difficultyColor = 'bg-primary';
-    if (isRemedial) difficultyColor = 'bg-purple-500';
+    if (isRemedial || isAdaptive) difficultyColor = 'bg-purple-500';
     else if (node.difficulty < 0.4) difficultyColor = 'bg-emerald-500';
     else if (node.difficulty > 0.7) difficultyColor = 'bg-rose-500';
 
@@ -170,6 +173,7 @@ const MindMapNodeItem = React.memo(({
                 ${isActive ? 'border-primary/80 bg-card/90' : 'border-white/40 dark:border-white/10 hover:border-primary/50 bg-card/70'} 
                 ${status === 'failed' ? 'border-destructive/60 bg-destructive/10' : ''}
                 ${isRemedial ? 'border-purple-400/50 bg-purple-50/80 dark:bg-purple-900/20' : ''}
+                ${isAdaptive ? 'border-blue-400/50 bg-blue-50/80 dark:bg-blue-900/20' : ''}
              `}>
                 
                 {/* Top Gradient Line */}
@@ -178,7 +182,7 @@ const MindMapNodeItem = React.memo(({
                 <div className="flex-1 p-3 flex flex-col justify-between relative z-10">
                     {/* Header */}
                     <div className="flex items-start justify-between gap-2">
-                         <h3 className={`font-bold leading-snug text-foreground line-clamp-2 ${isPortrait ? 'text-xs' : 'text-sm'} ${isRemedial ? 'text-purple-700 dark:text-purple-300' : ''}`} dir="rtl">
+                         <h3 className={`font-bold leading-snug text-foreground line-clamp-2 ${isPortrait ? 'text-xs' : 'text-sm'} ${isRemedial || isAdaptive ? 'text-purple-700 dark:text-purple-300' : ''}`} dir="rtl">
                             {node.title}
                          </h3>
                          {isLocked && <Lock className="w-4 h-4 text-muted-foreground/50 shrink-0" />}
@@ -196,7 +200,7 @@ const MindMapNodeItem = React.memo(({
 
                         {!isLocked && status !== 'completed' && status !== 'failed' && (
                              <div className="bg-primary/10 p-1 rounded-md text-primary opacity-0 group-hover:opacity-100 transition-all transform translate-y-2 group-hover:translate-y-0">
-                                 {isRemedial ? <Sparkles className="w-4 h-4 text-purple-500" /> : <BrainCircuit className="w-4 h-4" />}
+                                 {isRemedial || isAdaptive ? <Sparkles className="w-4 h-4 text-purple-500" /> : <BrainCircuit className="w-4 h-4" />}
                              </div>
                         )}
                     </div>
@@ -214,6 +218,13 @@ const MindMapNodeItem = React.memo(({
                 <div className="absolute -top-3 -right-3 z-30 flex items-center justify-center w-7 h-7 text-xs font-bold text-white rounded-full bg-gradient-to-br from-primary to-indigo-600 shadow-lg ring-2 ring-background animate-bounce">
                     {suggestedIndex + 1}
                 </div>
+             )}
+
+             {/* Adaptive Badge */}
+             {isAdaptive && (
+                 <div className="absolute -top-2 left-1/2 -translate-x-1/2 z-30 bg-blue-500 text-white text-[8px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                     شخصی
+                 </div>
              )}
         </div>
     );
@@ -485,6 +496,7 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
                     const suggestedIndex = showSuggestedPath && suggestedPath ? suggestedPath.indexOf(node.id) : -1;
                     const isActive = activeNodeId === node.id;
                     const isRemedial = node.type === 'remedial';
+                    const isAdaptive = node.isAdaptive || false;
                     const isIntro = node.parentId === null;
                     const isConclusion = node.title.includes('نتیجه‌گیری') || node.title.includes('جمع‌بندی') || node.title.toLowerCase().includes('conclusion');
 
@@ -499,6 +511,7 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
                             suggestedIndex={suggestedIndex}
                             isActive={isActive}
                             isRemedial={isRemedial}
+                            isAdaptive={isAdaptive}
                             isIntro={isIntro}
                             isConclusion={isConclusion}
                             width={nodeWidth}

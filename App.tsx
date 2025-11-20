@@ -1,7 +1,8 @@
 
+
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef, Suspense } from 'react';
 import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession } from './types';
-import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse, generateRemedialNode, generateDailyChallenge, generateDeepAnalysis } from './services/geminiService';
+import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse, generateRemedialNode, generateDailyChallenge, generateDeepAnalysis, generateAdaptiveModifications } from './services/geminiService';
 import { FirebaseService } from './services/firebaseService';
 import { ArrowRight, BookOpen, Brain, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize, SlidersHorizontal, ChevronDown, Sparkles, Trash, Edit, Flame, Diamond, Scroll, User, LogOut, Wand, Bell, Shuffle, FileQuestion } from './components/icons';
 import Spinner from './components/Spinner';
@@ -133,8 +134,17 @@ function appReducer(state: AppState, action: any): AppState {
       return { ...state, preAssessment: { ...state.preAssessment, isStreaming: false } };
     case 'SUBMIT_PRE_ASSESSMENT':
         return { ...state, status: AppStatus.GRADING_PRE_ASSESSMENT, preAssessmentAnswers: action.payload };
-    case 'PRE_ASSESSMENT_ANALYSIS_LOADED':
-        return { ...state, status: AppStatus.PRE_ASSESSMENT_REVIEW, preAssessmentAnalysis: action.payload };
+    case 'START_ADAPTING_PLAN':
+         return { ...state, status: AppStatus.ADAPTING_PLAN, loadingMessage: 'هوش مصنوعی در حال بازآرایی نقشه یادگیری بر اساس عملکرد شماست...' };
+    case 'PLAN_ADAPTED':
+         return { 
+             ...state, 
+             status: AppStatus.PRE_ASSESSMENT_REVIEW, 
+             preAssessmentAnalysis: action.payload.analysis,
+             mindMap: action.payload.mindMap,
+             suggestedPath: action.payload.suggestedPath,
+             loadingMessage: null
+         };
     case 'START_PERSONALIZED_LEARNING':
       return { ...state, status: AppStatus.LEARNING, activeNodeId: null, activeQuiz: null, quizResults: null };
     case 'SELECT_NODE':
@@ -1063,10 +1073,80 @@ function App() {
       dispatch({ type: 'SUBMIT_PRE_ASSESSMENT', payload: answers });
       if (state.preAssessment) {
           try {
+            // 1. Get detailed analysis
             const analysis = await analyzePreAssessment(state.preAssessment.questions, answers, state.sourceContent);
-            dispatch({ type: 'PRE_ASSESSMENT_ANALYSIS_LOADED', payload: analysis });
+            
+            // 2. Trigger Adaptive Restructuring
+            dispatch({ type: 'START_ADAPTING_PLAN' });
+
+            // 3. Generate modifications based on analysis
+            const modifications = await generateAdaptiveModifications(state.mindMap, analysis);
+            
+            // 4. Apply modifications locally
+            let newMindMap = [...state.mindMap];
+            let newPath = [...(state.suggestedPath || [])];
+
+            // Track added nodes to notify user
+            let modificationCount = 0;
+
+            modifications.forEach(mod => {
+                if (mod.action === 'ADD_NODE' && mod.newNode && mod.targetNodeId) {
+                    const targetParent = newMindMap.find(n => n.id === mod.targetNodeId);
+                    if (targetParent) {
+                        const newNode: MindMapNode = {
+                            id: 'adaptive_' + Math.random().toString(36).substr(2, 9),
+                            title: mod.newNode.title,
+                            parentId: targetParent.id, // Add as sibling (child of same parent) or child? Prompt said sibling logic.
+                            locked: !!targetParent.parentId, // Lock if parent is locked
+                            difficulty: mod.newNode.difficulty,
+                            isExplanatory: true,
+                            isAdaptive: true, // Mark as adaptive
+                            sourcePages: [],
+                            type: mod.newNode.type,
+                        };
+                        newMindMap.push(newNode);
+                        
+                        // Update path: Insert before the original node if possible, or at logical position
+                        // Since targetNodeId in prompt logic was "Parent of weak concept", we add it as a child of that parent.
+                        // Effectively, it becomes a sibling of the weak concept.
+                        // We can push it to the suggested path.
+                        
+                        // Simple logic: Add to path right after parent
+                        const parentIndex = newPath.indexOf(targetParent.id);
+                        if (parentIndex !== -1) {
+                            newPath.splice(parentIndex + 1, 0, newNode.id);
+                        } else {
+                            newPath.push(newNode.id);
+                        }
+                        modificationCount++;
+                    }
+                } else if (mod.action === 'UNLOCK_NODE' && mod.targetNodeId) {
+                     const target = newMindMap.find(n => n.id === mod.targetNodeId);
+                     if (target) {
+                         target.locked = false;
+                         // Also unlock children? No, keep it simple.
+                         modificationCount++;
+                     }
+                }
+            });
+
+            if (modificationCount > 0) {
+                showNotification(`${modificationCount} تغییر هوشمند در برنامه اعمال شد.`);
+            }
+
+            dispatch({ 
+                type: 'PLAN_ADAPTED', 
+                payload: { 
+                    analysis, 
+                    mindMap: newMindMap,
+                    suggestedPath: newPath 
+                } 
+            });
+
           } catch (err: any) {
-              console.error(err);
+              console.error("Adaptive Flow Error", err);
+              // Fallback to standard flow if adaptive fails
+               dispatch({ type: 'SET_ERROR', payload: 'خطا در تحلیل هوشمند. لطفاً دوباره تلاش کنید.' });
           }
       }
   };
@@ -1374,12 +1454,18 @@ function App() {
             )}
 
             {/* Loading State */}
-            {(state.status === AppStatus.LOADING || state.status === AppStatus.GENERATING_REMEDIAL || state.status === AppStatus.GRADING_PRE_ASSESSMENT) && (
+            {(state.status === AppStatus.LOADING || state.status === AppStatus.GENERATING_REMEDIAL || state.status === AppStatus.GRADING_PRE_ASSESSMENT || state.status === AppStatus.ADAPTING_PLAN) && (
                 <div className="flex flex-col items-center justify-center h-full space-y-6 fade-in">
                     <Spinner />
                     <p className="text-xl font-medium text-muted-foreground animate-pulse">
                         {state.loadingMessage || (state.status === AppStatus.GRADING_PRE_ASSESSMENT ? 'در حال تحلیل پاسخ‌ها و تعیین سطح...' : 'در حال پردازش...')}
                     </p>
+                    {state.status === AppStatus.ADAPTING_PLAN && (
+                        <div className="flex items-center gap-2 text-sm text-purple-500 bg-purple-500/10 px-3 py-1 rounded-full">
+                             <Sparkles className="w-4 h-4 animate-pulse" />
+                             <span>بهینه‌سازی هوشمند مسیر یادگیری</span>
+                        </div>
+                    )}
                 </div>
             )}
 

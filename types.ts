@@ -13,8 +13,9 @@ export interface MindMapNode {
     locked: boolean;
     difficulty: number;
     isExplanatory: boolean;
+    isAdaptive?: boolean; // New: Indicates if node was added dynamically
     sourcePages: number[];
-    type: 'core' | 'remedial' | 'extension'; // Added for Adaptive Branching
+    type: 'core' | 'remedial' | 'extension';
     children?: MindMapNode[];
   }
 
@@ -76,15 +77,19 @@ export interface MindMapNode {
     strengths: string[];
     weaknesses: string[];
     recommendedLevel: string;
+    // New structured data for the Adaptive Engine
+    weaknessTags: string[]; 
+    strengthTags: string[];
   }
 
   export enum AppStatus {
     IDLE = 'IDLE',
-    WIZARD = 'WIZARD', // New status for Personalization Wizard
+    WIZARD = 'WIZARD',
     LOADING = 'LOADING',
     PLAN_REVIEW = 'PLAN_REVIEW',
     PRE_ASSESSMENT = 'PRE_ASSESSMENT',
     GRADING_PRE_ASSESSMENT = 'GRADING_PRE_ASSESSMENT',
+    ADAPTING_PLAN = 'ADAPTING_PLAN', // New Status
     PRE_ASSESSMENT_REVIEW = 'PRE_ASSESSMENT_REVIEW',
     LEARNING = 'LEARNING',
     VIEWING_NODE = 'VIEWING_NODE',
@@ -123,32 +128,29 @@ export interface MindMapNode {
       lastAttemptScore: number;
   }
 
-  // --- Engagement Loop Additions ---
   export interface Reward {
       id: string;
       type: 'deep_analysis' | 'notebook';
       title: string;
       content: string;
       unlockedAt: string;
-      relatedNodeId?: string; // If attached to a specific node
+      relatedNodeId?: string;
   }
 
   export interface UserBehavior {
-      lastLoginDate: string; // ISO string
+      lastLoginDate: string;
       dailyStreak: number;
-      studyHours: number[]; // Histogram of study hours (0-23)
-      gritScore: number; // Metric for persistence (retries vs quits)
-      totalPoints: number; // Professional currency
+      studyHours: number[];
+      gritScore: number;
+      totalPoints: number;
   }
-  // ---------------------------------
 
-  // --- User Panel & Account Additions ---
   export interface UserProfile {
       id: string;
-      googleId?: string; // Added for Google Auth
+      googleId?: string;
       name: string;
       email: string;
-      avatarUrl?: string; // Added for Google Avatar
+      avatarUrl?: string;
       avatarColor: string;
       joinDate: string;
   }
@@ -160,9 +162,8 @@ export interface MindMapNode {
       lastModified: string;
       progressPercentage: number;
       topic: string;
-      data: SavableState; // The full state blob
+      data: SavableState;
   }
-  // --------------------------------------
 
   export interface AppState {
     theme: 'light' | 'balanced' | 'dark';
@@ -187,25 +188,18 @@ export interface MindMapNode {
     correctiveSummary: string;
     loadingMessage: string | null;
     error: string | null;
-    // Coach/Chat state
     isChatOpen: boolean;
     isChatFullScreen: boolean;
     chatHistory: ChatMessage[];
-    
-    // Engagement State
     behavior: UserBehavior;
     rewards: Reward[];
     showDailyBriefing: boolean;
     dailyChallengeContent: string | null;
-
-    // User Account State
     currentUser: UserProfile | null;
     isUserPanelOpen: boolean;
     savedSessions: SavedSession[];
-    currentSessionId: string | null; // Tracks the active session for auto-save
+    currentSessionId: string | null;
     isAutoSaving: boolean;
-    
-    // Cloud Sync State
     cloudSyncStatus: 'idle' | 'syncing' | 'error' | 'success';
     cloudAccessToken: string | null;
     cloudLastSync: string | null;
@@ -223,7 +217,6 @@ export interface MindMapNode {
     nodeContents: { [key: string]: NodeContent };
     userProgress: { [key: string]: NodeProgress };
     weaknesses: Weakness[];
-    // Save Engagement Data
     behavior: UserBehavior;
     rewards: Reward[];
   }

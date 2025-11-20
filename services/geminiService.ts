@@ -41,6 +41,7 @@ function flattenMindMap(node: any, parentId: string | null = null): MindMapNode[
         isExplanatory: node.isExplanatory || false,
         sourcePages: node.sourcePages || [],
         type: 'core',
+        isAdaptive: false
     };
 
     let childrenNodes: MindMapNode[] = [];
@@ -218,6 +219,7 @@ export async function generateLearningPlan(
                                 isExplanatory: node.isExplanatory || false,
                                 sourcePages: node.sourcePages || [],
                                 type: 'core',
+                                isAdaptive: false
                             }));
                         } else if (resultJson.mindMap && Array.isArray(resultJson.mindMap.nodes)) {
                              mindMap = resultJson.mindMap.nodes.map((node: any) => ({
@@ -229,6 +231,7 @@ export async function generateLearningPlan(
                                 isExplanatory: node.isExplanatory || false,
                                 sourcePages: node.sourcePages || [],
                                 type: 'core',
+                                isAdaptive: false
                             }));
                         } else if (resultJson.mindMap && typeof resultJson.mindMap === 'object') {
                             mindMap = flattenMindMap(resultJson.mindMap);
@@ -274,6 +277,7 @@ export async function generateLearningPlan(
                                     isExplanatory: true,
                                     sourcePages: [],
                                     type: 'core',
+                                    isAdaptive: false
                                 };
                                 mindMap.unshift(newRoot);
                                 // Link old roots to new root
@@ -302,6 +306,7 @@ export async function generateLearningPlan(
                                  isExplanatory: false,
                                  sourcePages: [],
                                  type: 'core',
+                                 isAdaptive: false
                              });
                         }
                         // -------------------------------------------------------------
@@ -363,16 +368,17 @@ export async function generateLearningPlan(
     });
 }
 
-// ... (PreAssessmentAnalysis code remains similar, mostly prompt tweaks if needed)
 const preAssessmentAnalysisSchema = {
     type: Type.OBJECT,
     properties: {
         overallAnalysis: { type: Type.STRING, description: "تحلیل کلی و دوستانه." },
         strengths: { type: Type.ARRAY, items: { type: Type.STRING }, description: "نقاط قوت." },
         weaknesses: { type: Type.ARRAY, items: { type: Type.STRING }, description: "نقاط قابل بهبود." },
-        recommendedLevel: { type: Type.STRING, enum: ["مبتدی", "متوسط", "پیشرفته"], description: "سطح پیشنهادی." }
+        recommendedLevel: { type: Type.STRING, enum: ["مبتدی", "متوسط", "پیشرفته"], description: "سطح پیشنهادی." },
+        weaknessTags: { type: Type.ARRAY, items: { type: Type.STRING }, description: "لیست کلمات کلیدی دقیق موضوعاتی که کاربر در آنها ضعیف بوده است. (مثلاً: 'نظریه ریسمان', 'انتگرال دوگانه')." },
+        strengthTags: { type: Type.ARRAY, items: { type: Type.STRING }, description: "لیست کلمات کلیدی دقیق موضوعاتی که کاربر در آنها قوی بوده است." },
     },
-    required: ["overallAnalysis", "strengths", "weaknesses", "recommendedLevel"]
+    required: ["overallAnalysis", "strengths", "weaknesses", "recommendedLevel", "weaknessTags", "strengthTags"]
 };
 
 export async function analyzePreAssessment(
@@ -383,9 +389,11 @@ export async function analyzePreAssessment(
     return withRetry(async () => {
         const prompt = `
         نتایج پیش‌آزمون کاربر را تحلیل کن.
-        به جای قضاوت (ضعیف/قوی)، از ادبیات "رشد" استفاده کن (مثلاً: "این مباحث برایت جدید است").
-        اگر کاربر سوالات سخت را غلط زده ولی آسان‌ها را درست، پیشنهاد سطح متوسط بده.
         
+        وظیفه مهم:
+        علاوه بر تحلیل متنی، کلمات کلیدی دقیق موضوعاتی که کاربر در آنها ضعف یا قوت داشته را در آرایه‌های weaknessTags و strengthTags استخراج کن.
+        این تگ‌ها برای تغییر ساختار نقشه ذهنی استفاده خواهند شد، پس باید دقیقاً با مفاهیم موجود در متن مرتبط باشند.
+
         متن:
         ${sourceContent.substring(0, 5000)}... (truncated)
 
@@ -402,6 +410,69 @@ export async function analyzePreAssessment(
         });
         // Ensure cleaning even for schema mode if necessary, though usually not needed
         const cleanText = cleanJsonString(response.text || '{}');
+        return JSON.parse(cleanText);
+    });
+}
+
+// --- NEW: Adaptive Engine Logic ---
+
+interface AdaptiveModification {
+    action: 'ADD_NODE' | 'UNLOCK_NODE';
+    targetNodeId?: string; // For UNLOCK or as parent for ADD
+    newNode?: {
+        title: string;
+        difficulty: number;
+        type: 'remedial' | 'extension';
+    };
+    reason: string;
+}
+
+export async function generateAdaptiveModifications(
+    currentMindMap: MindMapNode[],
+    analysis: PreAssessmentAnalysis
+): Promise<AdaptiveModification[]> {
+    return withRetry(async () => {
+        const prompt = `
+        You are the "Adaptive Engine" for a learning platform.
+        
+        Current Status:
+        The user just took a pre-assessment.
+        Weak Topics: ${JSON.stringify(analysis.weaknessTags)}
+        Strong Topics: ${JSON.stringify(analysis.strengthTags)}
+        
+        Current Mind Map Structure (Simplified):
+        ${JSON.stringify(currentMindMap.map(n => ({ id: n.id, title: n.title, parentId: n.parentId })))}
+        
+        Your Goal: Modify the mind map to personalize the learning path.
+        
+        Rules:
+        1. **Weakness Handling (High Priority):** If the user is weak in a topic X, find the existing node that covers X. Create a NEW "Remedial" node (Bridge Node) that should be a child of that node's *parent* (sibling to the main node) or a prerequisite. 
+           *Action*: 'ADD_NODE'. 
+           *TargetNodeId*: The ID of the *parent* of the concept they struggled with (so the new node sits alongside it). If root, target root.
+        
+        2. **Strength Handling:** If the user is strong in a topic Y, find the node covering Y. Mark it to be unlocked immediately.
+           *Action*: 'UNLOCK_NODE'.
+           *TargetNodeId*: The ID of the node covering topic Y.
+
+        Return a JSON array of modifications. Limit to max 3 impactful changes.
+
+        Schema:
+        Array of objects:
+        {
+            "action": "ADD_NODE" | "UNLOCK_NODE",
+            "targetNodeId": "id_from_mindmap",
+            "newNode": { "title": "Bridge: Basic Concepts of [Topic]", "difficulty": 0.2, "type": "remedial" } (Only for ADD_NODE),
+            "reason": "User failed question about X"
+        }
+        `;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: { parts: [{ text: prompt }] },
+            config: { responseMimeType: "application/json" }
+        });
+
+        const cleanText = cleanJsonString(response.text || '[]');
         return JSON.parse(cleanText);
     });
 }
@@ -644,7 +715,8 @@ export async function generateRemedialNode(
             difficulty: data.difficulty || 0.3,
             isExplanatory: true,
             sourcePages: [],
-            type: 'remedial'
+            type: 'remedial',
+            isAdaptive: true
         };
     });
 }
