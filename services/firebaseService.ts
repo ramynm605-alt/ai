@@ -32,6 +32,18 @@ export const FirebaseService = {
                 }
                 firebase.initializeApp(firebaseConfig);
                 db = firebase.firestore();
+                
+                // Enable Offline Persistence
+                // This allows the app to work with unstable internet and sync later
+                db.enablePersistence({ synchronizeTabs: true })
+                    .catch((err: any) => {
+                        if (err.code == 'failed-precondition') {
+                            console.warn("Firestore persistence failed: Multiple tabs open.");
+                        } else if (err.code == 'unimplemented') {
+                             console.warn("Firestore persistence not supported by browser.");
+                        }
+                    });
+
                 return true;
             } catch (e) {
                 console.error("Firebase Init Error:", e);

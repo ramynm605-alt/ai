@@ -1,7 +1,4 @@
 
-
-
-
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef, Suspense } from 'react';
 import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse, generateRemedialNode, generateDailyChallenge, generateDeepAnalysis } from './services/geminiService';
@@ -297,8 +294,43 @@ function appReducer(state: AppState, action: any): AppState {
         return { ...state, status: AppStatus.GRADING_QUIZ };
     case 'SUMMARY_LOADED':
         return { ...state, status: AppStatus.SUMMARY, finalExam: null, correctiveSummary: action.payload.summary };
-    case 'LOAD_STATE':
-        return { ...initialState, ...action.payload, currentUser: state.currentUser, savedSessions: state.savedSessions, currentSessionId: action.sessionId, status: action.payload.preAssessmentAnalysis ? AppStatus.LEARNING : AppStatus.IDLE };
+    case 'LOAD_STATE': {
+        const loadedState = action.payload;
+        let nextStatus = AppStatus.IDLE;
+
+        // Intelligently determine status based on what data is present
+        if (loadedState.finalExam) {
+            nextStatus = AppStatus.FINAL_EXAM;
+        } else if (loadedState.quizResults) {
+            nextStatus = AppStatus.QUIZ_REVIEW;
+        } else if (loadedState.activeQuiz) {
+            nextStatus = AppStatus.TAKING_QUIZ;
+        } else if (loadedState.activeNodeId) {
+             // If active node exists, decide whether to view it or just show map
+             // Default to viewing if we have its content loaded
+             if (loadedState.nodeContents && loadedState.nodeContents[loadedState.activeNodeId]) {
+                 nextStatus = AppStatus.VIEWING_NODE;
+             } else {
+                 nextStatus = AppStatus.LEARNING;
+             }
+        } else if (loadedState.preAssessmentAnalysis) {
+            nextStatus = AppStatus.LEARNING;
+        } else if (loadedState.preAssessment) {
+             nextStatus = AppStatus.PRE_ASSESSMENT;
+        } else if (loadedState.mindMap && loadedState.mindMap.length > 0) {
+             nextStatus = AppStatus.PLAN_REVIEW;
+        }
+
+        return { 
+            ...initialState, 
+            ...loadedState, 
+            currentUser: state.currentUser, 
+            savedSessions: state.savedSessions, 
+            currentSessionId: action.sessionId, 
+            status: nextStatus,
+            loadingMessage: null
+        };
+    }
     case 'CHECK_DAILY_STATUS': {
         const lastLogin = new Date(state.behavior.lastLoginDate);
         const now = new Date();
