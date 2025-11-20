@@ -296,7 +296,19 @@ function appReducer(state: AppState, action: any): AppState {
         return { ...state, status: AppStatus.SUMMARY, finalExam: null, correctiveSummary: action.payload.summary };
     case 'LOAD_STATE': {
         const loadedState = action.payload;
-        let nextStatus = AppStatus.IDLE;
+        
+        // --- VALIDATION: Ensure critical data exists ---
+        if (!loadedState || typeof loadedState !== 'object') {
+            return { ...state, error: "فایل جلسه نامعتبر است." };
+        }
+        
+        const hasMindMap = loadedState.mindMap && Array.isArray(loadedState.mindMap) && loadedState.mindMap.length > 0;
+        if (!hasMindMap) {
+             return { ...state, error: "اطلاعات نقشه ذهنی در این جلسه یافت نشد." };
+        }
+        // ----------------------------------------------
+
+        let nextStatus = AppStatus.PLAN_REVIEW; // Default fallback if mindmap exists
 
         // Intelligently determine status based on what data is present
         if (loadedState.finalExam) {
@@ -306,19 +318,19 @@ function appReducer(state: AppState, action: any): AppState {
         } else if (loadedState.activeQuiz) {
             nextStatus = AppStatus.TAKING_QUIZ;
         } else if (loadedState.activeNodeId) {
-             // If active node exists, decide whether to view it or just show map
-             // Default to viewing if we have its content loaded
+             // If active node exists, check if content is loaded
              if (loadedState.nodeContents && loadedState.nodeContents[loadedState.activeNodeId]) {
                  nextStatus = AppStatus.VIEWING_NODE;
              } else {
                  nextStatus = AppStatus.LEARNING;
              }
+        } else if (loadedState.userProgress && Object.keys(loadedState.userProgress).length > 0) {
+             // If user has made progress, assume they are in Learning mode
+             nextStatus = AppStatus.LEARNING;
         } else if (loadedState.preAssessmentAnalysis) {
             nextStatus = AppStatus.LEARNING;
         } else if (loadedState.preAssessment) {
              nextStatus = AppStatus.PRE_ASSESSMENT;
-        } else if (loadedState.mindMap && loadedState.mindMap.length > 0) {
-             nextStatus = AppStatus.PLAN_REVIEW;
         }
 
         return { 
@@ -719,6 +731,10 @@ function App() {
   };
 
   const handleLoadSession = (session: SavedSession) => {
+      if (!session || !session.data) {
+          dispatch({ type: 'SET_ERROR', payload: 'خطا: داده‌های این جلسه خالی است.' });
+          return;
+      }
       dispatch({ type: 'LOAD_STATE', payload: session.data, sessionId: session.id });
   };
   
