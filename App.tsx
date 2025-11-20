@@ -1,4 +1,5 @@
 
+
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef, Suspense } from 'react';
 import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse, generateRemedialNode, generateDailyChallenge, generateDeepAnalysis } from './services/geminiService';
@@ -753,6 +754,7 @@ function App() {
                 strengths, 
                 weaknesses,
                 isIntro,
+                node.type, // Pass the node type (core, remedial, etc.)
                 (partialContent) => dispatch({ type: 'NODE_CONTENT_STREAM_UPDATE', payload: partialContent })
             ).then(content => {
                 dispatch({ type: 'NODE_CONTENT_STREAM_END', payload: { nodeId, content } });

@@ -102,12 +102,13 @@ export async function generateLearningPlan(
         **وظیفه اول: ایجاد نقشه ذهنی (Chunking)**
         بر اساس محتوای زیر و اولویت‌های کاربر، یک طرح درس به صورت نقشه ذهنی سلسله مراتبی ایجاد کن.
         
-        **قوانین ساختاری (بسیار مهم):**
-        1.  **گره ریشه (اجباری):** باید دقیقاً یک گره با parentId: null وجود داشته باشد. عنوان آن باید "مقدمه و نقشه راه" باشد.
-        2.  **گره‌های اصلی:** سایر گره‌ها باید به طور مستقیم یا غیرمستقیم فرزند این گره باشند.
-        3.  **گره پایان (اجباری):** آخرین گره در مسیر یادگیری باید "جمع‌بندی و نتیجه‌گیری" باشد.
-        4.  **تشخیص نوع محتوا:** اگر متن ریاضی است، گره‌ها باید "قضیه/اثبات" باشند. اگر تاریخ است، "رویداد/تحلیل". ساختار را هوشمندانه انتخاب کن.
-        5.  **فشردگی:** بین ۳ تا ۱۰ گره کل.
+        **قوانین ساختاری (بسیار مهم - تفکیک محتوا):**
+        1. **اصل عدم هم‌پوشانی (Mutually Exclusive):** موضوعات را به گونه‌ای خرد کن که محتوای هر گره کاملاً متمایز باشد. گره فرزند نباید کل محتوای گره پدر را تکرار کند، بلکه باید جزئی از آن باشد.
+        2.  **گره ریشه (اجباری):** باید دقیقاً یک گره با parentId: null وجود داشته باشد. عنوان آن باید "مقدمه و نقشه راه" باشد.
+        3.  **گره‌های اصلی:** سایر گره‌ها باید به طور مستقیم یا غیرمستقیم فرزند این گره باشند.
+        4.  **گره پایان (اجباری):** آخرین گره در مسیر یادگیری باید "جمع‌بندی و نتیجه‌گیری" باشد.
+        5.  **تشخیص نوع محتوا:** اگر متن ریاضی است، گره‌ها باید "قضیه/اثبات" باشند. اگر تاریخ است، "رویداد/تحلیل". ساختار را هوشمندانه انتخاب کن.
+        6.  **فشردگی:** بین ۳ تا ۱۰ گره کل.
 
         **وظیفه دوم: ایجاد پیش‌آزمون تطبیقی**
         ۵ سوال طراحی کن که دانش اولیه کاربر را بسنجد.
@@ -394,28 +395,65 @@ export async function generateNodeContent(
     strengths: string[],
     weaknesses: string[],
     isIntroNode: boolean,
+    nodeType: 'core' | 'remedial' | 'extension',
     onStreamUpdate: (partialContent: NodeContent) => void
 ): Promise<NodeContent> {
     return withRetry(async () => {
         const preferenceInstructions = getPreferenceInstructions(preferences);
+        
+        let specificInstruction = '';
+        
+        if (nodeType === 'remedial') {
+            // CRITICAL FIX FOR REMEDIAL NODES:
+            // Ensure it ONLY covers the weaknesses, not the whole topic again.
+            specificInstruction = `
+            *** حالت درس تقویتی (Remedial Mode) ***
+            کاربر در مبحث "${nodeTitle}" دچار کج‌فهمی شده است.
+            مشکلات خاص کاربر (ضعف‌ها): ${weaknesses.length > 0 ? JSON.stringify(weaknesses) : 'عدم درک مفاهیم پایه این بخش'}.
+            
+            دستورالعمل ویژه:
+            1. **فقط و فقط** روی رفع این نقاط ضعف تمرکز کن.
+            2. از تکرار کل درس خودداری کن. مستقیم سر اصل مطلب برو.
+            3. توضیح بده چرا پاسخ‌های اشتباه (در صورت وجود در متن ضعف) غلط بوده‌اند.
+            4. یک مثال بسیار ساده و متفاوت از درس اصلی بزن تا گره ذهنی باز شود.
+            `;
+        } else {
+            // CRITICAL FIX FOR CORE NODES:
+            // Ensure distinct content extraction (Chunking).
+            specificInstruction = `
+            *** حالت درس اصلی (Core Lesson) ***
+            عنوان درس: "${nodeTitle}"
+            
+            دستورالعمل ویژه (جلوگیری از تکرار):
+            1. **فقط** مطالبی را از متن استخراج کن که **دقیقاً** زیرمجموعه "${nodeTitle}" هستند.
+            2. از نوشتن مقدمه‌های کلی که مربوط به کل کتاب/مقاله است خودداری کن.
+            3. از نوشتن مطالبی که احتمالا در گره‌های والد یا فرزند این گره می‌آید پرهیز کن.
+            4. تمرکز مطلق روی جزئیات همین بخش داشته باش.
+            `;
+        }
+
         let adaptiveInstruction = '';
-        if (weaknesses.some(w => nodeTitle.includes(w))) {
-            adaptiveInstruction = "این نقطه ضعف کاربر است. بسیار ساده و با مثال‌های ملموس توضیح بده.";
-        } else if (strengths.some(s => nodeTitle.includes(s))) {
-            adaptiveInstruction = "کاربر در این موضوع مسلط است. نکات ظریف و پیشرفته را بگو.";
+        if (nodeType !== 'remedial') {
+             if (weaknesses.some(w => nodeTitle.includes(w))) {
+                adaptiveInstruction = "کاربر قبلاً در مفاهیم مرتبط با این عنوان ضعف نشان داده. کمی ساده‌تر و با مثال بیشتر توضیح بده.";
+            } else if (strengths.some(s => nodeTitle.includes(s))) {
+                adaptiveInstruction = "کاربر در این موضوع مسلط است. سریع‌تر از بدیهیات بگذر و به نکات ظریف و پیشرفته بپرداز.";
+            }
         }
 
         const prompt = `
-        محتوای درس "${nodeTitle}" را ایجاد کن.
+        نقش تو: معلم خصوصی هوشمند.
         
-        **قوانین:**
-        1. ساختار ۵ بخشی را رعایت کن (INTRODUCTION, THEORY, EXAMPLE, CONNECTION, CONCLUSION).
-        2. **بخش جدید:** در انتهای خروجی، ۳ "سوال پیشنهادی" (Suggested Questions) ایجاد کن که کاربر ممکن است پس از خواندن متن برایش پیش بیاید. این سوالات باید تفکربرانگیز باشند (روش سقراطی).
-        3. فرمت سوالات: هر سوال را در یک خط جداگانه بعد از هدر ###QUESTIONS### بنویس.
+        ${specificInstruction}
 
         ${preferenceInstructions}
         ${adaptiveInstruction}
         
+        **قوانین فرمت خروجی:**
+        1. ساختار ۵ بخشی (INTRODUCTION, THEORY, EXAMPLE, CONNECTION, CONCLUSION).
+        2. در انتهای خروجی، ۳ "سوال پیشنهادی" (Suggested Questions) ایجاد کن.
+        3. فرمت سوالات: هر سوال را در یک خط جداگانه بعد از هدر ###QUESTIONS### بنویس.
+
         فرمت خروجی (Markdown):
         ###INTRODUCTION###
         ...
@@ -432,7 +470,7 @@ export async function generateNodeContent(
         سوال ۲؟
         سوال ۳؟
 
-        محتوا:
+        محتوای منبع (Source Content):
         ${fullContent}
         `;
 
