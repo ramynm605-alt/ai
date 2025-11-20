@@ -7,7 +7,8 @@
     <link rel="apple-touch-icon" href="/icon.svg" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#0f172a" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <!-- Improved Viewport for Mobile Keyboards -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content" />
     <title>ذهن گاه</title>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -31,12 +32,21 @@
         -moz-osx-font-smoothing: grayscale;
         text-rendering: optimizeLegibility;
         overscroll-behavior: none; /* Prevent pull-to-refresh effects */
+        touch-action: pan-x pan-y;
       }
       
+      /* Safe Area Support for Notched Phones */
+      :root {
+        --sat: env(safe-area-inset-top);
+        --sar: env(safe-area-inset-right);
+        --sab: env(safe-area-inset-bottom);
+        --sal: env(safe-area-inset-left);
+      }
+
       /* Custom Scrollbar */
       ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
+        width: 6px; /* Thinner on mobile */
+        height: 6px;
       }
       ::-webkit-scrollbar-track {
         background: transparent;
@@ -143,57 +153,68 @@
         transition-duration: 100ms;
       }
 
-      /* Glassmorphism Utilities - DESKTOP */
-      .glass {
-        background: rgba(var(--card) / 0.7);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border: 1px solid rgba(var(--border) / 0.5);
-      }
-      .glass-strong {
-        background: rgba(var(--card) / 0.9);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(var(--border) / 0.8);
-      }
-      .glass-panel {
-         background: linear-gradient(145deg, rgba(var(--card) / 0.8) 0%, rgba(var(--card) / 0.95) 100%);
-         backdrop-filter: blur(20px);
-         -webkit-backdrop-filter: blur(20px);
-         border: 1px solid rgba(var(--border) / 0.4);
-         box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
-      }
-      .stylish-textarea-wrapper {
-        position: relative; background: rgba(var(--card) / 0.4);
-        backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-        border-radius: 16px; border: 1px solid rgb(var(--border) / 0.6);
-        transition: all 0.3s;
+      /* Glassmorphism Utilities - DESKTOP ONLY */
+      @media (min-width: 769px) {
+        .glass {
+            background: rgba(var(--card) / 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(var(--border) / 0.5);
+        }
+        .glass-strong {
+            background: rgba(var(--card) / 0.9);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(var(--border) / 0.8);
+        }
+        .glass-panel {
+             background: linear-gradient(145deg, rgba(var(--card) / 0.8) 0%, rgba(var(--card) / 0.95) 100%);
+             backdrop-filter: blur(20px);
+             -webkit-backdrop-filter: blur(20px);
+             border: 1px solid rgba(var(--border) / 0.4);
+             box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+        }
+        .stylish-textarea-wrapper {
+            position: relative; background: rgba(var(--card) / 0.4);
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            border-radius: 16px; border: 1px solid rgb(var(--border) / 0.6);
+            transition: all 0.3s;
+        }
       }
 
       /* PERFORMANCE OPTIMIZATIONS FOR MOBILE */
       @media (max-width: 768px) {
+        /* Disable expensive blur filters on mobile */
         .glass, .glass-strong, .glass-panel, .stylish-textarea-wrapper {
           backdrop-filter: none !important;
           -webkit-backdrop-filter: none !important;
-          background: rgba(var(--card) / 0.98) !important; /* Solid fallback */
-          box-shadow: 0 2px 10px rgba(0,0,0,0.1) !important;
+          background: rgb(var(--card)) !important; /* Solid color */
+          border: 1px solid rgba(var(--border) / 0.8);
+          box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
+        }
+        .stylish-textarea-wrapper {
+             border-radius: 12px;
         }
         
-        /* Disable heavy shadows on mobile */
+        /* Disable heavy shadows on mobile nodes */
         .mindmap-node .absolute {
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
         }
 
-        /* Optimize animations */
+        /* Simplify animations */
         .animate-slide-up, .fade-in, .animate-zoom-in {
-             animation-duration: 0.3s !important;
+             animation-duration: 0.2s !important;
+        }
+        
+        /* Text rendering optimization */
+        p, span, h1, h2, h3 {
+            text-rendering: auto;
         }
       }
 
       .stylish-textarea-wrapper:focus-within {
         border-color: rgb(var(--primary));
         box-shadow: 0 0 0 4px rgb(var(--primary) / 0.15);
-        background: rgba(var(--card) / 0.7);
       }
      
       /* Animations */
@@ -256,18 +277,18 @@
       /* Mind Map Animations */
       .mindmap-node {
         opacity: 0; 
-        /* Hardware acceleration for smoother movement */
         will-change: transform, opacity;
         transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
         backface-visibility: hidden;
         transform: translateZ(0);
-        /* Optimization for mobile taps */
         touch-action: manipulation;
       }
-      .mindmap-node:hover {
-        z-index: 100 !important;
-        /* Slightly reduced scale for smoother performance */
-        transform: translateY(-2px) scale(1.02) translateZ(0) !important;
+      /* Hover effects only on non-touch devices */
+      @media (hover: hover) {
+        .mindmap-node:hover {
+            z-index: 100 !important;
+            transform: translateY(-2px) scale(1.02) translateZ(0) !important;
+        }
       }
       .mindmap-node.active-node {
         z-index: 50;

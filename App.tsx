@@ -1,4 +1,3 @@
-
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef, Suspense } from 'react';
 import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse, generateRemedialNode, generateDailyChallenge, generateDeepAnalysis, generateAdaptiveModifications } from './services/geminiService';
@@ -310,7 +309,11 @@ function appReducer(state: AppState, action: any): AppState {
     }
     case 'FINAL_EXAM_QUESTION_STREAMED':
       if (!state.finalExam) return state;
-      return { ...state, finalExam: { ...state.finalExam, questions: [...state.finalExam.questions, action.payload] }, activeQuiz: { ...state.activeQuiz!, questions: [...state.activeQuiz!.questions, action.payload] } };
+      return { 
+          ...state, 
+          finalExam: { ...state.finalExam, questions: [...state.finalExam.questions, action.payload] }, 
+          activeQuiz: state.activeQuiz ? { ...state.activeQuiz, questions: [...state.activeQuiz.questions, action.payload] } : state.activeQuiz
+      };
     case 'FINAL_EXAM_STREAM_END':
       if (!state.finalExam) return state;
       return { ...state, finalExam: { ...state.finalExam, isStreaming: false }, activeQuiz: { ...state.activeQuiz!, isStreaming: false } };
@@ -1206,7 +1209,7 @@ function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-background text-foreground font-vazir transition-colors duration-300" dir="rtl">
+    <div className="flex flex-col h-[100dvh] overflow-hidden bg-background text-foreground font-vazir transition-colors duration-300" dir="rtl">
       {showStartup && <StartupScreen onAnimationEnd={() => setShowStartup(false)} />}
       
       <ParticleBackground theme={state.theme} />
@@ -1266,38 +1269,32 @@ function App() {
       />
 
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-border/50 bg-card/80 backdrop-blur-md z-50 shadow-sm">
+      <header className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-border/50 bg-card/80 backdrop-blur-md z-50 shadow-sm">
         <div className="flex items-center gap-3 cursor-pointer select-none" onClick={handleLogoClick}>
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-primary/20">
                  <Brain className="w-5 h-5 text-primary-foreground" />
             </div>
-            <h1 className="text-xl font-extrabold tracking-tight text-foreground">ذهن گاه</h1>
+            <h1 className="text-lg md:text-xl font-extrabold tracking-tight text-foreground">ذهن گاه</h1>
             <div className="flex items-center gap-3 mr-4">
                 {state.isAutoSaving && (
                      <div className="flex items-center gap-2 text-xs text-muted-foreground animate-pulse">
                          <Save className="w-3 h-3" />
-                         <span>ذخیره خودکار...</span>
+                         <span className="hidden sm:inline">ذخیره خودکار...</span>
                      </div>
                 )}
                 {state.cloudSyncStatus === 'syncing' && (
                      <div className="flex items-center gap-2 text-xs text-blue-500 animate-pulse">
                          <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                         <span>همگام‌سازی ابری...</span>
-                     </div>
-                )}
-                 {state.cloudSyncStatus === 'success' && !state.isAutoSaving && (
-                     <div className="flex items-center gap-2 text-xs text-green-500/70">
-                         <CheckCircle className="w-3 h-3" />
-                         <span>ذخیره در ابر</span>
+                         <span className="hidden sm:inline">همگام‌سازی...</span>
                      </div>
                 )}
             </div>
         </div>
         
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3">
            <button 
               onClick={() => dispatch({ type: 'TOGGLE_USER_PANEL' })}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary hover:bg-accent transition-colors border border-transparent hover:border-primary/20"
+              className="flex items-center gap-2 px-2 md:px-3 py-1.5 rounded-full bg-secondary hover:bg-accent transition-colors border border-transparent hover:border-primary/20"
            >
                {state.currentUser ? (
                    <>
@@ -1314,35 +1311,34 @@ function App() {
                )}
            </button>
 
-           <button onClick={() => dispatch({ type: 'TOGGLE_CHAT' })} className="p-2 rounded-full hover:bg-accent text-muted-foreground hover:text-foreground transition-colors relative">
+           <button onClick={() => dispatch({ type: 'TOGGLE_CHAT' })} className="hidden lg:block p-2 rounded-full hover:bg-accent text-muted-foreground hover:text-foreground transition-colors relative">
               <MessageSquare className="w-5 h-5" />
               {state.chatHistory.length > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full"></span>}
            </button>
-           <div className="w-px h-6 bg-border mx-1"></div>
-           <button onClick={() => handleThemeChange('light')} className={`p-2 rounded-full transition-all ${state.theme === 'light' ? 'bg-yellow-100 text-yellow-600 shadow-inner' : 'hover:bg-accent text-muted-foreground'}`}><Sun className="w-5 h-5" /></button>
-           <button onClick={() => handleThemeChange('balanced')} className={`p-2 rounded-full transition-all ${state.theme === 'balanced' ? 'bg-slate-200 text-slate-700 shadow-inner' : 'hover:bg-accent text-muted-foreground'}`}><SlidersHorizontal className="w-5 h-5" /></button>
+           <div className="w-px h-6 bg-border mx-1 hidden lg:block"></div>
+           <button onClick={() => handleThemeChange('light')} className={`hidden sm:block p-2 rounded-full transition-all ${state.theme === 'light' ? 'bg-yellow-100 text-yellow-600 shadow-inner' : 'hover:bg-accent text-muted-foreground'}`}><Sun className="w-5 h-5" /></button>
+           <button onClick={() => handleThemeChange('balanced')} className={`hidden sm:block p-2 rounded-full transition-all ${state.theme === 'balanced' ? 'bg-slate-200 text-slate-700 shadow-inner' : 'hover:bg-accent text-muted-foreground'}`}><SlidersHorizontal className="w-5 h-5" /></button>
            <button onClick={() => handleThemeChange('dark')} className={`p-2 rounded-full transition-all ${state.theme === 'dark' ? 'bg-indigo-900/50 text-indigo-300 shadow-inner' : 'hover:bg-accent text-muted-foreground'}`}><Moon className="w-5 h-5" /></button>
         </div>
       </header>
 
       <main className="flex-grow relative overflow-hidden flex flex-col md:flex-row main-content">
-        {/* ... (rest of main layout is identical) ... */}
         
         <div className="flex-grow relative z-10 overflow-y-auto scroll-smooth">
              
              {/* Status: IDLE / Input */}
             {state.status === AppStatus.IDLE && (
-                <div className="max-w-5xl mx-auto mt-10 p-6 space-y-8 animate-slide-up pb-32">
+                <div className="max-w-5xl mx-auto mt-4 md:mt-10 p-4 md:p-6 space-y-6 md:space-y-8 animate-slide-up pb-32">
                     <div className="text-center space-y-4">
-                        <h2 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-600 py-2">
+                        <h2 className="text-3xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-600 py-2">
                            یادگیری عمیق با طعم هوش مصنوعی
                         </h2>
-                        <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-                            محتوای آموزشی خود را بارگذاری کنید یا یک موضوع را انتخاب کنید تا ذهن‌گاه آن را به یک نقشه ذهنی تعاملی و مسیر یادگیری شخصی‌سازی شده تبدیل کند.
+                        <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+                            محتوای آموزشی خود را بارگذاری کنید یا یک موضوع را انتخاب کنید تا ذهن‌گاه آن را به یک نقشه ذهنی تعاملی، آزمون و مسیر یادگیری تبدیل کند.
                         </p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
                         {/* Text Input */}
                          <div className="stylish-textarea-wrapper p-1 bg-gradient-to-br from-border to-transparent">
                             <div className="bg-card rounded-xl p-4 h-full flex flex-col relative">
@@ -1351,7 +1347,7 @@ function App() {
                                     <span className="font-bold">متن خام</span>
                                 </div>
                                 <textarea 
-                                    className="w-full flex-grow bg-transparent border-none resize-none focus:ring-0 text-foreground placeholder:text-muted-foreground/50 min-h-[150px] mb-12" 
+                                    className="w-full flex-grow bg-transparent border-none resize-none focus:ring-0 text-foreground placeholder:text-muted-foreground/50 min-h-[120px] mb-12" 
                                     placeholder="متن مقاله، جزوه یا کتاب خود را اینجا پیست کنید..."
                                     value={textInput}
                                     onChange={(e) => setTextInput(e.target.value)}
@@ -1360,7 +1356,7 @@ function App() {
                                     <button 
                                         onClick={handleStartFromText}
                                         disabled={!textInput.trim()}
-                                        className="w-full py-2 flex items-center justify-center gap-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                                        className="w-full py-3 flex items-center justify-center gap-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 shadow-md"
                                     >
                                         <span>شروع پردازش</span>
                                         <Wand className="w-4 h-4" />
@@ -1386,8 +1382,8 @@ function App() {
                                     </button>
                                 </div>
                                 <textarea 
-                                    className="w-full flex-grow bg-transparent border-none resize-none focus:ring-0 text-foreground placeholder:text-muted-foreground/50 min-h-[150px] mb-12" 
-                                    placeholder="موضوعی که دوست دارید یاد بگیرید را بنویسید (مثلاً: تاریخ روم باستان، فیزیک کوانتوم)..."
+                                    className="w-full flex-grow bg-transparent border-none resize-none focus:ring-0 text-foreground placeholder:text-muted-foreground/50 min-h-[120px] mb-12" 
+                                    placeholder="موضوعی که دوست دارید یاد بگیرید را بنویسید (مثلاً: تاریخ روم باستان)..."
                                     value={topicInput}
                                     onChange={(e) => setTopicInput(e.target.value)}
                                 />
@@ -1395,7 +1391,7 @@ function App() {
                                     <button 
                                         onClick={handleTopicStudy}
                                         disabled={!topicInput.trim()}
-                                        className="w-full py-2 flex items-center justify-center gap-2 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                                        className="w-full py-3 flex items-center justify-center gap-2 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 shadow-md"
                                     >
                                         <span>تحقیق و ساخت مسیر</span>
                                         <BrainCircuit className="w-4 h-4" />
@@ -1406,8 +1402,8 @@ function App() {
 
                         {/* File Upload */}
                         <div className="stylish-textarea-wrapper p-1 bg-gradient-to-bl from-border to-transparent group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-                             <div className="bg-card rounded-xl p-4 h-full flex flex-col items-center justify-center text-center border-2 border-dashed border-transparent group-hover:border-primary/20 transition-all">
-                                <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-primary">
+                             <div className="bg-card rounded-xl p-4 h-full flex flex-col items-center justify-center text-center border-2 border-dashed border-transparent group-hover:border-primary/20 transition-all min-h-[200px]">
+                                <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-primary shadow-sm">
                                     <Upload className="w-8 h-8" />
                                 </div>
                                 <h3 className="font-bold text-lg">آپلود فایل</h3>
@@ -1417,17 +1413,17 @@ function App() {
                         </div>
                     </div>
                     
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-12">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mt-8 md:mt-12">
                         {[
                             { icon: BrainCircuit, title: "نقشه ذهنی", desc: "ساختاردهی هوشمند" },
                             { icon: Target, title: "آزمون تطبیقی", desc: "سنجش دقیق سطح" },
                             { icon: MessageSquare, title: "مربی شخصی", desc: "رفع اشکال آنی" },
                             { icon: Sparkles, title: "خلاصه ساز", desc: "مرور سریع" }
                         ].map((f, i) => (
-                            <div key={i} className="p-4 rounded-xl bg-secondary/30 border border-border text-center hover:bg-secondary/50 transition-colors">
-                                <f.icon className="w-8 h-8 mx-auto mb-2 text-primary" />
-                                <h4 className="font-bold text-sm">{f.title}</h4>
-                                <p className="text-xs text-muted-foreground mt-1">{f.desc}</p>
+                            <div key={i} className="p-3 md:p-4 rounded-xl bg-secondary/30 border border-border text-center hover:bg-secondary/50 transition-colors">
+                                <f.icon className="w-6 h-6 md:w-8 md:h-8 mx-auto mb-2 text-primary" />
+                                <h4 className="font-bold text-xs md:text-sm">{f.title}</h4>
+                                <p className="text-[10px] md:text-xs text-muted-foreground mt-1">{f.desc}</p>
                             </div>
                         ))}
                     </div>
@@ -1456,7 +1452,7 @@ function App() {
             {(state.status === AppStatus.LOADING || state.status === AppStatus.GENERATING_REMEDIAL || state.status === AppStatus.GRADING_PRE_ASSESSMENT || state.status === AppStatus.ADAPTING_PLAN) && (
                 <div className="flex flex-col items-center justify-center h-full space-y-6 fade-in">
                     <Spinner />
-                    <p className="text-xl font-medium text-muted-foreground animate-pulse">
+                    <p className="text-xl font-medium text-muted-foreground animate-pulse px-4 text-center">
                         {state.loadingMessage || (state.status === AppStatus.GRADING_PRE_ASSESSMENT ? 'در حال تحلیل پاسخ‌ها و تعیین سطح...' : 'در حال پردازش...')}
                     </p>
                     {state.status === AppStatus.ADAPTING_PLAN && (
@@ -1482,7 +1478,7 @@ function App() {
                             activeNodeId={null}
                             showSuggestedPath={true}
                         />
-                         <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-md px-4">
+                         <div className="absolute bottom-20 md:bottom-8 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-md px-4">
                              <div className="bg-card/90 backdrop-blur border border-border p-4 rounded-xl shadow-2xl text-center">
                                  <h3 className="font-bold text-lg mb-2">نقشه یادگیری شما آماده است</h3>
                                  <p className="text-sm text-muted-foreground mb-4">این ساختار بر اساس محتوای شما طراحی شده است. برای شخصی‌سازی بیشتر، ابتدا یک پیش‌آزمون کوتاه می‌دهیم.</p>
@@ -1532,7 +1528,7 @@ function App() {
                             showSuggestedPath={true}
                         />
                          {state.status === AppStatus.LEARNING && (
-                            <div className="absolute top-4 right-4 z-30 bg-card/80 backdrop-blur p-3 rounded-lg border border-border shadow-sm max-w-[200px]">
+                            <div className="absolute top-4 right-4 z-30 bg-card/80 backdrop-blur p-3 rounded-lg border border-border shadow-sm max-w-[200px] hidden md:block">
                                 <p className="text-xs text-muted-foreground">مسیر پیشنهادی با شماره مشخص شده است. از گره شماره ۱ شروع کنید.</p>
                             </div>
                         )}
@@ -1619,19 +1615,36 @@ function App() {
 
       </Suspense>
 
-        {/* Mobile Bottom Nav */}
-        <div className="lg:hidden bottom-nav">
-            <button className="bottom-nav-item active" onClick={() => dispatch({ type: 'START_PERSONALIZED_LEARNING' })}>
-                <Home className="w-6 h-6" />
-                <span>خانه</span>
+        {/* Mobile Bottom Nav - Optimised for Mobile */}
+        <div className="lg:hidden bottom-nav border-t border-border/40 bg-background/90 backdrop-blur-lg pb-[env(safe-area-inset-bottom)]">
+            <button 
+                className={`bottom-nav-item ${state.status === AppStatus.LEARNING ? 'text-primary active-nav-item' : 'text-muted-foreground'}`} 
+                onClick={() => dispatch({ type: 'START_PERSONALIZED_LEARNING' })}
+            >
+                <div className="relative">
+                    <Home className="w-6 h-6" />
+                    {state.status === AppStatus.LEARNING && <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-1 h-1 bg-primary rounded-full"></div>}
+                </div>
+                <span className="text-[10px] font-medium mt-1">خانه</span>
             </button>
-             <button className="bottom-nav-item" onClick={() => dispatch({ type: 'TOGGLE_CHAT' })}>
-                <MessageSquare className="w-6 h-6" />
-                <span>مربی</span>
+
+             <button 
+                className={`bottom-nav-item ${state.isChatOpen ? 'text-primary active-nav-item' : 'text-muted-foreground'}`} 
+                onClick={() => dispatch({ type: 'TOGGLE_CHAT' })}
+            >
+                <div className="relative">
+                    <MessageSquare className="w-6 h-6" />
+                    {state.chatHistory.length > 0 && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 border-2 border-background rounded-full"></span>}
+                </div>
+                <span className="text-[10px] font-medium mt-1">مربی</span>
             </button>
-            <button className="bottom-nav-item" onClick={() => dispatch({ type: 'TOGGLE_USER_PANEL' })}>
+
+            <button 
+                className={`bottom-nav-item ${state.isUserPanelOpen ? 'text-primary active-nav-item' : 'text-muted-foreground'}`} 
+                onClick={() => dispatch({ type: 'TOGGLE_USER_PANEL' })}
+            >
                 <User className="w-6 h-6" />
-                <span>پروفایل</span>
+                <span className="text-[10px] font-medium mt-1">پروفایل</span>
             </button>
         </div>
 

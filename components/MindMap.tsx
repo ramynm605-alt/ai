@@ -111,7 +111,7 @@ const MindMapNodeItem = React.memo(({
                 onClick={handleNodeClick}
                 role="button"
             >
-                <div className={`absolute inset-0 rounded-2xl shadow-xl flex flex-col items-center justify-center text-center p-4 border transition-all duration-300 
+                <div className={`absolute inset-0 rounded-2xl shadow-xl flex flex-col items-center justify-center text-center p-2 md:p-4 border transition-all duration-300 
                     ${isActive ? 'border-primary ring-4 ring-primary/20 scale-105' : 'border-white/10 hover:scale-105'} 
                     bg-gradient-to-br from-indigo-600 via-indigo-700 to-slate-800 text-white overflow-hidden`}>
                     
@@ -119,16 +119,16 @@ const MindMapNodeItem = React.memo(({
                     <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuMDUiLz4KPC9zdmc+')] opacity-10"></div>
                     
                     <div className="relative z-10">
-                        <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-white/10 flex items-center justify-center backdrop-blur-sm">
-                            <Flag className="w-6 h-6 text-indigo-200" />
+                        <div className="w-8 h-8 md:w-10 md:h-10 mx-auto mb-1 md:mb-2 rounded-full bg-white/10 flex items-center justify-center backdrop-blur-sm">
+                            <Flag className="w-5 h-5 md:w-6 md:h-6 text-indigo-200" />
                         </div>
-                        <h3 className={`font-bold leading-tight ${isPortrait ? 'text-sm' : 'text-lg'}`}>{node.title}</h3>
-                        <span className="inline-block mt-2 text-[10px] font-bold uppercase tracking-wider bg-black/20 px-2 py-1 rounded-full text-indigo-200">شروع مسیر</span>
+                        <h3 className={`font-bold leading-tight ${isPortrait ? 'text-xs' : 'text-lg'}`}>{node.title}</h3>
+                        {!isPortrait && <span className="inline-block mt-2 text-[10px] font-bold uppercase tracking-wider bg-black/20 px-2 py-1 rounded-full text-indigo-200">شروع مسیر</span>}
                     </div>
                 </div>
                 {status === 'completed' && (
                     <div className="absolute -top-2 -right-2 z-30 bg-white rounded-full shadow-lg ring-2 ring-green-500">
-                        <CheckCircle className="w-6 h-6 text-green-500 fill-white" />
+                        <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-green-500 fill-white" />
                     </div>
                  )}
             </div>
@@ -144,15 +144,15 @@ const MindMapNodeItem = React.memo(({
                 onClick={handleNodeClick}
                 role="button"
             >
-                <div className={`absolute inset-0 rounded-2xl shadow-lg flex flex-col items-center justify-center text-center p-4 border transition-all duration-300
+                <div className={`absolute inset-0 rounded-2xl shadow-lg flex flex-col items-center justify-center text-center p-2 md:p-4 border transition-all duration-300
                     ${isActive ? 'border-emerald-500 ring-4 ring-emerald-500/20' : 'border-emerald-500/30'} 
                     ${isLocked ? 'bg-slate-100 dark:bg-slate-800' : 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white'}`}>
                     
                     {status === 'completed' ? 
-                        <Trophy className="w-10 h-10 mb-2 text-yellow-300 drop-shadow-lg" /> : 
-                        <Target className="w-8 h-8 mb-2 opacity-90" />
+                        <Trophy className="w-8 h-8 md:w-10 md:h-10 mb-1 md:mb-2 text-yellow-300 drop-shadow-lg" /> : 
+                        <Target className="w-6 h-6 md:w-8 md:h-8 mb-1 md:mb-2 opacity-90" />
                     }
-                    <h3 className={`font-bold leading-tight ${isPortrait ? 'text-sm' : 'text-lg'}`}>{node.title}</h3>
+                    <h3 className={`font-bold leading-tight ${isPortrait ? 'text-xs' : 'text-lg'}`}>{node.title}</h3>
                 </div>
             </div>
         );
@@ -181,26 +181,26 @@ const MindMapNodeItem = React.memo(({
                 {/* Top Gradient Line */}
                 <div className={`h-1 w-full ${status === 'failed' ? 'bg-destructive' : difficultyColor} opacity-80`} />
 
-                <div className="flex-1 p-3 flex flex-col justify-between relative z-10">
+                <div className="flex-1 p-2 md:p-3 flex flex-col justify-between relative z-10">
                     {/* Header */}
-                    <div className="flex items-start justify-between gap-2">
-                         <h3 className={`font-bold leading-snug text-foreground line-clamp-2 ${isPortrait ? 'text-xs' : 'text-sm'} ${isRemedial || isAdaptive ? 'text-purple-700 dark:text-purple-300' : ''}`} dir="rtl">
+                    <div className="flex items-start justify-between gap-1 md:gap-2">
+                         <h3 className={`font-bold leading-snug text-foreground line-clamp-2 ${isPortrait ? 'text-[10px] leading-3' : 'text-sm'} ${isRemedial || isAdaptive ? 'text-purple-700 dark:text-purple-300' : ''}`} dir="rtl">
                             {node.title}
                          </h3>
-                         {isLocked && <Lock className="w-4 h-4 text-muted-foreground/50 shrink-0" />}
+                         {isLocked && <Lock className="w-3 h-3 md:w-4 md:h-4 text-muted-foreground/50 shrink-0" />}
                     </div>
 
                     {/* Footer info */}
-                    <div className="flex items-end justify-between mt-2">
+                    <div className="flex items-end justify-between mt-1 md:mt-2">
                          <div className="flex gap-1">
-                            {node.sourcePages.length > 0 && (
+                            {node.sourcePages.length > 0 && !isPortrait && (
                                 <span className="text-[10px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded border border-border/50">
                                     {formatPageNumbers(node.sourcePages)}
                                 </span>
                             )}
                          </div>
 
-                        {!isLocked && status !== 'completed' && status !== 'failed' && (
+                        {!isLocked && status !== 'completed' && status !== 'failed' && !isPortrait && (
                              <div className="bg-primary/10 p-1 rounded-md text-primary opacity-0 group-hover:opacity-100 transition-all transform translate-y-2 group-hover:translate-y-0">
                                  {isRemedial || isAdaptive ? <Sparkles className="w-4 h-4 text-purple-500" /> : <BrainCircuit className="w-4 h-4" />}
                              </div>
@@ -212,12 +212,12 @@ const MindMapNodeItem = React.memo(({
              {/* Status Badges (Floating) */}
              {status === 'completed' && (
                 <div className="absolute -top-2 -left-2 z-30 bg-white dark:bg-slate-800 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.15)] ring-1 ring-success/20">
-                    <CheckCircle className="w-6 h-6 text-success fill-white dark:fill-transparent" />
+                    <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-success fill-white dark:fill-transparent" />
                 </div>
              )}
              
              {isSuggestedAndIncomplete && suggestedIndex !== -1 && (
-                <div className="absolute -top-3 -right-3 z-30 flex items-center justify-center w-7 h-7 text-xs font-bold text-white rounded-full bg-gradient-to-br from-primary to-indigo-600 shadow-lg ring-2 ring-background animate-bounce">
+                <div className="absolute -top-2 -right-2 md:-top-3 md:-right-3 z-30 flex items-center justify-center w-5 h-5 md:w-7 md:h-7 text-[10px] md:text-xs font-bold text-white rounded-full bg-gradient-to-br from-primary to-indigo-600 shadow-lg ring-2 ring-background animate-bounce">
                     {suggestedIndex + 1}
                 </div>
              )}
@@ -271,12 +271,14 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
             return { positionedNodes: [], lines: [], width: 0, height: 0, isPortrait: false, nodeWidth: 0, nodeHeight: 0 };
         }
 
-        const isPortraitLayout = containerSize.width < 768;
-        // Increased spacing for better visuals
-        const R_NODE_WIDTH = isPortraitLayout ? 160 : 220;
-        const R_NODE_HEIGHT = isPortraitLayout ? 100 : 130;
-        const R_H_GAP = isPortraitLayout ? 40 : 90; 
-        const R_V_GAP = isPortraitLayout ? 80 : 120; 
+        const isMobile = containerSize.width < 768;
+        
+        // Responsive Dimensions
+        // Mobile needs much smaller nodes to fit 2-3 on screen without excessive scrolling
+        const R_NODE_WIDTH = isMobile ? 140 : 220;
+        const R_NODE_HEIGHT = isMobile ? 90 : 130;
+        const R_H_GAP = isMobile ? 30 : 90; 
+        const R_V_GAP = isMobile ? 60 : 120; 
 
         type NodeWithChildren = MindMapNodeType & { children: NodeWithChildren[], level: number, x: number, y: number };
         const nodeMap = new Map<string, NodeWithChildren>(nodes.map(n => [n.id, { ...n, children: [], level: 0, x: 0, y: 0 }]));
@@ -321,7 +323,7 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
         
         const positionedNodesList: NodeWithChildren[] = [];
         const lines: { x1: number, y1: number, x2: number, y2: number, parentId: string, childId: string, type?: 'normal' | 'conclusion' }[] = [];
-        const PADDING = 120;
+        const PADDING = isMobile ? 60 : 120;
         
         let currentLeafX = 0;
         const layoutVerticalNode = (node: NodeWithChildren) => {
@@ -409,7 +411,7 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
             });
         }
 
-        return { positionedNodes: positionedNodesList, lines, width: finalWidth, height: finalHeight, isPortrait: isPortraitLayout, nodeWidth: R_NODE_WIDTH, nodeHeight: R_NODE_HEIGHT };
+        return { positionedNodes: positionedNodesList, lines, width: finalWidth, height: finalHeight, isPortrait: isMobile, nodeWidth: R_NODE_WIDTH, nodeHeight: R_NODE_HEIGHT };
 
     }, [nodes, containerSize]);
 
@@ -445,8 +447,8 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
     const suggestedNodeIds = useMemo(() => new Set(suggestedPath || []), [suggestedPath]);
 
     return (
-        <div ref={containerRef} className="relative w-full h-full overflow-auto bg-[radial-gradient(circle_at_center,rgba(var(--primary)/0.05)_0%,transparent_70%)]" style={{ direction: 'ltr' }}>
-            <button onClick={centerOnRoot} className="absolute z-50 p-3 transition-transform rounded-full shadow-lg bottom-6 left-6 bg-card text-primary border border-border hover:bg-accent hover:scale-110 active:scale-95">
+        <div ref={containerRef} className="relative w-full h-full overflow-auto bg-[radial-gradient(circle_at_center,rgba(var(--primary)/0.05)_0%,transparent_70%)] touch-pan-x touch-pan-y" style={{ direction: 'ltr' }}>
+            <button onClick={centerOnRoot} className="absolute z-50 p-3 transition-transform rounded-full shadow-lg bottom-24 md:bottom-6 left-4 md:left-6 bg-card text-primary border border-border hover:bg-accent hover:scale-110 active:scale-95">
                <Target className="w-6 h-6" />
             </button>
 

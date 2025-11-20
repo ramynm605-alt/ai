@@ -1,7 +1,4 @@
 
-
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, SavedSession } from '../types';
 import { User, LogOut, History, BrainCircuit, Trash, Save, CheckCircle, ArrowRight, XCircle, Shield, ClipboardList, ChevronDown, Upload } from './icons';
@@ -197,7 +194,8 @@ const UserPanel: React.FC<UserPanelProps> = ({
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm fade-in" onClick={onClose}>
-            <div className="w-full max-w-2xl h-[85vh] flex flex-col bg-card border border-border rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            {/* Mobile: Fullscreen, Desktop: Modal */}
+            <div className="w-full h-full md:h-[85vh] md:max-w-2xl flex flex-col bg-card border border-border md:rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
                 
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-border bg-secondary/30 shrink-0">
@@ -211,7 +209,7 @@ const UserPanel: React.FC<UserPanelProps> = ({
                 </div>
 
                 {/* Content */}
-                <div className="flex-grow overflow-y-auto p-6">
+                <div className="flex-grow overflow-y-auto p-4 md:p-6">
                     {!user ? (
                         // Login View
                         <div className="flex flex-col items-center justify-center h-full max-w-sm mx-auto animate-slide-up space-y-8">
@@ -244,27 +242,27 @@ const UserPanel: React.FC<UserPanelProps> = ({
                         </div>
                     ) : (
                         // Dashboard View
-                        <div className="space-y-8 animate-slide-up">
+                        <div className="space-y-6 md:space-y-8 animate-slide-up">
                             {/* Profile Summary */}
-                            <div className="flex items-center gap-4 p-6 bg-gradient-to-br from-primary/10 via-card to-secondary rounded-2xl border border-primary/10 relative overflow-hidden shadow-sm">
+                            <div className="flex items-center gap-4 p-4 md:p-6 bg-gradient-to-br from-primary/10 via-card to-secondary rounded-2xl border border-primary/10 relative overflow-hidden shadow-sm">
                                 {user.avatarUrl ? (
-                                     <img src={user.avatarUrl} alt={user.name} className="w-16 h-16 rounded-full shadow-lg z-10 ring-4 ring-background object-cover" />
+                                     <img src={user.avatarUrl} alt={user.name} className="w-12 h-12 md:w-16 md:h-16 rounded-full shadow-lg z-10 ring-4 ring-background object-cover" />
                                 ) : (
-                                    <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white shadow-lg z-10 ring-4 ring-background`} style={{ backgroundColor: user.avatarColor }}>
+                                    <div className={`w-12 h-12 md:w-16 md:h-16 rounded-full flex items-center justify-center text-xl md:text-2xl font-bold text-white shadow-lg z-10 ring-4 ring-background`} style={{ backgroundColor: user.avatarColor }}>
                                         {user.name.charAt(0).toUpperCase()}
                                     </div>
                                 )}
-                                <div className="z-10">
-                                    <div className="flex items-center gap-2">
-                                        <h3 className="text-xl font-bold">{user.name}</h3>
-                                        <div className="px-2 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-[10px] font-bold rounded-full flex items-center gap-1">
+                                <div className="z-10 overflow-hidden">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <h3 className="text-lg md:text-xl font-bold truncate">{user.name}</h3>
+                                        <div className="px-2 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-[10px] font-bold rounded-full flex items-center gap-1 whitespace-nowrap">
                                             <div className="w-3 h-3"><GoogleIcon /></div>
                                             <span>حساب گوگل</span>
                                         </div>
                                     </div>
-                                    <p className="text-muted-foreground text-sm mt-1">{user.email}</p>
+                                    <p className="text-muted-foreground text-xs md:text-sm mt-1 truncate">{user.email}</p>
                                 </div>
-                                <Shield className="absolute -right-6 -bottom-6 w-40 h-40 text-primary/5 z-0 rotate-12" />
+                                <Shield className="absolute -right-6 -bottom-6 w-32 h-32 md:w-40 md:h-40 text-primary/5 z-0 rotate-12" />
                             </div>
 
                             {/* Cloud Sync Status - AUTOMATIC */}
@@ -291,13 +289,10 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                     {cloudStatus === 'success' && (
                                         <div className="px-3 py-1 text-xs font-bold text-green-700 bg-green-100 rounded-full flex items-center gap-1">
                                             <CheckCircle className="w-3 h-3" />
-                                            <span>فعال</span>
+                                            <span className="hidden sm:inline">فعال</span>
                                         </div>
                                     )}
                                 </div>
-                                <p className="text-[10px] text-muted-foreground mt-2 px-1">
-                                    اطلاعات شما به صورت خودکار با حساب کاربری گوگل همگام‌سازی می‌شود.
-                                </p>
                             </div>
                             
                             {/* Manual Sync Backup (Hidden by default) */}
@@ -357,22 +352,22 @@ const UserPanel: React.FC<UserPanelProps> = ({
                             </div>
 
                             {/* Stats Row */}
-                            <div className="grid grid-cols-3 gap-4">
-                                <div className="p-4 bg-card border border-border rounded-xl text-center shadow-sm">
-                                    <div className="text-2xl font-bold text-primary">{savedSessions.length}</div>
-                                    <div className="text-xs text-muted-foreground font-medium mt-1">دروس فعال</div>
+                            <div className="grid grid-cols-3 gap-2 md:gap-4">
+                                <div className="p-3 md:p-4 bg-card border border-border rounded-xl text-center shadow-sm">
+                                    <div className="text-xl md:text-2xl font-bold text-primary">{savedSessions.length}</div>
+                                    <div className="text-[10px] md:text-xs text-muted-foreground font-medium mt-1">دروس فعال</div>
                                 </div>
-                                <div className="p-4 bg-card border border-border rounded-xl text-center shadow-sm">
-                                    <div className="text-2xl font-bold text-success">
+                                <div className="p-3 md:p-4 bg-card border border-border rounded-xl text-center shadow-sm">
+                                    <div className="text-xl md:text-2xl font-bold text-success">
                                         {savedSessions.filter(s => s.progressPercentage === 100).length}
                                     </div>
-                                    <div className="text-xs text-muted-foreground font-medium mt-1">تکمیل شده</div>
+                                    <div className="text-[10px] md:text-xs text-muted-foreground font-medium mt-1">تکمیل شده</div>
                                 </div>
-                                <div className="p-4 bg-card border border-border rounded-xl text-center shadow-sm">
-                                    <div className="text-2xl font-bold text-orange-500">
+                                <div className="p-3 md:p-4 bg-card border border-border rounded-xl text-center shadow-sm">
+                                    <div className="text-xl md:text-2xl font-bold text-orange-500">
                                         {Math.floor((new Date().getTime() - new Date(user.joinDate).getTime()) / (1000 * 3600 * 24)) + 1}
                                     </div>
-                                    <div className="text-xs text-muted-foreground font-medium mt-1">روز عضویت</div>
+                                    <div className="text-[10px] md:text-xs text-muted-foreground font-medium mt-1">روز عضویت</div>
                                 </div>
                             </div>
 
@@ -385,7 +380,7 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                             <span>ذخیره و نام‌گذاری درس فعلی</span>
                                         </button>
                                     ) : (
-                                        <form onSubmit={handleSaveSubmit} className="flex gap-2">
+                                        <form onSubmit={handleSaveSubmit} className="flex flex-col sm:flex-row gap-2">
                                             <input 
                                                 type="text" 
                                                 placeholder="عنوان درس (مثال: تاریخ ایران)" 
@@ -394,8 +389,10 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                                 onChange={e => setSessionTitle(e.target.value)}
                                                 autoFocus
                                             />
-                                            <button type="submit" className="px-4 py-2 bg-primary text-white rounded-md font-medium">ذخیره</button>
-                                            <button type="button" onClick={() => setShowSaveInput(false)} className="px-3 py-2 text-muted-foreground hover:bg-secondary rounded-md">لغو</button>
+                                            <div className="flex gap-2">
+                                                <button type="submit" className="flex-1 px-4 py-2 bg-primary text-white rounded-md font-medium">ذخیره</button>
+                                                <button type="button" onClick={() => setShowSaveInput(false)} className="flex-1 px-3 py-2 text-muted-foreground hover:bg-secondary rounded-md">لغو</button>
+                                            </div>
                                         </form>
                                     )}
                                 </div>
@@ -413,16 +410,16 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                         <p>هنوز درسی را شروع نکرده‌اید.</p>
                                     </div>
                                 ) : (
-                                    <div className="space-y-3">
+                                    <div className="space-y-3 pb-8">
                                         {savedSessions.map(session => (
                                             <div key={session.id} className="flex items-center justify-between p-4 bg-card border border-border rounded-xl hover:shadow-md transition-all group">
-                                                <div>
-                                                    <h5 className="font-bold text-foreground">{session.title}</h5>
+                                                <div className="overflow-hidden">
+                                                    <h5 className="font-bold text-foreground truncate">{session.title}</h5>
                                                     <p className="text-xs text-muted-foreground mt-1">
                                                         {new Date(session.lastModified).toLocaleDateString('fa-IR')} • پیشرفت: {Math.round(session.progressPercentage)}%
                                                     </p>
                                                 </div>
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-2 shrink-0">
                                                     <button 
                                                         onClick={() => { onLoadSession(session); onClose(); }}
                                                         className="px-3 py-1.5 text-sm font-medium bg-secondary hover:bg-primary hover:text-white text-secondary-foreground rounded-lg transition-colors flex items-center gap-1"
@@ -432,7 +429,7 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                                     </button>
                                                     <button 
                                                         onClick={() => onDeleteSession(session.id)}
-                                                        className="p-2 text-destructive hover:bg-destructive/10 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                                                        className="p-2 text-destructive hover:bg-destructive/10 rounded-lg transition-opacity"
                                                     >
                                                         <Trash className="w-4 h-4" />
                                                     </button>
@@ -448,9 +445,9 @@ const UserPanel: React.FC<UserPanelProps> = ({
 
                 {/* Footer (Logout) */}
                 {user && (
-                    <div className="p-4 border-t border-border bg-secondary/30 shrink-0 flex justify-between items-center">
+                    <div className="p-4 border-t border-border bg-secondary/30 shrink-0 flex justify-between items-center pb-[max(16px,env(safe-area-inset-bottom))]">
                         <span className="text-[10px] text-muted-foreground font-mono">
-                            User ID: {user.googleId?.substring(0, 8)}...
+                            ID: {user.googleId?.substring(0, 8)}
                         </span>
                         <button onClick={onLogout} className="flex items-center gap-2 text-destructive hover:text-destructive/80 font-medium text-sm transition-colors">
                             <LogOut className="w-4 h-4" />
