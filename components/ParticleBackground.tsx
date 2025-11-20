@@ -26,8 +26,8 @@ const ParticleBackground: React.FC<ParticleBackgroundProps> = ({ theme }) => {
         const getParticleColors = () => {
             if (theme === 'light') {
                 return {
-                    bg: 'rgba(120, 120, 120, 0.03)',
-                    fg: 'rgba(120, 120, 120, 0.05)',
+                    bg: 'rgba(37, 99, 235, 0.03)', // Very faint royal blue for depth
+                    fg: 'rgba(37, 99, 235, 0.08)', // Slightly stronger blue for foreground
                 };
             }
             // Dark and Balanced themes use the dark particle colors
