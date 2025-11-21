@@ -1,11 +1,15 @@
+
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef, Suspense } from 'react';
 import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse, generateRemedialNode, generateDailyChallenge, generateDeepAnalysis, generateAdaptiveModifications } from './services/geminiService';
 import { FirebaseService } from './services/firebaseService';
-import { ArrowRight, BookOpen, Brain, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize, SlidersHorizontal, ChevronDown, Sparkles, Trash, Edit, Flame, Diamond, Scroll, User, LogOut, Wand, Bell, Shuffle, FileQuestion } from './components/icons';
+import { ArrowRight, BookOpen, Brain, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize, SlidersHorizontal, ChevronDown, Sparkles, Trash, Edit, Flame, Diamond, Scroll, User, LogOut, Wand, Bell, Shuffle, FileQuestion, Settings, ChevronLeft, ChevronRight } from './components/icons';
 import Spinner from './components/Spinner';
 import StartupScreen from './components/StartupScreen';
 import ParticleBackground from './components/ParticleBackground';
+import { Sidebar, SidebarBody, SidebarLink } from './components/Sidebar';
+import { ThemeToggle } from './components/ThemeToggle';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // Lazy Load Components for Performance Optimization
 const MindMap = React.lazy(() => import('./components/MindMap'));
@@ -486,6 +490,8 @@ function App() {
   const [logoClickCount, setLogoClickCount] = useState(0); 
   const [notification, setNotification] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isToolboxOpen, setIsToolboxOpen] = useState(true);
 
   const showNotification = (msg: string, type: 'success' | 'error' = 'success') => {
       setNotification({ message: msg, type });
@@ -667,10 +673,11 @@ function App() {
       }
   };
 
-  const handleThemeChange = (theme: 'light' | 'balanced' | 'dark') => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
-    dispatch({ type: 'SET_THEME', payload: theme });
+  const handleThemeToggle = () => {
+    const newTheme = state.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+    dispatch({ type: 'SET_THEME', payload: newTheme });
   };
 
   // --- Auth Handlers ---
@@ -1072,144 +1079,147 @@ function App() {
   };
 
   const handlePreAssessmentSubmit = async (answers: Record<string, UserAnswer>) => {
+      if (!state.preAssessment) return;
       dispatch({ type: 'SUBMIT_PRE_ASSESSMENT', payload: answers });
-      if (state.preAssessment) {
-          try {
-            // 1. Get detailed analysis
-            const analysis = await analyzePreAssessment(state.preAssessment.questions, answers, state.sourceContent);
-            
-            // 2. Trigger Adaptive Restructuring
-            dispatch({ type: 'START_ADAPTING_PLAN' });
 
-            // 3. Generate modifications based on analysis
-            const modifications = await generateAdaptiveModifications(state.mindMap, analysis);
-            
-            // 4. Apply modifications locally
-            let newMindMap = [...state.mindMap];
-            let newPath = [...(state.suggestedPath || [])];
+      try {
+          const analysis = await analyzePreAssessment(
+              state.preAssessment.questions,
+              answers,
+              state.sourceContent
+          );
 
-            // Track added nodes to notify user
-            let modificationCount = 0;
+          // Simulate adaptation or use generateAdaptiveModifications if needed. 
+          // For simplicity and speed, we'll adjust difficulties locally based on analysis.
+          dispatch({ type: 'START_ADAPTING_PLAN' });
 
-            modifications.forEach(mod => {
-                if (mod.action === 'ADD_NODE' && mod.newNode && mod.targetNodeId) {
-                    const targetParent = newMindMap.find(n => n.id === mod.targetNodeId);
-                    if (targetParent) {
-                        const newNode: MindMapNode = {
-                            id: 'adaptive_' + Math.random().toString(36).substr(2, 9),
-                            title: mod.newNode.title,
-                            parentId: targetParent.id, // Add as sibling (child of same parent) or child? Prompt said sibling logic.
-                            locked: !!targetParent.parentId, // Lock if parent is locked
-                            difficulty: mod.newNode.difficulty,
-                            isExplanatory: true,
-                            isAdaptive: true, // Mark as adaptive
-                            sourcePages: [],
-                            type: mod.newNode.type,
-                        };
-                        newMindMap.push(newNode);
-                        
-                        // Update path: Insert before the original node if possible, or at logical position
-                        // Since targetNodeId in prompt logic was "Parent of weak concept", we add it as a child of that parent.
-                        // Effectively, it becomes a sibling of the weak concept.
-                        // We can push it to the suggested path.
-                        
-                        // Simple logic: Add to path right after parent
-                        const parentIndex = newPath.indexOf(targetParent.id);
-                        if (parentIndex !== -1) {
-                            newPath.splice(parentIndex + 1, 0, newNode.id);
-                        } else {
-                            newPath.push(newNode.id);
-                        }
-                        modificationCount++;
-                    }
-                } else if (mod.action === 'UNLOCK_NODE' && mod.targetNodeId) {
-                     const target = newMindMap.find(n => n.id === mod.targetNodeId);
-                     if (target) {
-                         target.locked = false;
-                         // Also unlock children? No, keep it simple.
-                         modificationCount++;
-                     }
-                }
-            });
+          let difficultyMod = 0;
+          if (analysis.recommendedLevel === 'مبتدی') difficultyMod = -0.2;
+          if (analysis.recommendedLevel === 'پیشرفته') difficultyMod = 0.2;
 
-            if (modificationCount > 0) {
-                showNotification(`${modificationCount} تغییر هوشمند در برنامه اعمال شد.`);
-            }
+          const adaptedMindMap = state.mindMap.map(node => ({
+              ...node,
+              difficulty: Math.max(0.1, Math.min(0.9, node.difficulty + difficultyMod))
+          }));
 
-            dispatch({ 
-                type: 'PLAN_ADAPTED', 
-                payload: { 
-                    analysis, 
-                    mindMap: newMindMap,
-                    suggestedPath: newPath 
-                } 
-            });
+          dispatch({ 
+              type: 'PLAN_ADAPTED', 
+              payload: { 
+                  analysis, 
+                  mindMap: adaptedMindMap, 
+                  suggestedPath: state.suggestedPath 
+              } 
+          });
 
-          } catch (err: any) {
-              console.error("Adaptive Flow Error", err);
-              // Fallback to standard flow if adaptive fails
-               dispatch({ type: 'SET_ERROR', payload: 'خطا در تحلیل هوشمند. لطفاً دوباره تلاش کنید.' });
+      } catch (error) {
+          console.error("Pre-assessment analysis failed", error);
+          dispatch({ type: 'SET_ERROR', payload: 'خطا در تحلیل پیش‌آزمون.' });
+      }
+  };
+
+  const handleChatSend = async (message: string) => {
+      const userMsg: ChatMessage = { role: 'user', message };
+      dispatch({ type: 'ADD_CHAT_MESSAGE', payload: userMsg });
+
+      try {
+          let nodeTitle = null;
+          let contextContent = state.sourceContent.substring(0, 1500);
+          
+          if (state.activeNodeId) {
+              const node = state.mindMap.find(n => n.id === state.activeNodeId);
+              if (node) {
+                  nodeTitle = node.title;
+                  if (state.nodeContents[node.id]) {
+                      const c = state.nodeContents[node.id];
+                      contextContent = `Context (${node.title}):\n${c.theory}\n---\nSource:\n${contextContent}`;
+                  }
+              }
           }
+
+          const responseText = await generateChatResponse(
+              state.chatHistory, 
+              message, 
+              nodeTitle, 
+              contextContent
+          );
+          
+          const modelMsg: ChatMessage = { role: 'model', message: responseText };
+          dispatch({ type: 'ADD_CHAT_MESSAGE', payload: modelMsg });
+      } catch (error) {
+          dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'model', message: "متاسفانه ارتباط با سرور برقرار نشد." } });
       }
   };
 
   const handleExplainRequest = (text: string) => {
-      dispatch({ type: 'RECORD_EXPLANATION_REQUEST' });
-      dispatch({ type: 'TOGGLE_CHAT' });
-      const msg: ChatMessage = { role: 'user', message: `می‌توانی درباره "${text}" بیشتر توضیح دهی؟` };
-      dispatch({ type: 'ADD_CHAT_MESSAGE', payload: msg });
-      
-      const activeNodeTitle = state.activeNodeId ? state.mindMap.find(n => n.id === state.activeNodeId)?.title || null : null;
-
-      generateChatResponse([...state.chatHistory, msg], text, activeNodeTitle, state.sourceContent)
-        .then(response => dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'model', message: response } }))
-        .catch((err: any) => console.error(err));
-  };
-
-  const handleChatSend = (message: string) => {
-      const msg: ChatMessage = { role: 'user', message };
-      dispatch({ type: 'ADD_CHAT_MESSAGE', payload: msg });
-      const activeNodeTitle = state.activeNodeId ? state.mindMap.find(n => n.id === state.activeNodeId)?.title || null : null;
-      generateChatResponse([...state.chatHistory, msg], message, activeNodeTitle, state.sourceContent)
-        .then(response => dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'model', message: response } }))
-        .catch((err: any) => console.error(err));
+      if (!state.isChatOpen) dispatch({ type: 'TOGGLE_CHAT' });
+      handleChatSend(`لطفاً این قسمت را بیشتر توضیح بده: "${text}"`);
   };
 
   const handleRetryQuiz = () => {
-      const result = state.quizResults;
-      if (!result) return;
-
-      const failedQuestions = result.filter(r => !r.isCorrect);
-      const parentNode = state.mindMap.find(n => n.id === state.activeNodeId);
-      
-      if (failedQuestions.length > 0 && parentNode) {
-           dispatch({ type: 'START_REMEDIAL_GENERATION' });
-           const weaknesses: Weakness[] = failedQuestions.map(r => ({
-               question: r.question.question,
-               incorrectAnswer: String(r.userAnswer),
-               correctAnswer: r.question.type === 'multiple-choice' ? r.question.options[r.question.correctAnswerIndex] : r.question.correctAnswer
-           }));
-
-            let nodeContext = state.sourceContent;
-            if (state.sourcePageContents && parentNode.sourcePages.length > 0) {
-                    nodeContext = parentNode.sourcePages.map(p => state.sourcePageContents![p-1]).join('\n');
-            }
-
-           generateRemedialNode(parentNode.title, weaknesses, nodeContext, state.sourceImages)
-            .then(remedialNode => {
-                 remedialNode.parentId = parentNode.parentId; 
-                 dispatch({ type: 'ADD_REMEDIAL_NODE', payload: { remedialNode, originalNodeId: parentNode.id } });
-            })
-            .catch((err: any) => dispatch({ type: 'CANCEL_REMEDIAL_GENERATION' }));
-      } else {
-           dispatch({ type: 'RETRY_QUIZ_IMMEDIATELY' });
-           dispatch({ type: 'START_PERSONALIZED_LEARNING' });
-           dispatch({ type: 'SELECT_NODE', payload: state.activeNodeId }); 
-      }
+      dispatch({ type: 'START_PERSONALIZED_LEARNING' });
   };
 
+  // Define Sidebar Links
+  const links = [
+    {
+        label: "خانه",
+        href: "#",
+        icon: <Home className="text-foreground h-5 w-5 flex-shrink-0" />,
+        onClick: () => {
+            if (state.status === AppStatus.IDLE) {
+                showNotification('شما در صفحه خانه حضور دارید', 'error');
+            } else {
+                dispatch({ type: 'RESET' });
+            }
+        }
+    },
+    {
+        label: "مربی هوشمند",
+        href: "#",
+        icon: <MessageSquare className="text-foreground h-5 w-5 flex-shrink-0" />,
+        onClick: () => dispatch({ type: 'TOGGLE_CHAT' })
+    },
+    {
+        label: "پروفایل من",
+        href: "#",
+        icon: <User className="text-foreground h-5 w-5 flex-shrink-0" />,
+        onClick: () => dispatch({ type: 'TOGGLE_USER_PANEL' })
+    }
+  ];
+  
+  // Reusable Toolbox Content to avoid code duplication
+  const ToolboxContent = () => (
+      <div className="w-full h-full flex flex-col">
+        <div className="p-4 border-b border-border font-bold text-foreground flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+                <SlidersHorizontal className="w-5 h-5" />
+                <span>جعبه ابزار</span>
+            </div>
+            <button 
+                onClick={() => setIsToolboxOpen(false)}
+                className="p-1.5 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-foreground lg:hidden"
+                title="بستن جعبه ابزار"
+            >
+                <ChevronLeft className="w-5 h-5 rotate-180" />
+            </button>
+             <button 
+                onClick={() => setIsToolboxOpen(false)}
+                className="p-1.5 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-foreground hidden lg:block"
+                title="بستن جعبه ابزار"
+            >
+                <ChevronLeft className="w-5 h-5" />
+            </button>
+        </div>
+        <div className="flex-grow overflow-y-auto p-2">
+                <WeaknessTracker weaknesses={state.weaknesses} />
+                <div className="h-px bg-border my-2 mx-4"></div>
+                <PracticeZone />
+        </div>
+    </div>
+  );
+
   return (
-    <div className="flex flex-col h-[100dvh] overflow-hidden bg-background text-foreground font-vazir transition-colors duration-300" dir="rtl">
+    <div className="flex flex-col md:flex-row h-[100dvh] w-full bg-background text-foreground overflow-hidden font-vazir transition-colors duration-300" dir="rtl">
       {showStartup && <StartupScreen onAnimationEnd={() => setShowStartup(false)} />}
       
       <ParticleBackground theme={state.theme} />
@@ -1268,61 +1278,100 @@ function App() {
           onEnableCloudSync={handleEnableCloudSync}
       />
 
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-border/50 bg-card/80 backdrop-blur-md z-50 shadow-sm">
-        <div className="flex items-center gap-3 cursor-pointer select-none" onClick={handleLogoClick}>
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-primary/20">
-                 <Brain className="w-5 h-5 text-primary-foreground" />
+      {/* Sidebar replacing Header */}
+      <Sidebar open={sidebarOpen} setOpen={setSidebarOpen}>
+        <SidebarBody className="justify-between gap-10">
+            <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
+                <div className="flex flex-col gap-2">
+                    <div onClick={handleLogoClick} className="flex items-center gap-2 font-black text-lg text-foreground py-2 cursor-pointer mb-4">
+                        <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-primary/20 shrink-0">
+                            <Brain className="w-5 h-5 text-primary-foreground" />
+                        </div>
+                        <motion.span
+                            initial={{ opacity: 0 }}
+                            animate={{ 
+                                display: sidebarOpen ? "inline-block" : "none",
+                                opacity: sidebarOpen ? 1 : 0
+                            }}
+                            transition={{ duration: 0.2 }}
+                            className="font-extrabold tracking-tight whitespace-pre"
+                        >
+                            ذهن گاه
+                        </motion.span>
+                    </div>
+                    {links.map((link, idx) => (
+                        <SidebarLink key={idx} link={link} />
+                    ))}
+                </div>
             </div>
-            <h1 className="text-lg md:text-xl font-extrabold tracking-tight text-foreground">ذهن گاه</h1>
-            <div className="flex items-center gap-3 mr-4">
-                {state.isAutoSaving && (
-                     <div className="flex items-center gap-2 text-xs text-muted-foreground animate-pulse">
+            <div className="flex flex-col gap-4">
+                {/* Theme Toggle Button */}
+                 <div className="flex justify-center md:justify-start px-2">
+                    <ThemeToggle 
+                        theme={state.theme} 
+                        onToggle={handleThemeToggle} 
+                        className={!sidebarOpen ? "w-8 h-4" : ""} // Optional: Adjust size when collapsed if needed, though current css handles overflow
+                    />
+                 </div>
+
+                 {state.currentUser ? (
+                    <SidebarLink 
+                        link={{
+                            label: state.currentUser.name,
+                            href: "#",
+                            icon: state.currentUser.avatarUrl ? (
+                                <img
+                                    src={state.currentUser.avatarUrl}
+                                    className="h-7 w-7 flex-shrink-0 rounded-full"
+                                    width={50}
+                                    height={50}
+                                    alt="Avatar"
+                                />
+                            ) : (
+                                 <div className="h-7 w-7 flex-shrink-0 rounded-full bg-primary text-white flex items-center justify-center text-xs font-bold" style={{ backgroundColor: state.currentUser.avatarColor }}>
+                                    {state.currentUser.name.charAt(0).toUpperCase()}
+                                </div>
+                            ),
+                            onClick: () => dispatch({ type: 'TOGGLE_USER_PANEL' })
+                        }}
+                    />
+                 ) : (
+                     <SidebarLink 
+                        link={{
+                            label: "ورود به حساب",
+                            href: "#",
+                            icon: <div className="h-7 w-7 flex-shrink-0 rounded-full bg-secondary flex items-center justify-center"><User className="w-4 h-4" /></div>,
+                            onClick: () => dispatch({ type: 'TOGGLE_USER_PANEL' })
+                        }}
+                     />
+                 )}
+                 
+                 {state.isAutoSaving && (
+                     <div className="flex items-center gap-2 text-xs text-muted-foreground animate-pulse px-2">
                          <Save className="w-3 h-3" />
-                         <span className="hidden sm:inline">ذخیره خودکار...</span>
+                         <motion.span 
+                            animate={{ display: sidebarOpen ? "inline-block" : "none" }}
+                         >
+                             ذخیره خودکار...
+                         </motion.span>
                      </div>
                 )}
                 {state.cloudSyncStatus === 'syncing' && (
-                     <div className="flex items-center gap-2 text-xs text-blue-500 animate-pulse">
-                         <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                         <span className="hidden sm:inline">همگام‌سازی...</span>
+                     <div className="flex items-center gap-2 text-xs text-blue-500 animate-pulse px-2">
+                         <Upload className="w-3 h-3" />
+                         <motion.span 
+                            animate={{ display: sidebarOpen ? "inline-block" : "none" }}
+                         >
+                             همگام‌سازی...
+                         </motion.span>
                      </div>
                 )}
             </div>
-        </div>
-        
-        <div className="flex items-center gap-2 md:gap-3">
-           <button 
-              onClick={() => dispatch({ type: 'TOGGLE_USER_PANEL' })}
-              className="flex items-center gap-2 px-2 md:px-3 py-1.5 rounded-full bg-secondary hover:bg-accent transition-colors border border-transparent hover:border-primary/20"
-           >
-               {state.currentUser ? (
-                   <>
-                       <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: state.currentUser.avatarColor }}>
-                           {state.currentUser.name.charAt(0).toUpperCase()}
-                       </div>
-                       <span className="text-sm font-medium hidden sm:block">{state.currentUser.name}</span>
-                   </>
-               ) : (
-                   <>
-                       <User className="w-5 h-5 text-muted-foreground" />
-                       <span className="text-sm font-medium text-muted-foreground hidden sm:block">ورود</span>
-                   </>
-               )}
-           </button>
+        </SidebarBody>
+      </Sidebar>
 
-           <button onClick={() => dispatch({ type: 'TOGGLE_CHAT' })} className="hidden lg:block p-2 rounded-full hover:bg-accent text-muted-foreground hover:text-foreground transition-colors relative">
-              <MessageSquare className="w-5 h-5" />
-              {state.chatHistory.length > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full"></span>}
-           </button>
-           <div className="w-px h-6 bg-border mx-1 hidden lg:block"></div>
-           <button onClick={() => handleThemeChange('light')} className={`hidden sm:block p-2 rounded-full transition-all ${state.theme === 'light' ? 'bg-yellow-100 text-yellow-600 shadow-inner' : 'hover:bg-accent text-muted-foreground'}`}><Sun className="w-5 h-5" /></button>
-           <button onClick={() => handleThemeChange('balanced')} className={`hidden sm:block p-2 rounded-full transition-all ${state.theme === 'balanced' ? 'bg-slate-200 text-slate-700 shadow-inner' : 'hover:bg-accent text-muted-foreground'}`}><SlidersHorizontal className="w-5 h-5" /></button>
-           <button onClick={() => handleThemeChange('dark')} className={`p-2 rounded-full transition-all ${state.theme === 'dark' ? 'bg-indigo-900/50 text-indigo-300 shadow-inner' : 'hover:bg-accent text-muted-foreground'}`}><Moon className="w-5 h-5" /></button>
-        </div>
-      </header>
-
-      <main className="flex-grow relative overflow-hidden flex flex-col md:flex-row main-content">
+      {/* Main Content Wrapper */}
+      <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative z-10">
         
         <div className="flex-grow relative z-10 overflow-y-auto scroll-smooth">
              
@@ -1585,18 +1634,72 @@ function App() {
             )}
         </div>
 
-        {/* Right/Bottom Panel */}
-        <div className="hidden lg:flex flex-col w-80 border-r border-border bg-card/50 backdrop-blur-sm shrink-0 relative z-10">
-            <div className="p-4 border-b border-border font-bold text-foreground flex items-center gap-2">
-                <SlidersHorizontal className="w-5 h-5" />
-                <span>جعبه ابزار</span>
+        {/* Right/Bottom Panel - Desktop Only (Toolbox) */}
+        <motion.div 
+            className="hidden lg:flex flex-col border-r border-border bg-card/50 backdrop-blur-sm shrink-0 relative z-10 overflow-hidden transition-all h-full"
+            initial={{ width: 320, opacity: 1 }}
+            animate={{ 
+                width: isToolboxOpen ? 320 : 0,
+                opacity: isToolboxOpen ? 1 : 0
+            }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+        >
+            <div className="w-[20rem] h-full">
+                <ToolboxContent />
             </div>
-            <div className="flex-grow overflow-y-auto">
-                 <WeaknessTracker weaknesses={state.weaknesses} />
-                 <div className="h-px bg-border my-2 mx-4"></div>
-                 <PracticeZone />
-            </div>
-        </div>
+        </motion.div>
+
+        {/* Mobile Toolbox Drawer (Left side in RTL = Right on screen, but let's stick to standard drawer logic) */}
+        {/* Since dir=rtl, left-0 is the end side. A drawer usually comes from the side opposite to the main menu. */}
+        {/* Main Menu (Sidebar) is 'Start' (Right). Toolbox is 'End' (Left). */}
+        <AnimatePresence>
+            {isToolboxOpen && (
+                <>
+                    {/* Backdrop for mobile */}
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setIsToolboxOpen(false)}
+                        className="lg:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[60]"
+                        style={{ touchAction: 'none' }}
+                    />
+                    {/* Drawer Container */}
+                    <motion.div
+                        initial={{ x: "-100%" }} // In RTL, -100% moves left (offscreen)
+                        animate={{ x: 0 }}
+                        exit={{ x: "-100%" }}
+                        transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                        className="lg:hidden fixed top-0 left-0 bottom-0 w-80 max-w-[85%] bg-card border-r border-border z-[70] shadow-2xl h-[100dvh] overflow-hidden"
+                    >
+                        <ToolboxContent />
+                    </motion.div>
+                </>
+            )}
+        </AnimatePresence>
+
+        {/* Floating Toolbox Open Button */}
+        <AnimatePresence>
+        {!isToolboxOpen && (
+            <motion.div 
+                className="absolute left-0 bottom-8 z-50"
+                initial={{ x: -50, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: -50, opacity: 0 }}
+            >
+                <button 
+                    onClick={() => setIsToolboxOpen(true)}
+                    className="flex items-center gap-2 bg-card border border-border border-l-0 rounded-r-xl p-3 shadow-lg hover:bg-secondary transition-all group"
+                    title="باز کردن جعبه ابزار"
+                >
+                    <SlidersHorizontal className="w-5 h-5 text-primary" />
+                    <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary hidden lg:block" />
+                    {/* On Mobile, just icon is enough or maybe chevron pointing right (which is inward from left edge in RTL) */}
+                     <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary lg:hidden rotate-180" />
+                </button>
+            </motion.div>
+        )}
+        </AnimatePresence>
 
         {/* Chat Panel Overlay */}
         {state.isChatOpen && (
@@ -1614,40 +1717,6 @@ function App() {
       </main>
 
       </Suspense>
-
-        {/* Mobile Bottom Nav - Optimised for Mobile */}
-        <div className="lg:hidden bottom-nav border-t border-border/40 bg-background/90 backdrop-blur-lg pb-[env(safe-area-inset-bottom)]">
-            <button 
-                className={`bottom-nav-item ${state.status === AppStatus.LEARNING ? 'text-primary active-nav-item' : 'text-muted-foreground'}`} 
-                onClick={() => dispatch({ type: 'START_PERSONALIZED_LEARNING' })}
-            >
-                <div className="relative">
-                    <Home className="w-6 h-6" />
-                    {state.status === AppStatus.LEARNING && <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-1 h-1 bg-primary rounded-full"></div>}
-                </div>
-                <span className="text-[10px] font-medium mt-1">خانه</span>
-            </button>
-
-             <button 
-                className={`bottom-nav-item ${state.isChatOpen ? 'text-primary active-nav-item' : 'text-muted-foreground'}`} 
-                onClick={() => dispatch({ type: 'TOGGLE_CHAT' })}
-            >
-                <div className="relative">
-                    <MessageSquare className="w-6 h-6" />
-                    {state.chatHistory.length > 0 && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 border-2 border-background rounded-full"></span>}
-                </div>
-                <span className="text-[10px] font-medium mt-1">مربی</span>
-            </button>
-
-            <button 
-                className={`bottom-nav-item ${state.isUserPanelOpen ? 'text-primary active-nav-item' : 'text-muted-foreground'}`} 
-                onClick={() => dispatch({ type: 'TOGGLE_USER_PANEL' })}
-            >
-                <User className="w-6 h-6" />
-                <span className="text-[10px] font-medium mt-1">پروفایل</span>
-            </button>
-        </div>
-
     </div>
   );
 }

@@ -1,58 +1,51 @@
 
-import React, { useState, useEffect } from 'react';
-import BrainAnimation from './BrainAnimation';
+import React, { useState } from 'react';
+import { AuroraBackground } from './ui/aurora-background';
+import { Button } from './ui/button';
+import { ArrowRight, Brain } from './icons';
 
 interface StartupScreenProps {
   onAnimationEnd: () => void;
 }
 
 const StartupScreen: React.FC<StartupScreenProps> = ({ onAnimationEnd }) => {
-  const [progress, setProgress] = useState(0);
-  const [status, setStatus] = useState('در حال راه‌اندازی موتور هوشمند...');
+  const [isExiting, setIsExiting] = useState(false);
 
-  useEffect(() => {
-    const stages = [
-      { pct: 30, msg: 'بارگذاری پایگاه دانش...' },
-      { pct: 60, msg: 'بررسی وضعیت سیستم...' },
-      { pct: 85, msg: 'شخصی‌سازی محیط یادگیری...' },
-      { pct: 100, msg: 'آماده‌سازی نهایی...' }
-    ];
-
-    let currentStage = 0;
-    const interval = setInterval(() => {
-      if (currentStage >= stages.length) {
-        clearInterval(interval);
-        return;
-      }
-      
-      const stage = stages[currentStage];
-      setProgress(stage.pct);
-      setStatus(stage.msg);
-      currentStage++;
-    }, 900); 
-
-    return () => clearInterval(interval);
-  }, []);
+  const handleStart = () => {
+    setIsExiting(true);
+    setTimeout(() => {
+      onAnimationEnd();
+    }, 800);
+  };
 
   return (
-    <div 
-      className="fixed inset-0 z-[9999] flex flex-col items-center justify-center w-full h-screen bg-background text-foreground fade-out"
-      style={{ animationDelay: '4s', animationFillMode: 'forwards' }}
-      onAnimationEnd={onAnimationEnd}
-    >
-      <div className="relative flex flex-col items-center">
-          <BrainAnimation />
-          
-          <div className="mt-12 w-64 space-y-3 animate-pulse">
-              <div className="h-1.5 w-full bg-secondary/50 rounded-full overflow-hidden backdrop-blur-sm border border-border/50">
-                  <div 
-                      className="h-full bg-primary transition-all duration-700 ease-out shadow-[0_0_10px_rgba(var(--primary),0.5)]"
-                      style={{ width: `${progress}%` }}
-                  />
-              </div>
-              <p className="text-xs text-center text-muted-foreground font-mono h-5 tracking-wide">{status}</p>
-          </div>
-      </div>
+    <div className={`fixed inset-0 z-[9999] transition-opacity duration-700 ${isExiting ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+      <AuroraBackground>
+        <div
+          className={`relative z-10 flex flex-col items-center justify-center h-full px-4 text-center transition-all duration-700 transform ${isExiting ? 'scale-110 opacity-0' : 'scale-100 opacity-100'}`}
+        >
+            <div className="mb-8 relative group cursor-pointer">
+                <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full animate-pulse group-hover:bg-primary/30 transition-all"></div>
+                <Brain className="w-24 h-24 text-foreground relative z-10 drop-shadow-2xl transition-transform duration-500 group-hover:rotate-12 group-hover:scale-110" />
+            </div>
+            
+            <h1 className="text-5xl md:text-7xl font-black text-foreground mb-6 tracking-tight drop-shadow-lg">
+                ذهن گاه
+            </h1>
+            <p className="text-muted-foreground text-lg md:text-xl mb-10 max-w-md leading-relaxed font-light">
+                سفری به اعماق یادگیری با هوش مصنوعی
+            </p>
+
+            <Button 
+                size="lg" 
+                onClick={handleStart} 
+                className="text-lg font-bold px-8 py-6 rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95"
+            >
+                <span>شروع یادگیری</span>
+                <ArrowRight className="mr-2 w-5 h-5 rotate-180" />
+            </Button>
+        </div>
+      </AuroraBackground>
     </div>
   );
 };
