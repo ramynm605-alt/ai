@@ -1,3 +1,4 @@
+
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef, Suspense } from 'react';
 import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse, generateRemedialNode, generateDailyChallenge, generateDeepAnalysis, generateAdaptiveModifications } from './services/geminiService';
@@ -503,108 +504,51 @@ function App() {
       }
   }, [state.error]);
 
-  useEffect(() => {
-      // Initialize Theme
-      const storedTheme = localStorage.getItem('theme') || 'dark';
-      document.documentElement.setAttribute('data-theme', storedTheme);
-      dispatch({ type: 'SET_THEME', payload: storedTheme });
-
-      // Initialize User from LocalStorage (Simulating persistent login)
-      const storedUser = localStorage.getItem('zehngah_current_user');
-      if (storedUser) {
-          try {
-              const user: UserProfile = JSON.parse(storedUser);
-              dispatch({ type: 'SET_USER', payload: user });
-              
-              // Load sessions associated with this user from localStorage
-              const storedSessions = localStorage.getItem(`zehngah_sessions_${user.id}`);
-              if (storedSessions) {
-                  dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: JSON.parse(storedSessions) });
-              }
-
-              // --- AUTO SYNC START (Firebase) ---
-              // Attempt to load from cloud when app starts if user is logged in
-              handleCloudLoad(user.id);
-
-          } catch (e: any) {
-              console.error("Error parsing stored user", e);
-          }
-      }
-  }, []);
-
-  // Init Firebase Config Check
-  useEffect(() => {
-      FirebaseService.initialize();
-  }, []);
-
-  // --- Cloud Sync Functions (Firebase) ---
-
-  const handleCloudLoad = async (userId: string) => {
+  // Cloud Sync Logic extracted
+  const handleCloudLoad = useCallback(async (userId: string) => {
        dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'syncing' } });
        try {
            const cloudData = await FirebaseService.loadUserData(userId);
            
            if (cloudData && cloudData.sessions) {
                 const cloudTime = new Date(cloudData.lastModified || 0).getTime();
-                
-                // Get local data time
                 const storedSessionsString = localStorage.getItem(`zehngah_sessions_${userId}`);
                 let localTime = 0;
                 let localSessions: SavedSession[] = [];
                 
                 if (storedSessionsString) {
                     localSessions = JSON.parse(storedSessionsString);
-                    // Find the most recent modification time in local sessions
                     if (localSessions.length > 0) {
                         localTime = Math.max(...localSessions.map(s => new Date(s.lastModified).getTime()));
                     }
                 }
 
-                // SMART SYNC LOGIC: Compare timestamps
-                // 1. If Cloud is newer -> Load from Cloud
                 if (cloudTime > localTime) {
-                    console.log("Cloud is newer. Syncing down.");
                     dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: cloudData.sessions });
                     localStorage.setItem(`zehngah_sessions_${userId}`, JSON.stringify(cloudData.sessions));
-                    
                     if (cloudData.behavior) {
                          dispatch({ type: 'DEBUG_UPDATE', payload: { behavior: cloudData.behavior } });
                          localStorage.setItem(`zehngah_behavior_${userId}`, JSON.stringify(cloudData.behavior));
                     }
                     dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'success', lastSync: cloudData.lastModified } });
                     showNotification("اطلاعات شما با نسخه ابری به‌روز شد.");
-                } 
-                // 2. If Local is newer (e.g., worked offline) -> Push to Cloud
-                else if (localTime > cloudTime) {
-                    console.log("Local is newer. Syncing up.");
-                    // We trust local data more in this case if the user was active
-                    handleCloudSave(userId, localSessions, state.behavior);
-                }
-                // 3. Equal or Cloud Empty -> Do nothing or just set success
-                else {
-                     console.log("Data is in sync.");
+                } else {
                      dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'success', lastSync: cloudData.lastModified } });
                 }
-
            } else {
-                // No cloud data yet
                 dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'idle' } });
            }
        } catch (e: any) {
            console.error("Cloud Load Error", e);
            dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'error' } });
        }
-  };
+  }, []);
 
-  const handleCloudSave = async (userId: string, sessions: SavedSession[], behavior: UserBehavior) => {
+  const handleCloudSave = useCallback(async (userId: string, sessions: SavedSession[], behavior: UserBehavior) => {
       dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'syncing' } });
       try {
           const timestamp = new Date().toISOString();
-          const dataToSave = {
-              sessions,
-              behavior,
-              lastModified: timestamp
-          };
+          const dataToSave = { sessions, behavior, lastModified: timestamp };
           const success = await FirebaseService.saveUserData(userId, dataToSave);
           if (success) {
               dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'success', lastSync: timestamp } });
@@ -615,10 +559,34 @@ function App() {
            console.error("Cloud Save Error", e);
            dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'error' } });
       }
-  };
+  }, []);
+
+  useEffect(() => {
+      const storedTheme = localStorage.getItem('theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', storedTheme);
+      dispatch({ type: 'SET_THEME', payload: storedTheme });
+
+      const storedUser = localStorage.getItem('zehngah_current_user');
+      if (storedUser) {
+          try {
+              const user: UserProfile = JSON.parse(storedUser);
+              dispatch({ type: 'SET_USER', payload: user });
+              const storedSessions = localStorage.getItem(`zehngah_sessions_${user.id}`);
+              if (storedSessions) {
+                  dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: JSON.parse(storedSessions) });
+              }
+              handleCloudLoad(user.id);
+          } catch (e: any) {
+              console.error("Error parsing stored user", e);
+          }
+      }
+  }, [handleCloudLoad]);
+
+  useEffect(() => {
+      FirebaseService.initialize();
+  }, []);
 
   const handleEnableCloudSync = () => {
-      // For Firebase, we just trigger a save/load retry since auth is implicit via user ID in this simplified model
       if (state.currentUser) {
           handleCloudLoad(state.currentUser.id);
       } else {
@@ -626,7 +594,6 @@ function App() {
       }
   };
 
-  // Persist behavior changes to local storage for the current user if logged in
   useEffect(() => {
       if (state.currentUser) {
           localStorage.setItem(`zehngah_behavior_${state.currentUser.id}`, JSON.stringify(state.behavior));
@@ -634,7 +601,6 @@ function App() {
   }, [state.behavior, state.currentUser]);
 
   useEffect(() => {
-      // Check daily status once on mount
       const timer = setTimeout(() => {
           dispatch({ type: 'CHECK_DAILY_STATUS' });
       }, 2000);
@@ -642,7 +608,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-      // Load Daily Challenge if needed
       if (state.showDailyBriefing && !state.dailyChallengeContent && state.mindMap.length > 0) {
           generateDailyChallenge(state.weaknesses, state.sourceContent)
               .then(content => dispatch({ type: 'SET_DAILY_CHALLENGE', payload: content }))
@@ -650,10 +615,8 @@ function App() {
       }
   }, [state.showDailyBriefing, state.dailyChallengeContent, state.mindMap, state.weaknesses, state.sourceContent]);
 
-  // --- Debug Keyboard Shortcut ---
   useEffect(() => {
       const handleKeyDown = (event: KeyboardEvent) => {
-          // Ctrl + Shift + X (Secret Key)
           if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'x') {
               setIsDebugOpen(prev => !prev);
           }
@@ -679,23 +642,16 @@ function App() {
     dispatch({ type: 'SET_THEME', payload: newTheme });
   };
 
-  // --- Auth Handlers ---
-  
   const handleLogin = async (user: UserProfile) => {
       localStorage.setItem('zehngah_current_user', JSON.stringify(user));
       dispatch({ type: 'SET_USER', payload: user });
-      
-      // Load local sessions first
       const storedSessions = localStorage.getItem(`zehngah_sessions_${user.id}`);
       if (storedSessions) {
           dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: JSON.parse(storedSessions) });
       } else {
           dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: [] });
       }
-      
       showNotification(`خوش آمدید، ${user.name}`);
-      
-      // Trigger Cloud Sync (Load)
       await handleCloudLoad(user.id);
   };
 
@@ -705,7 +661,8 @@ function App() {
       showNotification("با موفقیت خارج شدید");
   };
 
-  const handleSaveSession = async (title: string, isAutoSave = false) => {
+  // Memoized Save Session Handler
+  const handleSaveSession = useCallback(async (title: string, isAutoSave = false) => {
       if (!state.currentUser) return;
       
       if (isAutoSave) dispatch({ type: 'SET_AUTO_SAVING', payload: true });
@@ -735,7 +692,6 @@ function App() {
       const now = new Date().toISOString();
 
       if (sessionId) {
-          // Update existing session
           const index = newSessions.findIndex(s => s.id === sessionId);
           if (index !== -1) {
               newSessions[index] = {
@@ -751,7 +707,6 @@ function App() {
       }
       
       if (!sessionId) {
-          // Create new session
           sessionId = Math.random().toString(36).substr(2, 9);
           const newSession: SavedSession = {
             id: sessionId,
@@ -766,13 +721,9 @@ function App() {
           dispatch({ type: 'SET_CURRENT_SESSION_ID', payload: sessionId });
       }
 
-      // 1. Save to Local Storage (Backup/Offline)
       localStorage.setItem(`zehngah_sessions_${state.currentUser.id}`, JSON.stringify(newSessions));
       dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: newSessions });
 
-      // 2. Save to Cloud (Firebase)
-      // Debounce logic handles the frequency, here we just push.
-      // Since we are saving, WE are the latest version now.
       handleCloudSave(state.currentUser.id, newSessions, state.behavior);
 
       if (isAutoSave) {
@@ -780,17 +731,14 @@ function App() {
               dispatch({ type: 'SET_AUTO_SAVING', payload: false });
           }, 800);
       }
-  };
+  }, [state.currentUser, state.sourceContent, state.sourcePageContents, state.sourceImages, state.preferences, state.mindMap, state.suggestedPath, state.preAssessmentAnalysis, state.nodeContents, state.userProgress, state.weaknesses, state.behavior, state.rewards, state.savedSessions, state.currentSessionId, handleCloudSave]);
 
   const handleDeleteSession = (sessionId: string) => {
        if (!state.currentUser) return;
        const newSessions = state.savedSessions.filter(s => s.id !== sessionId);
        localStorage.setItem(`zehngah_sessions_${state.currentUser.id}`, JSON.stringify(newSessions));
        dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: newSessions });
-       
-       // Trigger cloud update
        handleCloudSave(state.currentUser.id, newSessions, state.behavior);
-
        if (state.currentSessionId === sessionId) {
            dispatch({ type: 'SET_CURRENT_SESSION_ID', payload: null });
        }
@@ -804,19 +752,17 @@ function App() {
       dispatch({ type: 'LOAD_STATE', payload: session.data, sessionId: session.id });
   };
   
-  // --- Auto-Save Logic (Debounced) ---
+  // Auto-Save Logic
   useEffect(() => {
-      // Only auto-save if user is logged in, has a session ID, and there is content
       if (state.status === AppStatus.LEARNING && state.currentUser && state.currentSessionId && state.mindMap.length > 0) {
           const timer = setTimeout(() => {
               handleSaveSession("", true);
-          }, 5000); // Increased to 5 seconds for less aggressive saves
+          }, 5000);
           return () => clearTimeout(timer);
       }
-  }, [state.userProgress, state.mindMap, state.rewards, state.behavior, state.status, state.currentUser, state.currentSessionId]);
+  }, [state.userProgress, state.mindMap, state.rewards, state.behavior, state.status, state.currentUser, state.currentSessionId, handleSaveSession]);
 
 
-  // --- Export/Import Data Logic (Multi-Device Sync Simulation) ---
   const handleExportUserData = (): string => {
       if (!state.currentUser) return '';
       const userData = {
@@ -834,20 +780,16 @@ function App() {
           
           if (!userData.user || !userData.sessions) throw new Error("فرمت نامعتبر");
           
-          // 1. Set Current User
           localStorage.setItem('zehngah_current_user', JSON.stringify(userData.user));
           dispatch({ type: 'SET_USER', payload: userData.user });
 
-          // 2. Update Sessions
           localStorage.setItem(`zehngah_sessions_${userData.user.id}`, JSON.stringify(userData.sessions));
           dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: userData.sessions });
           
-          // 3. Update Behavior
           if (userData.behavior) {
              localStorage.setItem(`zehngah_behavior_${userData.user.id}`, JSON.stringify(userData.behavior));
           }
           
-          // 4. Trigger Cloud Save immediately to sync this imported data
           handleCloudSave(userData.user.id, userData.sessions, userData.behavior || state.behavior);
 
           return true;
@@ -856,7 +798,6 @@ function App() {
           return false;
       }
   };
-  // ----------------------------
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -879,7 +820,6 @@ function App() {
                     fullText += pageText + '\n\n';
                     pageContents.push(pageText);
                 }
-                 // TRIGGER WIZARD INSTEAD OF GENERATION
                  dispatch({ type: 'INIT_WIZARD', payload: { sourceContent: fullText, sourcePageContents: pageContents, sourceImages: [] } });
             } catch (error: any) {
                 console.error("PDF Error:", error);
@@ -893,7 +833,6 @@ function App() {
              const result = e.target?.result as string;
              const base64Data = result.split(',')[1];
              const mimeType = file.type;
-             // TRIGGER WIZARD
              dispatch({ type: 'INIT_WIZARD', payload: { sourceContent: "تصویر آپلود شد.", sourcePageContents: null, sourceImages: [{mimeType, data: base64Data}] } });
         }
         reader.readAsDataURL(file);
@@ -901,7 +840,6 @@ function App() {
         const reader = new FileReader();
         reader.onload = (e) => {
             const text = e.target?.result as string;
-            // TRIGGER WIZARD
             dispatch({ type: 'INIT_WIZARD', payload: { sourceContent: text, sourcePageContents: null, sourceImages: [] } });
         };
         reader.readAsText(file);
@@ -932,7 +870,6 @@ function App() {
 
   const handleWizardComplete = (prefs: LearningPreferences) => {
       dispatch({ type: 'FINISH_WIZARD', payload: prefs });
-      // The useEffect below will trigger handleGeneratePlan because status becomes LOADING
   };
 
   const handleGeneratePlan = () => {
@@ -947,7 +884,6 @@ function App() {
           (question) => dispatch({ type: 'PRE_ASSESSMENT_QUESTION_STREAMED', payload: question })
       ).then(quiz => {
           dispatch({ type: 'PRE_ASSESSMENT_STREAM_END' });
-          // Auto-init session on first generation if logged in
           if (state.currentUser) {
                handleSaveSession(`جلسه جدید ${new Date().toLocaleDateString('fa-IR')}`, true);
           }
@@ -956,13 +892,13 @@ function App() {
       });
   };
 
-  // Trigger generation automatically when status is LOADING (which happens after Wizard)
   useEffect(() => {
       if (state.status === AppStatus.LOADING) {
           handleGeneratePlan();
       }
   }, [state.status]);
 
+  // Memoized Node Selection Handler
   const handleNodeSelect = useCallback((nodeId: string) => {
        if (state.activeNodeId === nodeId) return;
 
@@ -991,7 +927,7 @@ function App() {
                 strengths, 
                 weaknesses,
                 isIntro,
-                node.type, // Pass the node type (core, remedial, etc.)
+                node.type, 
                 (partialContent) => dispatch({ type: 'NODE_CONTENT_STREAM_UPDATE', payload: partialContent })
             ).then(content => {
                 dispatch({ type: 'NODE_CONTENT_STREAM_END', payload: { nodeId, content } });
@@ -1005,7 +941,8 @@ function App() {
       dispatch({ type: 'COMPLETE_INTRO_NODE' });
   };
 
-  const handleTakeQuiz = (nodeId: string) => {
+  // Memoized Quiz Handler
+  const handleTakeQuiz = useCallback((nodeId: string) => {
       const node = state.mindMap.find(n => n.id === nodeId);
       if (!node) return;
       
@@ -1019,7 +956,7 @@ function App() {
       generateQuiz(node.title, nodeContext, state.sourceImages, (q) => dispatch({ type: 'QUIZ_QUESTION_STREAMED', payload: q }))
         .then(() => dispatch({ type: 'QUIZ_STREAM_END' }))
         .catch((err: any) => console.error(err));
-  };
+  }, [state.mindMap, state.sourceContent, state.sourcePageContents, state.sourceImages]);
 
   const handleQuizSubmit = async (answers: Record<string, UserAnswer>) => {
       dispatch({ type: 'SUBMIT_QUIZ' });
@@ -1046,18 +983,14 @@ function App() {
               };
           });
 
-          // Determine if reward should be unlocked BEFORE switching state
           const totalScore = results.reduce((sum, r) => sum + r.score, 0);
           const maxScore = results.reduce((sum, r) => sum + r.question.points, 0);
           const percentage = maxScore > 0 ? (totalScore / maxScore) : 0;
           let newReward: Reward | null = null;
 
           if (percentage >= 0.85) {
-              const nodeContentText = state.nodeContents[node.id]?.theory || state.sourceContent.substring(0, 1000); // Fallback if theory is empty
-              
-              // IMPORTANT: Wait for reward generation before showing results so the user sees "Reward Unlocked" immediately
+              const nodeContentText = state.nodeContents[node.id]?.theory || state.sourceContent.substring(0, 1000); 
               const rewardContent = await generateDeepAnalysis(node.title, nodeContentText);
-              
               newReward = {
                   id: `reward_${node.id}`,
                   type: 'deep_analysis',
@@ -1066,7 +999,6 @@ function App() {
                   unlockedAt: new Date().toISOString(),
                   relatedNodeId: node.id
               };
-              
               dispatch({ type: 'UNLOCK_REWARD', payload: newReward });
           }
 
@@ -1088,8 +1020,6 @@ function App() {
               state.sourceContent
           );
 
-          // Simulate adaptation or use generateAdaptiveModifications if needed. 
-          // For simplicity and speed, we'll adjust difficulties locally based on analysis.
           dispatch({ type: 'START_ADAPTING_PLAN' });
 
           let difficultyMod = 0;
@@ -1116,7 +1046,8 @@ function App() {
       }
   };
 
-  const handleChatSend = async (message: string) => {
+  // Memoized Chat Handler
+  const handleChatSend = useCallback(async (message: string) => {
       const userMsg: ChatMessage = { role: 'user', message };
       dispatch({ type: 'ADD_CHAT_MESSAGE', payload: userMsg });
 
@@ -1147,7 +1078,7 @@ function App() {
       } catch (error) {
           dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'model', message: "متاسفانه ارتباط با سرور برقرار نشد." } });
       }
-  };
+  }, [state.sourceContent, state.activeNodeId, state.mindMap, state.nodeContents, state.chatHistory]);
 
   const handleExplainRequest = (text: string) => {
       if (!state.isChatOpen) dispatch({ type: 'TOGGLE_CHAT' });
@@ -1158,7 +1089,6 @@ function App() {
       dispatch({ type: 'START_PERSONALIZED_LEARNING' });
   };
 
-  // Define Sidebar Links
   const links = [
     {
         label: "خانه",
@@ -1186,7 +1116,6 @@ function App() {
     }
   ];
   
-  // Reusable Toolbox Content to avoid code duplication
   const ToolboxContent = () => (
       <div className="w-full h-full flex flex-col">
         <div className="p-4 border-b border-border font-bold text-foreground flex items-center justify-between shrink-0">
@@ -1225,10 +1154,8 @@ function App() {
 
       <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center z-[2000]"><BoxLoader size={150} /></div>}>
 
-      {/* Notification Toast */}
       {notification && <NotificationToast message={notification.message} type={notification.type} onClose={() => setNotification(null)} />}
 
-      {/* Debug Panel Overlay */}
       {isDebugOpen && (
           <DebugPanel 
               state={state}
@@ -1238,7 +1165,6 @@ function App() {
           />
       )}
 
-      {/* Daily Briefing Overlay */}
       {state.showDailyBriefing && (
           <DailyBriefing 
               streak={state.behavior.dailyStreak}
@@ -1249,7 +1175,6 @@ function App() {
           />
       )}
 
-      {/* Personalization Wizard Overlay */}
       {state.status === AppStatus.WIZARD && (
           <PersonalizationWizard 
              initialPreferences={state.preferences}
@@ -1258,7 +1183,6 @@ function App() {
           />
       )}
 
-      {/* User Panel Overlay */}
       <UserPanel 
           isOpen={state.isUserPanelOpen}
           onClose={() => dispatch({ type: 'TOGGLE_USER_PANEL' })}
@@ -1277,7 +1201,6 @@ function App() {
           onEnableCloudSync={handleEnableCloudSync}
       />
 
-      {/* Sidebar replacing Header */}
       <Sidebar open={sidebarOpen} setOpen={setSidebarOpen}>
         <SidebarBody className="justify-between gap-10">
             <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
@@ -1304,12 +1227,11 @@ function App() {
                 </div>
             </div>
             <div className="flex flex-col gap-4">
-                {/* Theme Toggle Button */}
                  <div className="flex justify-center md:justify-start px-2">
                     <ThemeToggle 
                         theme={state.theme} 
                         onToggle={handleThemeToggle} 
-                        className={!sidebarOpen ? "w-8 h-4" : ""} // Optional: Adjust size when collapsed if needed, though current css handles overflow
+                        className={!sidebarOpen ? "w-8 h-4" : ""}
                     />
                  </div>
 
@@ -1369,12 +1291,10 @@ function App() {
         </SidebarBody>
       </Sidebar>
 
-      {/* Main Content Wrapper */}
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative z-10">
         
         <div className="flex-grow relative z-10 overflow-y-auto scroll-smooth">
              
-             {/* Status: IDLE / Input */}
             {state.status === AppStatus.IDLE && (
                 <div className="max-w-5xl mx-auto mt-4 md:mt-10 p-4 md:p-6 space-y-6 md:space-y-8 animate-slide-up pb-32">
                     <div className="text-center space-y-4">
@@ -1387,7 +1307,6 @@ function App() {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
-                        {/* Text Input */}
                          <div className="stylish-textarea-wrapper p-1 bg-gradient-to-br from-border to-transparent">
                             <div className="bg-card rounded-xl p-4 h-full flex flex-col relative">
                                 <div className="flex items-center gap-2 mb-3 text-primary">
@@ -1413,7 +1332,6 @@ function App() {
                             </div>
                         </div>
 
-                        {/* Topic/Random Study */}
                          <div className="stylish-textarea-wrapper p-1 bg-gradient-to-b from-border to-transparent">
                             <div className="bg-card rounded-xl p-4 h-full flex flex-col relative">
                                 <div className="flex items-center justify-between gap-2 mb-3 text-purple-500">
@@ -1448,7 +1366,6 @@ function App() {
                             </div>
                         </div>
 
-                        {/* File Upload */}
                         <div className="stylish-textarea-wrapper p-1 bg-gradient-to-bl from-border to-transparent group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                              <div className="bg-card rounded-xl p-4 h-full flex flex-col items-center justify-center text-center border-2 border-dashed border-transparent group-hover:border-primary/20 transition-all min-h-[200px]">
                                 <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-primary shadow-sm">
@@ -1478,7 +1395,6 @@ function App() {
                 </div>
             )}
 
-            {/* Error State */}
             {state.status === AppStatus.ERROR && (
                 <div className="flex flex-col items-center justify-center h-full space-y-6 fade-in p-8 text-center">
                     <div className="w-20 h-20 bg-destructive/10 rounded-full flex items-center justify-center text-destructive">
@@ -1496,7 +1412,6 @@ function App() {
                 </div>
             )}
 
-            {/* Loading State */}
             {(state.status === AppStatus.LOADING || state.status === AppStatus.GENERATING_REMEDIAL || state.status === AppStatus.GRADING_PRE_ASSESSMENT || state.status === AppStatus.ADAPTING_PLAN) && (
                 <div className="flex flex-col items-center justify-center h-full space-y-6 fade-in">
                     <BoxLoader size={120} />
@@ -1512,7 +1427,6 @@ function App() {
                 </div>
             )}
 
-            {/* Plan Review (Initial Mind Map) */}
             {state.status === AppStatus.PLAN_REVIEW && (
                  <div className="flex flex-col h-full">
                     <div className="flex-grow relative">
@@ -1543,7 +1457,6 @@ function App() {
                 </div>
             )}
 
-            {/* Pre-Assessment */}
             {state.status === AppStatus.PRE_ASSESSMENT && state.preAssessment && (
                 <QuizView 
                     title="پیش‌آزمون تعیین سطح" 
@@ -1552,7 +1465,6 @@ function App() {
                 />
             )}
 
-             {/* Pre-Assessment Review */}
             {state.status === AppStatus.PRE_ASSESSMENT_REVIEW && state.preAssessmentAnalysis && (
                 <PreAssessmentReview 
                     analysis={state.preAssessmentAnalysis} 
@@ -1560,10 +1472,8 @@ function App() {
                 />
             )}
 
-            {/* Main Learning View (MindMap + Content) */}
             {(state.status === AppStatus.LEARNING || state.status === AppStatus.VIEWING_NODE || state.status === AppStatus.TAKING_QUIZ || state.status === AppStatus.GRADING_QUIZ || state.status === AppStatus.QUIZ_REVIEW) && (
                 <div className="flex flex-col h-full relative">
-                    {/* MindMap Area - Occupies full space */}
                     <div className="absolute inset-0 z-0">
                         <MindMap 
                             nodes={state.mindMap} 
@@ -1582,7 +1492,6 @@ function App() {
                         )}
                     </div>
 
-                    {/* Content/Quiz Area Overlay */}
                     {state.status !== AppStatus.LEARNING && (
                         <div className="absolute inset-0 z-50 bg-background/95 backdrop-blur-md overflow-y-auto animate-zoom-in">
                             {state.status === AppStatus.VIEWING_NODE && state.activeNodeId && (
@@ -1624,7 +1533,7 @@ function App() {
                                     onFinish={handleRetryQuiz} 
                                     attempts={state.userProgress[state.activeNodeId!]?.attempts || 1}
                                     onForceUnlock={() => dispatch({ type: 'FORCE_UNLOCK_NODE' })}
-                                    rewardUnlocked={!!state.rewards.find(r => r.relatedNodeId === state.activeNodeId && new Date(r.unlockedAt).getTime() > Date.now() - 60000)} // Show diamond if unlocked in last minute
+                                    rewardUnlocked={!!state.rewards.find(r => r.relatedNodeId === state.activeNodeId && new Date(r.unlockedAt).getTime() > Date.now() - 60000)}
                                 />
                             )}
                         </div>
@@ -1633,7 +1542,6 @@ function App() {
             )}
         </div>
 
-        {/* Right/Bottom Panel - Desktop Only (Toolbox) */}
         <motion.div 
             className="hidden lg:flex flex-col border-r border-border bg-card/50 backdrop-blur-sm shrink-0 relative z-10 overflow-hidden transition-all h-full"
             initial={{ width: 320, opacity: 1 }}
@@ -1648,13 +1556,9 @@ function App() {
             </div>
         </motion.div>
 
-        {/* Mobile Toolbox Drawer (Left side in RTL = Right on screen, but let's stick to standard drawer logic) */}
-        {/* Since dir=rtl, left-0 is the end side. A drawer usually comes from the side opposite to the main menu. */}
-        {/* Main Menu (Sidebar) is 'Start' (Right). Toolbox is 'End' (Left). */}
         <AnimatePresence>
             {isToolboxOpen && (
                 <>
-                    {/* Backdrop for mobile */}
                     <motion.div 
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -1663,9 +1567,8 @@ function App() {
                         className="lg:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[60]"
                         style={{ touchAction: 'none' }}
                     />
-                    {/* Drawer Container */}
                     <motion.div
-                        initial={{ x: "-100%" }} // In RTL, -100% moves left (offscreen)
+                        initial={{ x: "-100%" }}
                         animate={{ x: 0 }}
                         exit={{ x: "-100%" }}
                         transition={{ type: "spring", damping: 25, stiffness: 200 }}
@@ -1677,7 +1580,6 @@ function App() {
             )}
         </AnimatePresence>
 
-        {/* Floating Toolbox Open Button */}
         <AnimatePresence>
         {!isToolboxOpen && (
             <motion.div 
@@ -1693,14 +1595,12 @@ function App() {
                 >
                     <SlidersHorizontal className="w-5 h-5 text-primary" />
                     <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary hidden lg:block" />
-                    {/* On Mobile, just icon is enough or maybe chevron pointing right (which is inward from left edge in RTL) */}
                      <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary lg:hidden rotate-180" />
                 </button>
             </motion.div>
         )}
         </AnimatePresence>
 
-        {/* Chat Panel Overlay */}
         {state.isChatOpen && (
             <ChatPanel 
                 history={state.chatHistory} 

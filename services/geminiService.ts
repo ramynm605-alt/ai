@@ -350,7 +350,6 @@ export async function generateAdaptiveModifications(
     currentMindMap: MindMapNode[],
     analysis: PreAssessmentAnalysis
 ): Promise<any[]> {
-    // Implementation remains same, just simplified for brevity in this update block
     return withRetry(async () => {
          const prompt = `
         You are the "Adaptive Engine".
@@ -447,9 +446,17 @@ export async function generateNodeContent(
         let fullText = '';
         const contentObj: NodeContent = { introduction: '', theory: '', example: '', connection: '', conclusion: '', suggestedQuestions: [], interactiveTask: '' };
         
+        // Optimization: Throttle parsing to avoid UI freeze on streaming high-token output
+        let lastUpdate = 0;
+        const UPDATE_INTERVAL = 150; // ms
+
         for await (const chunk of stream) {
             fullText += chunk.text;
             
+            const now = Date.now();
+            if (now - lastUpdate < UPDATE_INTERVAL) continue;
+            lastUpdate = now;
+
             const headers = {
                 introduction: '###INTRODUCTION###',
                 theory: '###THEORY###',
@@ -500,6 +507,7 @@ export async function generateNodeContent(
             });
         }
         
+        // Final update to ensure everything is rendered
         return {
              introduction: await marked.parse(processReminders(contentObj.introduction)),
              theory: await marked.parse(processReminders(contentObj.theory)),
@@ -548,9 +556,7 @@ export async function evaluateNodeInteraction(
     });
 }
 
-// ... (Rest of the existing functions: generateRemedialNode, generateQuiz, gradeAndAnalyzeQuiz, generateFinalExam, etc. remain largely the same, just ensuring type compatibility)
 export async function generateRemedialNode(parentTitle: string, weaknesses: Weakness[], content: string, images: any[]) {
-    // Simplified for brevity, logic remains as in previous file but with updated types
     const prompt = `Create Remedial Node JSON for "${parentTitle}" mistakes: ${JSON.stringify(weaknesses)}.`;
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
@@ -573,7 +579,6 @@ export async function generateRemedialNode(parentTitle: string, weaknesses: Weak
     };
 }
 export async function generateQuiz(topic: string, content: string, images: any[], onQuestionStream: any): Promise<Quiz> {
-    // Original logic
     return withRetry(async () => {
         const prompt = `Generate 3 quiz questions for "${topic}". JSON stream.`;
         const stream = await ai.models.generateContentStream({
@@ -600,7 +605,6 @@ export async function generateQuiz(topic: string, content: string, images: any[]
     });
 }
 export async function gradeAndAnalyzeQuiz(questions: any[], userAnswers: any, content: string, images: any[]) {
-    // Original logic
      const prompt = `Grade quiz. Content: ${content.substring(0,2000)}. Q&A: ${JSON.stringify({questions, userAnswers})}. JSON Array output.`;
      const response = await ai.models.generateContent({
          model: "gemini-2.5-flash",
@@ -610,11 +614,9 @@ export async function gradeAndAnalyzeQuiz(questions: any[], userAnswers: any, co
      return JSON.parse(cleanJsonString(response.text || '[]'));
 }
 export async function generateFinalExam(content: string, images: any[], weaknessTopics: string, onQuestionStream: any): Promise<Quiz> {
-    // Original logic wrapper
     return generateQuiz("Final Exam", content, images, onQuestionStream);
 }
 export async function generateCorrectiveSummary(content: string, images: any[], incorrectItems: any[]) {
-    // Original logic wrapper
     return "Summary";
 }
 export async function generatePracticeResponse(topic: string, problem: string) {

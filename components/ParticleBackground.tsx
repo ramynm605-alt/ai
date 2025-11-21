@@ -97,6 +97,12 @@ const ParticleBackground: React.FC<ParticleBackgroundProps> = ({ theme }) => {
         };
 
         const animate = () => {
+            // Optimization: Stop animation if document is hidden
+            if (document.hidden) {
+                 // Wait for visibility change to restart
+                 return; 
+            }
+
             animationFrameId = requestAnimationFrame(animate);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             const colors = getParticleColors();
@@ -109,11 +115,20 @@ const ParticleBackground: React.FC<ParticleBackgroundProps> = ({ theme }) => {
         init();
         animate();
 
+        const handleVisibilityChange = () => {
+            if (!document.hidden) {
+                cancelAnimationFrame(animationFrameId);
+                animate();
+            }
+        };
+
         window.addEventListener('resize', init);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
 
         return () => {
             window.cancelAnimationFrame(animationFrameId);
             window.removeEventListener('resize', init);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
     }, [theme]);
 
