@@ -1,10 +1,9 @@
-
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef, Suspense } from 'react';
 import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse, generateRemedialNode, generateDailyChallenge, generateDeepAnalysis, generateAdaptiveModifications } from './services/geminiService';
 import { FirebaseService } from './services/firebaseService';
 import { ArrowRight, BookOpen, Brain, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize, SlidersHorizontal, ChevronDown, Sparkles, Trash, Edit, Flame, Diamond, Scroll, User, LogOut, Wand, Bell, Shuffle, FileQuestion, Settings, ChevronLeft, ChevronRight } from './components/icons';
-import Spinner from './components/Spinner';
+import BoxLoader from './components/ui/box-loader';
 import StartupScreen from './components/StartupScreen';
 import ParticleBackground from './components/ParticleBackground';
 import { Sidebar, SidebarBody, SidebarLink } from './components/Sidebar';
@@ -1224,7 +1223,7 @@ function App() {
       
       <ParticleBackground theme={state.theme} />
 
-      <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center z-[2000]"><Spinner size={50} /></div>}>
+      <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center z-[2000]"><BoxLoader size={150} /></div>}>
 
       {/* Notification Toast */}
       {notification && <NotificationToast message={notification.message} type={notification.type} onClose={() => setNotification(null)} />}
@@ -1500,7 +1499,7 @@ function App() {
             {/* Loading State */}
             {(state.status === AppStatus.LOADING || state.status === AppStatus.GENERATING_REMEDIAL || state.status === AppStatus.GRADING_PRE_ASSESSMENT || state.status === AppStatus.ADAPTING_PLAN) && (
                 <div className="flex flex-col items-center justify-center h-full space-y-6 fade-in">
-                    <Spinner />
+                    <BoxLoader size={120} />
                     <p className="text-xl font-medium text-muted-foreground animate-pulse px-4 text-center">
                         {state.loadingMessage || (state.status === AppStatus.GRADING_PRE_ASSESSMENT ? 'در حال تحلیل پاسخ‌ها و تعیین سطح...' : 'در حال پردازش...')}
                     </p>
@@ -1613,7 +1612,7 @@ function App() {
 
                             {state.status === AppStatus.GRADING_QUIZ && (
                                 <div className="flex flex-col items-center justify-center h-full space-y-4">
-                                    <Spinner size={80} />
+                                    <BoxLoader size={100} />
                                     <p className="text-lg font-medium">در حال تصحیح و تحلیل پاسخ‌ها...</p>
                                     <p className="text-sm text-muted-foreground animate-pulse">اگر عملکردتان عالی باشد، پاداش دریافت می‌کنید...</p>
                                 </div>

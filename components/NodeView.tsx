@@ -1,8 +1,8 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { MindMapNode, NodeContent, Reward } from '../types';
 import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle, BrainCircuit, Edit, Shuffle, Target, CheckCircle, ArrowLeft } from './icons';
 import { evaluateNodeInteraction } from '../services/geminiService';
+import BoxLoader from './ui/box-loader';
 
 interface NodeViewProps {
     node: MindMapNode;
@@ -21,11 +21,8 @@ interface NodeViewProps {
 
 const HeroLoader: React.FC<{ text?: string }> = ({ text = "در حال طراحی درس برای شما..." }) => (
     <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
-        <div className="relative w-24 h-24 mb-6">
-            <div className="absolute inset-0 bg-primary/20 rounded-full animate-ping opacity-75"></div>
-            <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-sm rounded-full border-2 border-primary shadow-[0_0_15px_rgba(var(--primary),0.3)]">
-                 <BrainCircuit className="w-10 h-10 text-primary animate-pulse" />
-            </div>
+        <div className="relative w-32 h-32 mb-6 flex items-center justify-center">
+            <BoxLoader size={100} />
         </div>
         <h3 className="text-xl font-bold text-foreground animate-pulse text-center px-4">{text}</h3>
     </div>
@@ -229,7 +226,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                                                      >
                                                          {isEvaluatingTask ? (
                                                              <>
-                                                                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                                                 <BoxLoader size={20} />
                                                                  <span>در حال تحلیل پاسخ شما...</span>
                                                              </>
                                                          ) : (
