@@ -493,16 +493,16 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isToolboxOpen, setIsToolboxOpen] = useState(true);
 
-  const showNotification = (msg: string, type: 'success' | 'error' = 'success') => {
+  const showNotification = useCallback((msg: string, type: 'success' | 'error' = 'success') => {
       setNotification({ message: msg, type });
-  };
+  }, []);
 
   // Watch for app-level errors
   useEffect(() => {
       if (state.error) {
           showNotification(state.error, 'error');
       }
-  }, [state.error]);
+  }, [state.error, showNotification]);
 
   // Cloud Sync Logic extracted
   const handleCloudLoad = useCallback(async (userId: string) => {
@@ -542,7 +542,7 @@ function App() {
            console.error("Cloud Load Error", e);
            dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'error' } });
        }
-  }, []);
+  }, [showNotification]);
 
   const handleCloudSave = useCallback(async (userId: string, sessions: SavedSession[], behavior: UserBehavior) => {
       dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'syncing' } });
