@@ -145,6 +145,18 @@ export async function generateLearningPlan(
         **وظیفه دوم: ایجاد پیش‌آزمون هوشمند (۵ سوال)**
         ۵ سوال طراحی کن که هر کدام **دقیقاً** یک بُعد مشخص از متن را بسنجد.
         تگ‌ها (concept): "واژگان"، "مفاهیم اصلی"، "استنباط"، "ساختار"، "کاربرد".
+        
+        **فرمت JSON سوال:**
+        باید دقیقا از این ساختار استفاده کنی. نوع سوال همیشه باید "multiple-choice" باشد.
+        {
+          "question": "متن سوال",
+          "options": ["گزینه ۱", "گزینه ۲", "گزینه ۳", "گزینه ۴"],
+          "correctAnswerIndex": number,
+          "type": "multiple-choice",
+          "difficulty": "متوسط",
+          "points": 20,
+          "concept": "یکی از تگ‌های بالا"
+        }
 
         **دستورالعمل خروجی (استریم):**
         1. ابتدا \`mindMap\` و \`suggestedPath\` را بین \`[MIND_MAP_START]\` و \`[MIND_MAP_END]\` بفرست.
@@ -264,13 +276,34 @@ export async function generateLearningPlan(
                     try {
                         const q = JSON.parse(jsonStr);
                         const question = { ...q };
+
+                        // --- ROBUST NORMALIZATION LOGIC ---
+                        // 1. Handle 'type' field issues
+                        if (!question.type) {
+                             if (question.options || question.choices) question.type = 'multiple-choice';
+                             else question.type = 'short-answer';
+                        }
+                        if (question.type === 'multiple_choice') question.type = 'multiple-choice';
+                        
+                        // 2. Standardize multiple-choice fields
                         if (question.type === 'multiple-choice') {
                            if (!question.options && question.choices) {
                                question.options = question.choices;
                            }
                            question.options = Array.isArray(question.options) ? question.options : [];
+                           
+                           // Ensure valid answer index
+                           if (typeof question.correctAnswerIndex !== 'number') {
+                               question.correctAnswerIndex = 0;
+                           }
                         }
+                        
+                        // 3. Fill default metadata
                         if (!question.concept) question.concept = "عمومی";
+                        if (!question.difficulty) question.difficulty = "متوسط";
+                        if (!question.points) question.points = 20;
+                        if (!question.id) question.id = Math.random().toString(36).substr(2, 9);
+
                         questions.push(question);
                         onQuestionStream(question);
                     } catch (e) {
@@ -580,7 +613,18 @@ export async function generateRemedialNode(parentTitle: string, weaknesses: Weak
 }
 export async function generateQuiz(topic: string, content: string, images: any[], onQuestionStream: any): Promise<Quiz> {
     return withRetry(async () => {
-        const prompt = `Generate 3 quiz questions for "${topic}". JSON stream.`;
+        const prompt = `Generate 3 quiz questions for "${topic}". 
+        JSON format required: 
+        {
+          "question": "string",
+          "options": ["opt1", "opt2", "opt3", "opt4"],
+          "correctAnswerIndex": number,
+          "type": "multiple-choice",
+          "difficulty": "متوسط",
+          "points": 20
+        }
+        Stream each question wrapped in [QUESTION_START] and [QUESTION_END].`;
+
         const stream = await ai.models.generateContentStream({
             model: "gemini-2.5-flash",
             contents: { parts: [{ text: prompt }] },
@@ -592,12 +636,23 @@ export async function generateQuiz(topic: string, content: string, images: any[]
             let s, e;
             while ((s = buffer.indexOf('[QUESTION_START]')) !== -1 && (e = buffer.indexOf('[QUESTION_END]', s)) !== -1) {
                 try {
-                    const q = JSON.parse(cleanJsonString(buffer.substring(s + 16, e)));
+                    const jsonStr = cleanJsonString(buffer.substring(s + 16, e));
+                    const q = JSON.parse(jsonStr);
+                    
                     if(!q.id) q.id = Math.random().toString(36).substr(2,9);
-                    if(q.type === 'multiple-choice' && !q.options) q.options = q.choices || [];
+                    
+                    // Normalization for Node Quiz
+                    if (!q.type && (q.options || q.choices)) q.type = 'multiple-choice';
+                    if (q.type === 'multiple-choice') {
+                        if (!q.options && q.choices) q.options = q.choices;
+                        if (!q.options) q.options = [];
+                    }
+
                     questions.push(q);
                     onQuestionStream(q);
-                } catch(err) {}
+                } catch(err) {
+                    console.error("Quiz parsing error", err);
+                }
                 buffer = buffer.substring(e + 14);
             }
         }
