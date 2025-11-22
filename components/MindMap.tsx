@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { MindMapNode as MindMapNodeType } from '../types';
-import { CheckCircle, Lock, FileQuestion, Target, Flag, Trophy, Sparkles, BrainCircuit } from './icons';
+import { CheckCircle, Lock, Target, Flag, Trophy, Sparkles } from './icons';
 
 interface MindMapProps {
     nodes: MindMapNodeType[];
@@ -35,7 +35,7 @@ const formatPageNumbers = (pages: number[]): string => {
             }
         }
     }
-    return `ص: ${ranges.join(', ')}`;
+    return `ص ${ranges.join('، ')}`;
 };
 
 // Extracted component to prevent re-mounting and hover flicker
@@ -83,26 +83,23 @@ const MindMapNodeItem = React.memo(({
         }
     };
 
-    // Difficulty Color Bar
-    let difficultyColor = 'bg-primary';
+    // Elegant color palette for difficulty/type indicators
+    let difficultyColor = 'bg-blue-500'; // Default/Medium
     if (isRemedial || isAdaptive) difficultyColor = 'bg-purple-500';
-    else if (node.difficulty < 0.4) difficultyColor = 'bg-emerald-500';
-    else if (node.difficulty > 0.7) difficultyColor = 'bg-rose-500';
+    else if (node.difficulty < 0.4) difficultyColor = 'bg-emerald-500'; // Easy
+    else if (node.difficulty > 0.7) difficultyColor = 'bg-rose-500';    // Hard
 
     const baseStyle = {
         left: node.x,
         top: node.y,
         width: width,
         height: height,
-        transitionDelay: `${index * 20}ms`, // Reduced delay for snappier feel
-        // Use specific z-index hierarchy but rely on hover CSS for lift
-        zIndex: isActive ? 40 : (isLocked ? 10 : 20),
-        opacity: isLocked ? 0.6 : 1,
-        filter: isLocked ? 'grayscale(0.8)' : 'none', // Removed blur filter for performance
-        touchAction: 'manipulation', // Important for mobile responsiveness
+        transitionDelay: `${index * 30}ms`,
+        zIndex: isActive ? 50 : (isLocked ? 10 : 20),
+        touchAction: 'manipulation',
     };
 
-    // 1. Introduction Node
+    // 1. Introduction Node - Minimal & Clean
     if (isIntro) {
         return (
             <div
@@ -111,31 +108,27 @@ const MindMapNodeItem = React.memo(({
                 onClick={handleNodeClick}
                 role="button"
             >
-                <div className={`absolute inset-0 rounded-2xl shadow-xl flex flex-col items-center justify-center text-center p-2 md:p-4 border transition-all duration-300 
-                    ${isActive ? 'border-primary ring-4 ring-primary/20 scale-105' : 'border-white/10 hover:scale-105'} 
-                    bg-gradient-to-br from-indigo-600 via-indigo-700 to-slate-800 text-white overflow-hidden`}>
-                    
-                    {/* Reduced opacity background for better mobile performance */}
-                    <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuMDUiLz4KPC9zdmc+')] opacity-10"></div>
-                    
-                    <div className="relative z-10">
-                        <div className="w-8 h-8 md:w-10 md:h-10 mx-auto mb-1 md:mb-2 rounded-full bg-white/10 flex items-center justify-center backdrop-blur-sm">
-                            <Flag className="w-5 h-5 md:w-6 md:h-6 text-indigo-200" />
-                        </div>
-                        <h3 className={`font-bold leading-tight ${isPortrait ? 'text-xs' : 'text-lg'}`}>{node.title}</h3>
-                        {!isPortrait && <span className="inline-block mt-2 text-[10px] font-bold uppercase tracking-wider bg-black/20 px-2 py-1 rounded-full text-indigo-200">شروع مسیر</span>}
+                <div className={`
+                    absolute inset-0 rounded-2xl flex flex-col items-center justify-center text-center p-3 transition-all duration-300
+                    bg-card border border-border/50 shadow-sm hover:shadow-md hover:border-primary/30
+                    ${isActive ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}
+                `}>
+                    <div className="w-8 h-8 mb-2 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                        <Flag className="w-4 h-4" />
                     </div>
+                    <h3 className={`font-bold text-foreground ${isPortrait ? 'text-xs' : 'text-sm'}`}>{node.title}</h3>
+                    {!isPortrait && <span className="mt-1 text-[9px] text-muted-foreground font-medium px-2 py-0.5 rounded-full bg-secondary">نقطه شروع</span>}
                 </div>
                 {status === 'completed' && (
-                    <div className="absolute -top-2 -right-2 z-30 bg-white rounded-full shadow-lg ring-2 ring-green-500">
-                        <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-green-500 fill-white" />
+                    <div className="absolute -top-1 -right-1 z-30 bg-background rounded-full ring-2 ring-background">
+                        <CheckCircle className="w-5 h-5 text-emerald-500" />
                     </div>
                  )}
             </div>
         );
     }
 
-    // 2. Conclusion Node
+    // 2. Conclusion Node - Minimal & Clean
     if (isConclusion) {
          return (
             <div
@@ -144,89 +137,83 @@ const MindMapNodeItem = React.memo(({
                 onClick={handleNodeClick}
                 role="button"
             >
-                <div className={`absolute inset-0 rounded-2xl shadow-lg flex flex-col items-center justify-center text-center p-2 md:p-4 border transition-all duration-300
-                    ${isActive ? 'border-emerald-500 ring-4 ring-emerald-500/20' : 'border-emerald-500/30'} 
-                    ${isLocked ? 'bg-slate-100 dark:bg-slate-800' : 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white'}`}>
-                    
-                    {status === 'completed' ? 
-                        <Trophy className="w-8 h-8 md:w-10 md:h-10 mb-1 md:mb-2 text-yellow-300 drop-shadow-lg" /> : 
-                        <Target className="w-6 h-6 md:w-8 md:h-8 mb-1 md:mb-2 opacity-90" />
-                    }
-                    <h3 className={`font-bold leading-tight ${isPortrait ? 'text-xs' : 'text-lg'}`}>{node.title}</h3>
+                <div className={`
+                    absolute inset-0 rounded-2xl flex flex-col items-center justify-center text-center p-3 transition-all duration-300
+                    ${isLocked ? 'bg-secondary/50 border border-transparent opacity-60' : 'bg-card border border-border/50 shadow-sm hover:shadow-md hover:border-emerald-500/30'}
+                    ${isActive ? 'ring-2 ring-emerald-500 ring-offset-2 ring-offset-background' : ''}
+                `}>
+                    <div className={`w-8 h-8 mb-2 rounded-full flex items-center justify-center ${status === 'completed' ? 'bg-amber-100 text-amber-600' : 'bg-emerald-500/10 text-emerald-600'}`}>
+                        {status === 'completed' ? <Trophy className="w-4 h-4" /> : <Target className="w-4 h-4" />}
+                    </div>
+                    <h3 className={`font-bold text-foreground ${isPortrait ? 'text-xs' : 'text-sm'}`}>{node.title}</h3>
                 </div>
             </div>
         );
     }
 
-    // 3. Standard Node (Glassmorphism)
-    // Note: The 'glass' class is modified in index.html to remove backdrop-filter on mobile
+    // 3. Standard Node - Minimal, Card-based, Refined
     return (
         <div
-            className={`mindmap-node group ${isVisible ? 'mindmap-node-visible' : ''} ${isActive ? 'active-node' : ''} ${isSuggestedAndIncomplete ? 'suggested-node' : ''} absolute rounded-xl cursor-pointer select-none`}
+            className={`mindmap-node group ${isVisible ? 'mindmap-node-visible' : ''} absolute select-none outline-none`}
             style={baseStyle}
             onClick={handleNodeClick}
             role="button"
             tabIndex={isLocked ? -1 : 0}
         >
-             {/* Active Pulse Ring - Hidden on locked nodes */}
-             {isActive && <div className="absolute inset-0 rounded-xl ring-4 ring-primary/30 animate-pulse"></div>}
+             <div className={`
+                absolute inset-0 rounded-xl transition-all duration-300 overflow-hidden flex flex-col
+                bg-card/95 backdrop-blur-sm border
+                ${isActive 
+                    ? 'border-primary ring-1 ring-primary shadow-[0_4px_20px_-8px_rgba(var(--primary)/0.2)] transform scale-[1.02] z-50' 
+                    : 'border-border/60 hover:border-border hover:shadow-md'
+                }
+                ${status === 'failed' ? 'border-destructive/30 bg-destructive/5' : ''}
+                ${isLocked ? 'opacity-60 grayscale-[0.8] pointer-events-none' : ''}
+            `}>
+                 {/* Minimal Status Strip (RTL placement: Right) */}
+                 <div className={`absolute right-0 top-0 bottom-0 w-1 ${difficultyColor} opacity-80`} />
 
-             <div className={`absolute inset-0 rounded-xl border transition-all duration-300 overflow-hidden flex flex-col shadow-sm hover:shadow-xl glass
-                ${isActive ? 'border-primary/80 bg-card/90' : 'border-white/40 dark:border-white/10 hover:border-primary/50 bg-card/70'} 
-                ${status === 'failed' ? 'border-destructive/60 bg-destructive/10' : ''}
-                ${isRemedial ? 'border-purple-400/50 bg-purple-50/80 dark:bg-purple-900/20' : ''}
-                ${isAdaptive ? 'border-blue-400/50 bg-blue-50/80 dark:bg-blue-900/20' : ''}
-             `}>
-                
-                {/* Top Gradient Line */}
-                <div className={`h-1 w-full ${status === 'failed' ? 'bg-destructive' : difficultyColor} opacity-80`} />
-
-                <div className="flex-1 p-2 md:p-3 flex flex-col justify-between relative z-10">
-                    {/* Header */}
-                    <div className="flex items-start justify-between gap-1 md:gap-2">
-                         <h3 className={`font-bold leading-snug text-foreground line-clamp-2 ${isPortrait ? 'text-[10px] leading-3' : 'text-sm'} ${isRemedial || isAdaptive ? 'text-purple-700 dark:text-purple-300' : ''}`} dir="rtl">
+                 <div className="flex-1 p-3 pl-4 pr-4 flex flex-col relative">
+                    {/* Header Section */}
+                    <div className="flex justify-between items-start gap-2">
+                        <h3 className={`
+                            font-medium leading-snug text-foreground/90
+                            ${isPortrait ? 'text-[11px]' : 'text-sm'}
+                            ${isLocked ? 'text-muted-foreground' : ''}
+                        `} dir="rtl">
                             {node.title}
-                         </h3>
-                         {isLocked && <Lock className="w-3 h-3 md:w-4 md:h-4 text-muted-foreground/50 shrink-0" />}
+                        </h3>
+                        
+                        {/* Status Icons */}
+                        <div className="shrink-0 flex flex-col gap-1 items-center">
+                            {status === 'completed' && <CheckCircle className="w-4 h-4 text-emerald-500" />}
+                            {isLocked && <Lock className="w-3 h-3 text-muted-foreground/40" />}
+                        </div>
                     </div>
-
-                    {/* Footer info */}
-                    <div className="flex items-end justify-between mt-1 md:mt-2">
-                         <div className="flex gap-1">
-                            {node.sourcePages.length > 0 && !isPortrait && (
-                                <span className="text-[10px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded border border-border/50">
-                                    {formatPageNumbers(node.sourcePages)}
-                                </span>
-                            )}
-                         </div>
-
-                        {!isLocked && status !== 'completed' && status !== 'failed' && !isPortrait && (
-                             <div className="bg-primary/10 p-1 rounded-md text-primary opacity-0 group-hover:opacity-100 transition-all transform translate-y-2 group-hover:translate-y-0">
-                                 {isRemedial || isAdaptive ? <Sparkles className="w-4 h-4 text-purple-500" /> : <BrainCircuit className="w-4 h-4" />}
+                    
+                    {/* Footer Info */}
+                    <div className="mt-auto flex items-center justify-between pt-2 border-t border-border/30">
+                         {/* Page Numbers */}
+                         <span className="text-[9px] text-muted-foreground/70 font-mono tracking-tight h-3">
+                             {!isPortrait && node.sourcePages.length > 0 && formatPageNumbers(node.sourcePages)}
+                         </span>
+                         
+                         {/* Node Type Badge */}
+                         {(isRemedial || isAdaptive) && (
+                             <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] bg-purple-500/10 ml-auto">
+                                 <Sparkles className="w-2.5 h-2.5 text-purple-600" />
+                                 {!isPortrait && <span className="text-[8px] text-purple-600 font-semibold">تکملی</span>}
                              </div>
-                        )}
+                         )}
                     </div>
-                </div>
-             </div>
+                 </div>
+            </div>
 
-             {/* Status Badges (Floating) */}
-             {status === 'completed' && (
-                <div className="absolute -top-2 -left-2 z-30 bg-white dark:bg-slate-800 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.15)] ring-1 ring-success/20">
-                    <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-success fill-white dark:fill-transparent" />
-                </div>
-             )}
-             
+             {/* Suggested Path Badge */}
              {isSuggestedAndIncomplete && suggestedIndex !== -1 && (
-                <div className="absolute -top-2 -right-2 md:-top-3 md:-right-3 z-30 flex items-center justify-center w-5 h-5 md:w-7 md:h-7 text-[10px] md:text-xs font-bold text-white rounded-full bg-gradient-to-br from-primary to-indigo-600 shadow-lg ring-2 ring-background animate-bounce">
+                <div className="absolute -top-2 -right-2 z-30 flex items-center justify-center w-5 h-5 text-[10px] font-bold text-primary-foreground rounded-full bg-primary shadow-sm ring-2 ring-background animate-bounce">
                     {suggestedIndex + 1}
                 </div>
-             )}
-
-             {/* Adaptive Badge */}
-             {isAdaptive && (
-                 <div className="absolute -top-2 left-1/2 -translate-x-1/2 z-30 bg-blue-500 text-white text-[8px] font-bold px-2 py-0.5 rounded-full shadow-sm">
-                     شخصی
-                 </div>
              )}
         </div>
     );
@@ -244,21 +231,20 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
     }, []);
 
     useEffect(() => {
-        // Debounced Resize Observer to prevent excessive re-renders on mobile browser bar toggle
         let timeoutId: any;
         const resizeObserver = new ResizeObserver(entries => {
             if (entries[0]) {
                 const { width, height } = entries[0].contentRect;
                 clearTimeout(timeoutId);
                 timeoutId = setTimeout(() => {
-                    setContainerSize(prev => {
-                        // Tolerance for small mobile height changes (address bar)
-                        if (Math.abs(prev.width - width) < 10 && Math.abs(prev.height - height) < 80) return prev;
-                        return { width, height };
-                    });
+                    if (Math.abs(prev.width - width) < 10 && Math.abs(prev.height - height) < 80) return prev;
+                    setContainerSize({ width, height });
                 }, 200);
             }
         });
+        // Helper to fix prev usage inside callback
+        let prev = { width: 0, height: 0 }; 
+        
         if (containerRef.current) resizeObserver.observe(containerRef.current);
         return () => {
             resizeObserver.disconnect();
@@ -273,12 +259,11 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
 
         const isMobile = containerSize.width < 768;
         
-        // Responsive Dimensions
-        // Mobile needs much smaller nodes to fit 2-3 on screen without excessive scrolling
-        const R_NODE_WIDTH = isMobile ? 140 : 220;
-        const R_NODE_HEIGHT = isMobile ? 90 : 130;
-        const R_H_GAP = isMobile ? 30 : 90; 
-        const R_V_GAP = isMobile ? 60 : 120; 
+        // Compact, minimal dimensions
+        const R_NODE_WIDTH = isMobile ? 140 : 200;
+        const R_NODE_HEIGHT = isMobile ? 80 : 100;
+        const R_H_GAP = isMobile ? 20 : 60; 
+        const R_V_GAP = isMobile ? 50 : 100; 
 
         type NodeWithChildren = MindMapNodeType & { children: NodeWithChildren[], level: number, x: number, y: number };
         const nodeMap = new Map<string, NodeWithChildren>(nodes.map(n => [n.id, { ...n, children: [], level: 0, x: 0, y: 0 }]));
@@ -357,7 +342,7 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
             const cNode = nodeMap.get(conclusionNodeId)!;
             const treeCenter = (minX + maxX) / 2;
             cNode.x = treeCenter; 
-            cNode.y = maxY + R_V_GAP * 1.5; 
+            cNode.y = maxY + R_V_GAP * 1.2; // Less gap for conclusion
             positionedNodesList.push(cNode);
             minX = Math.min(minX, cNode.x);
             maxX = Math.max(maxX, cNode.x);
@@ -373,7 +358,6 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
             const normalizedX = node.x - minX;
             let xPos = flipX ? (maxX - minX) - normalizedX + PADDING : normalizedX + PADDING;
             
-            // ROUND COORDINATES TO PREVENT BLURRINESS
             node.x = Math.round(xPos);
             node.y = Math.round(node.y + PADDING);
         });
@@ -447,55 +431,51 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
     const suggestedNodeIds = useMemo(() => new Set(suggestedPath || []), [suggestedPath]);
 
     return (
-        <div ref={containerRef} className="relative w-full h-full overflow-auto bg-[radial-gradient(circle_at_center,rgba(var(--primary)/0.05)_0%,transparent_70%)] touch-pan-x touch-pan-y" style={{ direction: 'ltr' }}>
-            <button onClick={centerOnRoot} className="absolute z-50 p-3 transition-transform rounded-full shadow-lg bottom-24 md:bottom-6 left-4 md:left-6 bg-card text-primary border border-border hover:bg-accent hover:scale-110 active:scale-95">
-               <Target className="w-6 h-6" />
+        <div ref={containerRef} className="relative w-full h-full overflow-auto bg-background/5 touch-pan-x touch-pan-y" style={{ direction: 'ltr' }}>
+            <button onClick={centerOnRoot} className="absolute z-50 p-3 transition-transform rounded-full shadow-md bottom-24 md:bottom-6 left-4 md:left-6 bg-card text-primary border border-border hover:bg-secondary hover:scale-110 active:scale-95">
+               <Target className="w-5 h-5" />
             </button>
 
             <div className="relative mx-auto transition-all duration-500 ease-out" style={{ width: Math.max(width, containerSize.width), height: Math.max(height, containerSize.height) }}>
-                {/* Optimize SVG Rendering for Mobile */}
-                <svg className="absolute top-0 left-0 pointer-events-none" style={{ width: '100%', height: '100%', overflow: 'visible' }} shapeRendering="optimizeSpeed">
+                <svg className="absolute top-0 left-0 pointer-events-none" style={{ width: '100%', height: '100%', overflow: 'visible' }} shapeRendering="geometricPrecision">
                     <defs>
-                        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                            <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(var(--muted-foreground))" opacity="0.5" />
+                        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(var(--muted-foreground))" opacity="0.3" />
                         </marker>
-                        <marker id="arrow-active" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <marker id="arrow-active" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
                             <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(var(--primary))" />
                         </marker>
-                        <marker id="arrow-conclusion" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                            <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(var(--success))" opacity="0.6" />
+                        <marker id="arrow-conclusion" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(var(--success))" opacity="0.4" />
                         </marker>
                     </defs>
                     {lines.map((line, i) => {
                          const isActive = activeNodeId === line.parentId || activeNodeId === line.childId;
                          const isSuggested = showSuggestedPath && suggestedNodeIds.has(line.parentId) && suggestedNodeIds.has(line.childId);
                          const isConclusionLine = line.type === 'conclusion';
-                         // Smooth bezier curve
+                         // Thinner, simpler bezier
                          const cpY = (line.y2 - line.y1) * 0.5;
                          const path = `M${line.x1},${line.y1} C${line.x1},${line.y1 + cpY} ${line.x2},${line.y2 - cpY} ${line.x2},${line.y2}`;
                          
                          return (
                             <g key={i}>
-                                {/* Base Line */}
                                 <path
                                     d={path}
                                     fill="none"
                                     stroke={isConclusionLine ? "rgb(var(--success))" : "rgb(var(--border))"}
-                                    strokeWidth={isActive ? 3 : 2}
-                                    strokeOpacity={isConclusionLine ? 0.4 : 0.3}
+                                    strokeWidth={isActive ? 2 : 1.5}
+                                    strokeOpacity={isActive ? 1 : 0.3}
                                     className={`mindmap-line ${isVisible ? 'opacity-100' : 'opacity-0'}`}
-                                    style={{ transitionDelay: `${i * 10}ms` }}
+                                    style={{ transitionDelay: `${i * 5}ms` }}
                                     markerEnd={isConclusionLine ? "url(#arrow-conclusion)" : (isActive ? "url(#arrow-active)" : "url(#arrow)")}
                                 />
-                                
-                                {/* Animated Flow Line (Data traveling) */}
                                 {(isActive || isSuggested) && !isConclusionLine && (
                                     <path
                                         d={path}
                                         fill="none"
                                         stroke="rgb(var(--primary))"
-                                        strokeWidth={2}
-                                        strokeOpacity={0.8}
+                                        strokeWidth={1.5}
+                                        strokeOpacity={0.7}
                                         className="mindmap-line-flow"
                                     />
                                 )}
