@@ -179,7 +179,7 @@ function appReducer(state: AppState, action: any): AppState {
             behavior: { ...state.behavior, studyHours: newStudyHours } 
         };
     case 'START_REMEDIAL_GENERATION':
-        return { ...state, status: AppStatus.GENERATING_REMEDIAL, loadingMessage: 'در حال ایجاد درس تقویتی...' };
+        return { ...state, status: AppStatus.GENERATING_REMEDIAL, loadingMessage: 'در حال تحلیل اشتباهات و ایجاد درس تقویتی...' };
     case 'CANCEL_REMEDIAL_GENERATION': 
         return { ...state, status: AppStatus.QUIZ_REVIEW, loadingMessage: null };
     case 'ADD_REMEDIAL_NODE': {
@@ -1122,6 +1122,40 @@ function App() {
       }
   };
 
+  const handleGenerateRemedial = async () => {
+      if (!state.activeNodeId || !state.quizResults) return;
+      const node = state.mindMap.find(n => n.id === state.activeNodeId);
+      if (!node) return;
+
+      dispatch({ type: 'START_REMEDIAL_GENERATION' });
+
+      // Extract specific weaknesses from the just-finished quiz
+      const currentWeaknesses: Weakness[] = state.quizResults
+          .filter(r => !r.isCorrect)
+          .map(r => ({
+              question: r.question.question,
+              incorrectAnswer: JSON.stringify(r.userAnswer),
+              correctAnswer: r.question.type === 'multiple-choice' ? r.question.options[r.question.correctAnswerIndex] : r.question.correctAnswer
+          }));
+
+      // Fallback to global weaknesses if current quiz was somehow empty of explicit weak objects but failed score
+      const weaknessesToPass = currentWeaknesses.length > 0 ? currentWeaknesses : state.weaknesses;
+
+      try {
+           const remedialNode = await generateRemedialNode(
+              node.id, // ID
+              node.title,
+              weaknessesToPass,
+              state.sourceContent,
+              state.sourceImages
+          );
+          dispatch({ type: 'ADD_REMEDIAL_NODE', payload: { remedialNode, originalNodeId: node.id } });
+      } catch (e) {
+           dispatch({ type: 'SET_ERROR', payload: 'خطا در تولید درس تقویتی.' });
+           dispatch({ type: 'CANCEL_REMEDIAL_GENERATION' });
+      }
+  }
+
   const handlePreAssessmentSubmit = async (answers: Record<string, UserAnswer>) => {
       if (!state.preAssessment) return;
       dispatch({ type: 'SUBMIT_PRE_ASSESSMENT', payload: answers });
@@ -1652,6 +1686,7 @@ function App() {
                                     attempts={state.userProgress[state.activeNodeId!]?.attempts || 1}
                                     onForceUnlock={() => dispatch({ type: 'FORCE_UNLOCK_NODE' })}
                                     rewardUnlocked={!!state.rewards.find(r => r.relatedNodeId === state.activeNodeId && new Date(r.unlockedAt).getTime() > Date.now() - 60000)}
+                                    onGenerateRemedial={handleGenerateRemedial}
                                 />
                             )}
                         </div>

@@ -615,7 +615,7 @@ export async function evaluateNodeInteraction(
     });
 }
 
-export async function generateRemedialNode(parentTitle: string, weaknesses: Weakness[], content: string, images: any[]) {
+export async function generateRemedialNode(originalNodeId: string, parentTitle: string, weaknesses: Weakness[], content: string, images: any[]) {
     const prompt = `Create Remedial Node JSON for "${parentTitle}" mistakes: ${JSON.stringify(weaknesses)}.`;
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
@@ -626,7 +626,7 @@ export async function generateRemedialNode(parentTitle: string, weaknesses: Weak
     return {
         id: 'remedial_' + Math.random().toString(36).substr(2, 9),
         title: data.title || `مرور: ${parentTitle}`,
-        parentId: null,
+        parentId: originalNodeId, // Linked to original node as requested
         locked: false,
         difficulty: 0.3,
         isExplanatory: true,

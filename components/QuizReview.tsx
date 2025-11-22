@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { QuizResult, QuizQuestion } from '../types';
-import { CheckCircle, XCircle, Lock, Diamond } from './icons';
+import { CheckCircle, XCircle, Lock, Diamond, Sparkles } from './icons';
 
 interface QuizReviewProps {
     results: QuizResult[];
@@ -9,6 +9,7 @@ interface QuizReviewProps {
     attempts?: number;
     onForceUnlock?: () => void;
     rewardUnlocked?: boolean;
+    onGenerateRemedial?: () => void;
 }
 
 const getAnswerText = (question: QuizQuestion, answer: any): string => {
@@ -74,14 +75,14 @@ const QuestionReviewCard: React.FC<{ result: QuizResult }> = ({ result }) => {
 };
 
 
-const QuizReview: React.FC<QuizReviewProps> = ({ results, onFinish, attempts = 0, onForceUnlock, rewardUnlocked }) => {
+const QuizReview: React.FC<QuizReviewProps> = ({ results, onFinish, attempts = 0, onForceUnlock, rewardUnlocked, onGenerateRemedial }) => {
     const totalScore = results.reduce((sum, r) => sum + r.score, 0);
     const maxScore = results.reduce((sum, r) => sum + r.question.points, 0);
     const percentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
     const passed = percentage >= 70;
 
     return (
-        <div className="max-w-4xl p-4 mx-auto sm:p-6 md:p-8">
+        <div className="max-w-4xl p-4 mx-auto sm:p-6 md:p-8 pb-32">
             <div className="p-6 mb-8 text-center border rounded-lg shadow-lg bg-card">
                 <h1 className="mb-2 text-3xl font-bold text-foreground">نتیجه ارزیابی</h1>
                 <p className="text-muted-foreground">امتیاز کسب شده: <span className={`font-bold ${passed ? 'text-success' : 'text-destructive'}`}>{totalScore}</span> از <span className="font-bold">{maxScore}</span></p>
@@ -99,6 +100,17 @@ const QuizReview: React.FC<QuizReviewProps> = ({ results, onFinish, attempts = 0
                 ) : (
                     <div>
                         <p className="mt-2 text-red-600">به نظر می‌رسد برخی مفاهیم هنوز برایتان جدید هستند. پیشنهاد می‌کنم نکات بالا را مرور کنید.</p>
+                        
+                        {onGenerateRemedial && (
+                             <button 
+                                onClick={onGenerateRemedial}
+                                className="mt-4 px-5 py-3 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700 transition-all shadow-lg shadow-purple-500/30 flex items-center justify-center gap-2 mx-auto active:scale-95"
+                            >
+                                <Sparkles className="w-5 h-5" />
+                                <span>درخواست درس تقویتی هوشمند</span>
+                            </button>
+                        )}
+
                         {attempts >= 3 && onForceUnlock && (
                             <div className="mt-4 p-4 border border-yellow-500/50 bg-yellow-500/10 rounded-lg">
                                 <p className="text-sm text-yellow-600 mb-3">شما ۳ بار تلاش کرده‌اید. اگر فکر می‌کنید مشکل از سوالات است، می‌توانید به صورت دستی عبور کنید.</p>
