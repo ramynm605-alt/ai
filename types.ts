@@ -202,8 +202,9 @@ export interface MindMapNode {
     error: string | null;
     isChatOpen: boolean;
     isChatFullScreen: boolean;
+    isChatLoading: boolean; // New: Tracks if AI is generating response
     isDebateMode: boolean; 
-    chatPersona: ChatPersona; // New Field
+    chatPersona: ChatPersona; 
     chatHistory: ChatMessage[];
     behavior: UserBehavior;
     rewards: Reward[];
@@ -233,4 +234,5 @@ export interface MindMapNode {
     weaknesses: Weakness[];
     behavior: UserBehavior;
     rewards: Reward[];
+    chatHistory: ChatMessage[]; // New: Save chat history per session
   }

@@ -8,6 +8,7 @@ interface ChatPanelProps {
     isFullScreen: boolean;
     isDebateMode?: boolean; 
     chatPersona: ChatPersona; // Receive current persona
+    isThinking: boolean; // New Prop: Controls the loading indicator
     initialMessage: string;
     onSend: (message: string) => void;
     onClose: () => void;
@@ -32,6 +33,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     isFullScreen,
     isDebateMode = false,
     chatPersona,
+    isThinking,
     initialMessage,
     onSend,
     onClose,
@@ -43,7 +45,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     onNodeSelect
 }) => {
     const [input, setInput] = useState('');
-    const [isTyping, setIsTyping] = useState(false);
     const [showStarterOptions, setShowStarterOptions] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -51,13 +52,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-        const lastMessage = history[history.length - 1];
-        if (lastMessage?.message === '...') {
-            setIsTyping(true);
-        } else {
-            setIsTyping(false);
-        }
-    }, [history]);
+    }, [history, isThinking]);
 
     // Node Link Click Handling via Event Delegation
     useEffect(() => {
@@ -272,13 +267,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
                             />
                         </div>
                     ))}
-                    {isTyping && (
-                         <div className="flex justify-start">
-                            <div className="bg-secondary text-secondary-foreground p-3 rounded-2xl rounded-bl-none border border-border">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-pulse"></div>
-                                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-pulse [animation-delay:0.2s]"></div>
-                                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-pulse [animation-delay:0.4s]"></div>
+                    {isThinking && (
+                         <div className="flex justify-start animate-fade-in">
+                            <div className="bg-secondary text-secondary-foreground p-3 rounded-2xl rounded-bl-none border border-border shadow-sm">
+                                <div className="flex items-center gap-2 h-4">
+                                    <div className="w-2 h-2 bg-primary/50 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                    <div className="w-2 h-2 bg-primary/50 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                    <div className="w-2 h-2 bg-primary/50 rounded-full animate-bounce"></div>
                                 </div>
                             </div>
                         </div>
@@ -327,7 +322,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
                     />
                     <button
                         onClick={handleSend}
-                        disabled={!input.trim() || isTyping}
+                        disabled={!input.trim() || isThinking}
                         className={`absolute right-2 flex items-center justify-center w-8 h-8 transition-colors rounded-full disabled:text-muted-foreground hover:bg-opacity-10 disabled:bg-transparent ${isDebateMode ? 'text-orange-500 hover:bg-orange-500' : 'text-primary hover:bg-primary'}`}
                     >
                         <ArrowRight className="w-5 h-5 transform -rotate-180" />

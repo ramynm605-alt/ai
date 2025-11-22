@@ -85,8 +85,9 @@ const initialState: AppState = {
   error: null,
   isChatOpen: false,
   isChatFullScreen: false,
+  isChatLoading: false,
   isDebateMode: false, 
-  chatPersona: 'supportive_coach', // Default Persona
+  chatPersona: 'supportive_coach', 
   chatHistory: [],
   // Engagement
   behavior: DEFAULT_BEHAVIOR,
@@ -374,6 +375,8 @@ function appReducer(state: AppState, action: any): AppState {
         return { 
             ...initialState, 
             ...loadedState, 
+            // Ensure chat history is loaded (if available in save file), otherwise empty
+            chatHistory: loadedState.chatHistory || [],
             activeNodeId, 
             currentUser: state.currentUser, 
             savedSessions: state.savedSessions, 
@@ -441,6 +444,8 @@ function appReducer(state: AppState, action: any): AppState {
         return { ...state, chatPersona: action.payload };
     case 'ADD_CHAT_MESSAGE':
       return { ...state, chatHistory: [...state.chatHistory, action.payload] };
+    case 'SET_CHAT_LOADING':
+        return { ...state, isChatLoading: action.payload };
     case 'TRIGGER_PROACTIVE_DEBATE':
         if (state.isChatOpen) return state;
         return { ...state, isChatOpen: true, chatHistory: [...state.chatHistory, action.payload] };
@@ -787,7 +792,8 @@ function App() {
           userProgress: state.userProgress,
           weaknesses: state.weaknesses,
           behavior: state.behavior,
-          rewards: state.rewards
+          rewards: state.rewards,
+          chatHistory: state.chatHistory // Save chat history
       };
       
       const totalNodes = state.mindMap.length;
@@ -838,7 +844,7 @@ function App() {
               dispatch({ type: 'SET_AUTO_SAVING', payload: false });
           }, 800);
       }
-  }, [state.currentUser, state.sourceContent, state.sourcePageContents, state.sourceImages, state.preferences, state.mindMap, state.suggestedPath, state.preAssessmentAnalysis, state.nodeContents, state.userProgress, state.weaknesses, state.behavior, state.rewards, state.savedSessions, state.currentSessionId, handleCloudSave]);
+  }, [state.currentUser, state.sourceContent, state.sourcePageContents, state.sourceImages, state.preferences, state.mindMap, state.suggestedPath, state.preAssessmentAnalysis, state.nodeContents, state.userProgress, state.weaknesses, state.behavior, state.rewards, state.savedSessions, state.currentSessionId, state.chatHistory, handleCloudSave]);
 
   const handleDeleteSession = (sessionId: string) => {
        if (!state.currentUser) return;
@@ -866,7 +872,7 @@ function App() {
           }, 5000);
           return () => clearTimeout(timer);
       }
-  }, [state.userProgress, state.mindMap, state.rewards, state.behavior, state.status, state.currentUser, state.currentSessionId, handleSaveSession]);
+  }, [state.userProgress, state.mindMap, state.rewards, state.behavior, state.status, state.currentUser, state.currentSessionId, state.chatHistory, handleSaveSession]);
 
 
   const handleExportUserData = (): string => {
@@ -1156,6 +1162,7 @@ function App() {
   const handleChatSend = useCallback(async (message: string) => {
       const userMsg: ChatMessage = { role: 'user', message };
       dispatch({ type: 'ADD_CHAT_MESSAGE', payload: userMsg });
+      dispatch({ type: 'SET_CHAT_LOADING', payload: true });
 
       try {
           let nodeTitle = null;
@@ -1190,6 +1197,8 @@ function App() {
           dispatch({ type: 'ADD_CHAT_MESSAGE', payload: modelMsg });
       } catch (error) {
           dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'model', message: "متاسفانه ارتباط با سرور برقرار نشد." } });
+      } finally {
+          dispatch({ type: 'SET_CHAT_LOADING', payload: false });
       }
   }, [state.sourceContent, state.activeNodeId, state.mindMap, state.nodeContents, state.chatHistory, state.isDebateMode, state.weaknesses, state.chatPersona]);
 
@@ -1720,6 +1729,7 @@ function App() {
                 isFullScreen={state.isChatFullScreen} 
                 isDebateMode={state.isDebateMode} 
                 chatPersona={state.chatPersona}
+                isThinking={state.isChatLoading} // Pass loading state
                 initialMessage=""
                 onSend={handleChatSend} 
                 onClose={() => dispatch({ type: 'TOGGLE_CHAT' })}
@@ -1728,7 +1738,7 @@ function App() {
                 onInitialMessageConsumed={() => {}}
                 onInitiateDebate={handleDebateInitiation}
                 onSetPersona={(persona) => dispatch({ type: 'SET_CHAT_PERSONA', payload: persona })}
-                onNodeSelect={handleNodeNavigate} // Use the newly created navigation handler
+                onNodeSelect={handleNodeNavigate} 
             />
         )}
       
