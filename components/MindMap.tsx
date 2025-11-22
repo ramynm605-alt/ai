@@ -12,6 +12,9 @@ interface MindMapProps {
     theme: 'light' | 'balanced' | 'dark';
     activeNodeId: string | null;
     showSuggestedPath: boolean;
+    // New Props for Selection Mode
+    isSelectionMode?: boolean;
+    selectedNodeIds?: string[];
 }
 
 const formatPageNumbers = (pages: number[]): string => {
@@ -47,6 +50,8 @@ const MindMapNodeItem = React.memo(({
     isSuggestedAndIncomplete, 
     suggestedIndex, 
     isActive, 
+    isSelected, // New Prop
+    isSelectionMode, // New Prop
     isRemedial, 
     isAdaptive,
     isIntro, 
@@ -65,6 +70,8 @@ const MindMapNodeItem = React.memo(({
     isSuggestedAndIncomplete: boolean | null;
     suggestedIndex: number;
     isActive: boolean;
+    isSelected: boolean;
+    isSelectionMode: boolean;
     isRemedial: boolean;
     isAdaptive: boolean;
     isIntro: boolean;
@@ -78,7 +85,10 @@ const MindMapNodeItem = React.memo(({
 }) => {
     const handleNodeClick = (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!isLocked) {
+        // In selection mode, we allow clicking locked nodes if needed, or restrict it
+        // Here we assume selection is allowed if not locked, or if it's just for content generation we might want only unlocked nodes.
+        // Let's stick to unlocking logic: user can select any node they have access to (unlocked).
+        if (!isLocked || isSelectionMode) {
             onSelect(node.id);
         }
     };
@@ -95,9 +105,16 @@ const MindMapNodeItem = React.memo(({
         width: width,
         height: height,
         transitionDelay: `${index * 30}ms`,
-        zIndex: isActive ? 50 : (isLocked ? 10 : 20),
+        zIndex: isActive || isSelected ? 50 : (isLocked ? 10 : 20),
         touchAction: 'manipulation',
     };
+    
+    // Selection visuals
+    const selectionClass = isSelectionMode 
+        ? isSelected 
+            ? 'ring-4 ring-primary scale-105 border-primary' 
+            : 'opacity-60 grayscale hover:opacity-100 hover:grayscale-0 hover:scale-105' 
+        : '';
 
     // 1. Introduction Node - Minimal & Clean
     if (isIntro) {
@@ -112,6 +129,7 @@ const MindMapNodeItem = React.memo(({
                     absolute inset-0 rounded-2xl flex flex-col items-center justify-center text-center p-3 transition-all duration-300
                     bg-card border border-border/50 shadow-sm hover:shadow-md hover:border-primary/30
                     ${isActive ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}
+                    ${selectionClass}
                 `}>
                     <div className="w-8 h-8 mb-2 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                         <Flag className="w-4 h-4" />
@@ -122,6 +140,11 @@ const MindMapNodeItem = React.memo(({
                 {status === 'completed' && (
                     <div className="absolute -top-1 -right-1 z-30 bg-background rounded-full ring-2 ring-background">
                         <CheckCircle className="w-5 h-5 text-emerald-500" />
+                    </div>
+                 )}
+                 {isSelected && (
+                    <div className="absolute -top-2 -left-2 z-40 bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg">
+                        <CheckCircle className="w-4 h-4" />
                     </div>
                  )}
             </div>
@@ -141,12 +164,18 @@ const MindMapNodeItem = React.memo(({
                     absolute inset-0 rounded-2xl flex flex-col items-center justify-center text-center p-3 transition-all duration-300
                     ${isLocked ? 'bg-secondary/50 border border-transparent opacity-60' : 'bg-card border border-border/50 shadow-sm hover:shadow-md hover:border-emerald-500/30'}
                     ${isActive ? 'ring-2 ring-emerald-500 ring-offset-2 ring-offset-background' : ''}
+                    ${selectionClass}
                 `}>
                     <div className={`w-8 h-8 mb-2 rounded-full flex items-center justify-center ${status === 'completed' ? 'bg-amber-100 text-amber-600' : 'bg-emerald-500/10 text-emerald-600'}`}>
                         {status === 'completed' ? <Trophy className="w-4 h-4" /> : <Target className="w-4 h-4" />}
                     </div>
                     <h3 className={`font-bold text-foreground ${isPortrait ? 'text-xs' : 'text-sm'}`}>{node.title}</h3>
                 </div>
+                {isSelected && (
+                    <div className="absolute -top-2 -left-2 z-40 bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg">
+                        <CheckCircle className="w-4 h-4" />
+                    </div>
+                 )}
             </div>
         );
     }
@@ -168,7 +197,8 @@ const MindMapNodeItem = React.memo(({
                     : 'border-border/60 hover:border-border hover:shadow-md'
                 }
                 ${status === 'failed' ? 'border-destructive/30 bg-destructive/5' : ''}
-                ${isLocked ? 'opacity-60 grayscale-[0.8] pointer-events-none' : ''}
+                ${isLocked && !isSelectionMode ? 'opacity-60 grayscale-[0.8] pointer-events-none' : ''}
+                ${selectionClass}
             `}>
                  {/* Minimal Status Strip (RTL placement: Right) */}
                  <div className={`absolute right-0 top-0 bottom-0 w-1 ${difficultyColor} opacity-80`} />
@@ -179,7 +209,7 @@ const MindMapNodeItem = React.memo(({
                         <h3 className={`
                             font-medium leading-snug text-foreground/90
                             ${isPortrait ? 'text-[11px]' : 'text-sm'}
-                            ${isLocked ? 'text-muted-foreground' : ''}
+                            ${isLocked && !isSelectionMode ? 'text-muted-foreground' : ''}
                         `} dir="rtl">
                             {node.title}
                         </h3>
@@ -210,16 +240,34 @@ const MindMapNodeItem = React.memo(({
             </div>
 
              {/* Suggested Path Badge */}
-             {isSuggestedAndIncomplete && suggestedIndex !== -1 && (
+             {isSuggestedAndIncomplete && suggestedIndex !== -1 && !isSelectionMode && (
                 <div className="absolute -top-2 -right-2 z-30 flex items-center justify-center w-5 h-5 text-[10px] font-bold text-primary-foreground rounded-full bg-primary shadow-sm ring-2 ring-background animate-bounce">
                     {suggestedIndex + 1}
+                </div>
+             )}
+
+             {/* Selection Badge */}
+             {isSelected && (
+                <div className="absolute -top-2 -left-2 z-50 bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg border-2 border-background animate-pop-in">
+                    <CheckCircle className="w-4 h-4" />
                 </div>
              )}
         </div>
     );
 });
 
-const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSelectNode, onTakeQuiz, theme, activeNodeId, showSuggestedPath }) => {
+const MindMap: React.FC<MindMapProps> = ({ 
+    nodes, 
+    progress, 
+    suggestedPath, 
+    onSelectNode, 
+    onTakeQuiz, 
+    theme, 
+    activeNodeId, 
+    showSuggestedPath,
+    isSelectionMode = false,
+    selectedNodeIds = []
+}) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
     const [isVisible, setIsVisible] = useState(false);
@@ -429,6 +477,7 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
    };
 
     const suggestedNodeIds = useMemo(() => new Set(suggestedPath || []), [suggestedPath]);
+    const selectedSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
 
     return (
         <div ref={containerRef} className="relative w-full h-full overflow-auto bg-background/5 touch-pan-x touch-pan-y" style={{ direction: 'ltr' }}>
@@ -453,6 +502,8 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
                          const isActive = activeNodeId === line.parentId || activeNodeId === line.childId;
                          const isSuggested = showSuggestedPath && suggestedNodeIds.has(line.parentId) && suggestedNodeIds.has(line.childId);
                          const isConclusionLine = line.type === 'conclusion';
+                         const isSelectionInvolved = isSelectionMode && (selectedSet.has(line.parentId) || selectedSet.has(line.childId));
+
                          // Thinner, simpler bezier
                          const cpY = (line.y2 - line.y1) * 0.5;
                          const path = `M${line.x1},${line.y1} C${line.x1},${line.y1 + cpY} ${line.x2},${line.y2 - cpY} ${line.x2},${line.y2}`;
@@ -463,13 +514,13 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
                                     d={path}
                                     fill="none"
                                     stroke={isConclusionLine ? "rgb(var(--success))" : "rgb(var(--border))"}
-                                    strokeWidth={isActive ? 2 : 1.5}
-                                    strokeOpacity={isActive ? 1 : 0.3}
+                                    strokeWidth={isActive || isSelectionInvolved ? 2 : 1.5}
+                                    strokeOpacity={isActive || isSelectionInvolved ? 1 : 0.3}
                                     className={`mindmap-line ${isVisible ? 'opacity-100' : 'opacity-0'}`}
                                     style={{ transitionDelay: `${i * 5}ms` }}
                                     markerEnd={isConclusionLine ? "url(#arrow-conclusion)" : (isActive ? "url(#arrow-active)" : "url(#arrow)")}
                                 />
-                                {(isActive || isSuggested) && !isConclusionLine && (
+                                {(isActive || (isSuggested && !isSelectionMode)) && !isConclusionLine && (
                                     <path
                                         d={path}
                                         fill="none"
@@ -493,6 +544,7 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
                     const isAdaptive = node.isAdaptive || false;
                     const isIntro = node.parentId === null;
                     const isConclusion = node.title.includes('نتیجه‌گیری') || node.title.includes('جمع‌بندی') || node.title.toLowerCase().includes('conclusion');
+                    const isSelected = selectedSet.has(node.id);
 
                     return (
                         <MindMapNodeItem
@@ -504,6 +556,8 @@ const MindMap: React.FC<MindMapProps> = ({ nodes, progress, suggestedPath, onSel
                             isSuggestedAndIncomplete={isSuggestedAndIncomplete}
                             suggestedIndex={suggestedIndex}
                             isActive={isActive}
+                            isSelected={isSelected}
+                            isSelectionMode={isSelectionMode}
                             isRemedial={isRemedial}
                             isAdaptive={isAdaptive}
                             isIntro={isIntro}

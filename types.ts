@@ -54,23 +54,6 @@ export interface MindMapNode {
     incorrectAnswer: string;
     correctAnswer: string;
   }
-
-  export interface Flashcard {
-      id: string;
-      front: string;
-      back: string;
-      box: number; // 1 to 5 (Leitner boxes)
-      nextReviewDate: number; // Timestamp
-      lastReviewed?: number;
-  }
-
-  export interface StorySlide {
-      id: string;
-      title: string;
-      content: string; // Short text (max 280 chars)
-      emoji: string;
-      bgGradient: string;
-  }
   
   export interface LearningPreferences {
     explanationStyle: 'faithful' | 'balanced' | 'creative';
@@ -122,6 +105,7 @@ export interface MindMapNode {
     SUMMARY = 'SUMMARY',
     ERROR = 'ERROR',
     GENERATING_REMEDIAL = 'GENERATING_REMEDIAL',
+    PODCAST_CREATION = 'PODCAST_CREATION', // New status for podcast UI
   }
 
   export type UserAnswer = string | number;
@@ -194,6 +178,16 @@ export interface MindMapNode {
     | 'devil_advocate'     // Debate: Challenges views
     | 'ruthless_critic';   // Debate: Logic checker
 
+  // --- NEW TYPES FOR PODCAST ---
+  export type VoiceName = 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Zephyr';
+  
+  export interface PodcastConfig {
+      mode: 'monologue' | 'dialogue';
+      speaker1: VoiceName;
+      speaker2?: VoiceName; // Only for dialogue
+      selectedNodeIds: string[];
+  }
+
   export interface AppState {
     theme: 'light' | 'balanced' | 'dark';
     status: AppStatus;
@@ -212,7 +206,6 @@ export interface MindMapNode {
     streamingNodeContent: NodeContent | null;
     userProgress: { [key: string]: NodeProgress };
     weaknesses: Weakness[];
-    flashcards: Flashcard[]; // New: Leitner System Cards
     finalExam: Quiz | null;
     quizResults: QuizResult[] | null;
     correctiveSummary: string;
@@ -236,6 +229,9 @@ export interface MindMapNode {
     cloudSyncStatus: 'idle' | 'syncing' | 'error' | 'success';
     cloudAccessToken: string | null;
     cloudLastSync: string | null;
+    // Podcast State
+    podcastConfig: PodcastConfig | null;
+    isPodcastMode: boolean;
   }
 
   export interface SavableState {
@@ -250,8 +246,7 @@ export interface MindMapNode {
     nodeContents: { [key: string]: NodeContent };
     userProgress: { [key: string]: NodeProgress };
     weaknesses: Weakness[];
-    flashcards: Flashcard[];
     behavior: UserBehavior;
     rewards: Reward[];
-    chatHistory: ChatMessage[]; 
+    chatHistory: ChatMessage[]; // New: Save chat history per session
   }

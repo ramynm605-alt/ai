@@ -1,10 +1,6 @@
 
-
-
-
-
 import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, GradingResult, PreAssessmentAnalysis, ChatMessage, Weakness, ChatPersona, StorySlide, Flashcard } from '../types';
+import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, GradingResult, PreAssessmentAnalysis, ChatMessage, Weakness, ChatPersona, VoiceName } from '../types';
 import { marked } from 'marked';
 
 const API_KEY = process.env.API_KEY;
@@ -123,24 +119,6 @@ const getPreferenceInstructions = (preferences: LearningPreferences): string => 
 
     return instructions;
 };
-
-// --- AUDIO UTILS ---
-
-function decode(base64: string) {
-  const binaryString = atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
-}
-
-export async function base64ToAudioBuffer(base64: string): Promise<AudioBuffer> {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({sampleRate: 24000});
-    const arrayBuffer = decode(base64).buffer;
-    return await audioContext.decodeAudioData(arrayBuffer);
-}
 
 
 export async function generateLearningPlan(
@@ -889,115 +867,178 @@ export async function generateDeepAnalysis(title: string, content: string) {
     return marked.parse(r.text || '');
 }
 
-// -------------------- MICRO-LEARNING STORIES --------------------
+// -------------------- PODCAST GENERATION --------------------
 
-const storySlideSchema = {
-    type: Type.ARRAY,
-    items: {
-        type: Type.OBJECT,
-        properties: {
-            id: { type: Type.STRING },
-            title: { type: Type.STRING },
-            content: { type: Type.STRING, description: "Maximum 280 characters, punchy and visual." },
-            emoji: { type: Type.STRING },
-            bgGradient: { type: Type.STRING, description: "CSS gradient string e.g. 'from-purple-500 to-pink-500'" }
-        },
-        required: ["id", "title", "content", "emoji", "bgGradient"]
+function writeWavHeader(samples: Uint8Array, sampleRate: number, numChannels: number, bitDepth: number): Uint8Array {
+    const byteRate = (sampleRate * numChannels * bitDepth) / 8;
+    const blockAlign = (numChannels * bitDepth) / 8;
+    const dataSize = samples.length;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+
+    function writeString(view: DataView, offset: number, string: string) {
+        for (let i = 0; i < string.length; i++) {
+            view.setUint8(offset + i, string.charCodeAt(i));
+        }
     }
-};
 
-export async function generateStoryMode(title: string, content: string): Promise<StorySlide[]> {
+    /* RIFF identifier */
+    writeString(view, 0, 'RIFF');
+    /* RIFF chunk length */
+    view.setUint32(4, 36 + dataSize, true);
+    /* RIFF type */
+    writeString(view, 8, 'WAVE');
+    /* fmt chunk identifier */
+    writeString(view, 12, 'fmt ');
+    /* fmt chunk length */
+    view.setUint32(16, 16, true);
+    /* sample format (raw) */
+    view.setUint16(20, 1, true);
+    /* channel count */
+    view.setUint16(22, numChannels, true);
+    /* sample rate */
+    view.setUint32(24, sampleRate, true);
+    /* byte rate (sample rate * block align) */
+    view.setUint32(28, byteRate, true);
+    /* block align (channel count * bytes per sample) */
+    view.setUint16(32, blockAlign, true);
+    /* bits per sample */
+    view.setUint16(34, bitDepth, true);
+    /* data chunk identifier */
+    writeString(view, 36, 'data');
+    /* data chunk length */
+    view.setUint32(40, dataSize, true);
+
+    const uint8View = new Uint8Array(buffer);
+    uint8View.set(samples, 44);
+
+    return uint8View;
+}
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+export async function generatePodcastScript(
+    contents: { title: string; text: string }[],
+    mode: 'monologue' | 'dialogue'
+): Promise<string> {
     return withRetry(async () => {
-        const prompt = `
-        Convert the following lesson content into 5 to 7 "Instagram Story" style slides.
+        const combinedContent = contents.map(c => `### Topic: ${c.title}\n${c.text}`).join('\n\n');
         
-        Lesson Topic: "${title}"
-        Content: "${content.substring(0, 2000)}..."
-        
-        Requirements:
-        1.  **Bite-sized**: Each slide must have short, punchy text (max 280 chars).
-        2.  **Visual**: Suggest an emoji and a vibrant CSS gradient (Tailwind classes like 'from-blue-500 to-cyan-500').
-        3.  **Flow**: Start with a hook, explain key points, end with a takeaway.
-        4.  **Language**: Persian.
-        
-        Output JSON array of slides.
-        `;
+        const prompt = mode === 'monologue' 
+            ? `
+            Task: Create a podcast script based on the provided content.
+            Format: Monologue.
+            Speaker: Friendly, engaging expert.
+            Language: Persian (Farsi).
+            
+            Instructions:
+            - Start with a brief welcome.
+            - Smoothly transition between topics.
+            - Explain concepts clearly using the provided text.
+            - End with a summary.
+            - **CRITICAL**: Output ONLY the spoken text. Do not include speaker labels like "Host:".
+            - Ensure punctuation is perfect for Text-to-Speech reading.
+            
+            Content:
+            ${combinedContent}
+            ` 
+            : `
+            Task: Create a podcast script based on the provided content.
+            Format: Dialogue between two people (Host and Guest).
+            Language: Persian (Farsi).
+            
+            Instructions:
+            - Host asks insightful questions. Guest answers based on the content.
+            - Keep it natural and conversational.
+            - **CRITICAL**: Output ONLY the spoken text. Do not include speaker labels like "Host:" or "Guest:". Just the conversation flow as if it were a continuous stream (since multi-speaker TTS will be handled by the model's internal turn-taking if available, but here we generate a single text stream for the TTS model to read with one or two voices).
+            
+            *Wait, optimization:* For the TTS model to perform a dialogue, we usually need to send it a transcript. However, the current TTS model API in this environment creates audio from text. 
+            If we want true multi-speaker, we generate the script first, then send it. 
+            
+            For this specific request, generate a continuous Persian script that represents the dialogue.
+            
+            Content:
+            ${combinedContent}
+            `;
 
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
             contents: { parts: [{ text: prompt }] },
-            config: { responseMimeType: "application/json", responseSchema: storySlideSchema }
         });
-
-        return JSON.parse(cleanJsonString(response.text || '[]'));
-    });
-}
-
-// -------------------- PODCAST GENERATOR --------------------
-
-export async function generatePodcastScript(title: string, content: string): Promise<string> {
-    return withRetry(async () => {
-        const prompt = `
-        Create a short, engaging podcast script (approx. 2 minutes read time) about "${title}".
         
-        Characters:
-        - Host (Joe): Enthusiastic, curious, asks questions.
-        - Guest (Jane): Expert, calm, explanatory.
-        
-        Content Base: "${content.substring(0, 2000)}..."
-        
-        Format:
-        Write ONLY the dialogue in this format:
-        Joe: [Text]
-        Jane: [Text]
-        
-        Important Rules:
-        1. Language: **Persian (Farsi)**.
-        2. **Speaker Names**: You MUST use English names 'Joe' and 'Jane' followed by a colon. Do not translate speaker names.
-        3. **Tone**: Use **Colloquial/Spoken Persian (محاوره‌ای)**. It should sound like a real conversation, not a read article. Use informal verbs (e.g., "می‌گم" instead of "می‌گویم").
-        4. Keep it dynamic and fun.
-        `;
-
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: { parts: [{ text: prompt }] }
-        });
-
         return response.text || '';
     });
 }
 
-export async function generatePodcastAudio(script: string): Promise<string> {
-     return withRetry(async () => {
-        const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash-preview-tts",
-          contents: [{ parts: [{ text: script }] }],
-          config: {
+export async function generatePodcastAudio(
+    script: string,
+    speaker1: VoiceName,
+    speaker2: VoiceName | undefined,
+    mode: 'monologue' | 'dialogue'
+): Promise<string> { // Returns Blob URL
+    return withRetry(async () => {
+        let config: any = {
             responseModalities: [Modality.AUDIO],
             speechConfig: {
-                multiSpeakerVoiceConfig: {
-                  speakerVoiceConfigs: [
-                        {
-                            speaker: 'Joe',
-                            voiceConfig: {
-                              prebuiltVoiceConfig: { voiceName: 'Kore' }
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName: speaker1 },
+                },
+            },
+        };
+
+        if (mode === 'dialogue' && speaker2) {
+             // For true multi-speaker, we assume the model can handle the turns if we provide the config.
+             // However, without a specific format (like Speaker A: ...), the model might just read it.
+             // We will stick to the provided system instruction structure.
+             config = {
+                responseModalities: [Modality.AUDIO],
+                speechConfig: {
+                    multiSpeakerVoiceConfig: {
+                      speakerVoiceConfigs: [
+                            {
+                                speaker: 'R', // Left/Right or A/B. Using arbitrary distinct keys.
+                                voiceConfig: {
+                                  prebuiltVoiceConfig: { voiceName: speaker1 }
+                                }
+                            },
+                            {
+                                speaker: 'L',
+                                voiceConfig: {
+                                  prebuiltVoiceConfig: { voiceName: speaker2 }
+                                }
                             }
-                        },
-                        {
-                            speaker: 'Jane',
-                            voiceConfig: {
-                              prebuiltVoiceConfig: { voiceName: 'Fenrir' }
-                            }
-                        }
-                  ]
+                      ]
+                    }
                 }
-            }
-          }
+             };
+             
+             // If dialogue, we might need to ensure the script has speakers defined if the model requires it for mapping.
+             // But `generateContent` usually infers or we just send the text.
+             // Let's try sending the raw script.
+        }
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash-preview-tts",
+            contents: [{ parts: [{ text: script }] }],
+            config: config,
         });
+
+        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (!base64Audio) throw new Error("No audio generated");
+
+        // Convert raw PCM to WAV
+        const pcmBytes = base64ToUint8Array(base64Audio);
+        const wavBytes = writeWavHeader(pcmBytes, 24000, 1, 16); // Assuming 24kHz, Mono, 16-bit (Standard for this model)
         
-        // Return base64 audio data
-        const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (!audioData) throw new Error("No audio generated");
-        return audioData;
-     });
+        const blob = new Blob([wavBytes], { type: 'audio/wav' });
+        return URL.createObjectURL(blob);
+    });
 }

@@ -1,11 +1,9 @@
 
-
-
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef, Suspense } from 'react';
-import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession, ChatPersona, Flashcard } from './types';
+import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession, ChatPersona, PodcastConfig } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse, generateRemedialNode, generateDailyChallenge, generateDeepAnalysis, generateAdaptiveModifications, generateProactiveChatInitiation } from './services/geminiService';
 import { FirebaseService } from './services/firebaseService';
-import { ArrowRight, BookOpen, Brain, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize, SlidersHorizontal, ChevronDown, Sparkles, Trash, Edit, Flame, Diamond, Scroll, User, LogOut, Wand, Bell, Shuffle, FileQuestion, Settings, ChevronLeft, ChevronRight } from './components/icons';
+import { ArrowRight, BookOpen, Brain, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize, SlidersHorizontal, ChevronDown, Sparkles, Trash, Edit, Flame, Diamond, Scroll, User, LogOut, Wand, Bell, Shuffle, FileQuestion, Settings, ChevronLeft, ChevronRight, Mic } from './components/icons';
 import BoxLoader from './components/ui/box-loader';
 import StartupScreen from './components/StartupScreen';
 import ParticleBackground from './components/ParticleBackground';
@@ -18,7 +16,7 @@ const MindMap = React.lazy(() => import('./components/MindMap'));
 const NodeView = React.lazy(() => import('./components/NodeView'));
 const QuizView = React.lazy(() => import('./components/QuizView'));
 const QuizReview = React.lazy(() => import('./components/QuizReview'));
-const FlashcardSystem = React.lazy(() => import('./components/FlashcardSystem'));
+const WeaknessTracker = React.lazy(() => import('./components/WeaknessTracker'));
 const PracticeZone = React.lazy(() => import('./components/PracticeZone'));
 const PreAssessmentReview = React.lazy(() => import('./components/PreAssessmentReview'));
 const ChatPanel = React.lazy(() => import('./components/ChatPanel'));
@@ -26,8 +24,9 @@ const DailyBriefing = React.lazy(() => import('./components/DailyBriefing'));
 const UserPanel = React.lazy(() => import('./components/UserPanel'));
 const PersonalizationWizard = React.lazy(() => import('./components/PersonalizationWizard'));
 const DebugPanel = React.lazy(() => import('./components/DebugPanel'));
+const PodcastCreator = React.lazy(() => import('./components/PodcastCreator'));
 
-const CURRENT_APP_VERSION = 8;
+const CURRENT_APP_VERSION = 7;
 declare var pdfjsLib: any;
 declare var google: any;
 
@@ -80,7 +79,6 @@ const initialState: AppState = {
   streamingNodeContent: null,
   userProgress: {},
   weaknesses: [],
-  flashcards: [],
   finalExam: null,
   quizResults: null,
   correctiveSummary: '',
@@ -106,7 +104,10 @@ const initialState: AppState = {
   // Cloud Sync
   cloudSyncStatus: 'idle',
   cloudAccessToken: null,
-  cloudLastSync: null
+  cloudLastSync: null,
+  // Podcast
+  podcastConfig: { mode: 'monologue', speaker1: 'Puck', selectedNodeIds: [] },
+  isPodcastMode: false
 };
 
 function appReducer(state: AppState, action: any): AppState {
@@ -239,24 +240,13 @@ function appReducer(state: AppState, action: any): AppState {
         }
 
         const newWeaknesses = [...state.weaknesses];
-        const newFlashcards = [...state.flashcards];
-        
         results.forEach((r: QuizResult) => {
             if (!r.isCorrect) {
-                 // Add to weaknesses if not exists
                  if (!newWeaknesses.some(w => w.question === r.question.question)) {
                      newWeaknesses.push({ 
                          question: r.question.question, 
                          incorrectAnswer: JSON.stringify(r.userAnswer), 
                          correctAnswer: r.question.type === 'multiple-choice' ? r.question.options[r.question.correctAnswerIndex] : r.question.correctAnswer 
-                     });
-                     // Auto-convert to Flashcard
-                     newFlashcards.push({
-                         id: `fc_${Date.now()}_${Math.random()}`,
-                         front: r.question.question,
-                         back: r.question.type === 'multiple-choice' ? r.question.options[r.question.correctAnswerIndex] : r.question.correctAnswer,
-                         box: 1,
-                         nextReviewDate: Date.now() + 86400000 // 1 Day
                      });
                  }
             }
@@ -267,34 +257,9 @@ function appReducer(state: AppState, action: any): AppState {
             status: AppStatus.QUIZ_REVIEW, 
             userProgress: newProgress, 
             weaknesses: newWeaknesses,
-            flashcards: newFlashcards,
             mindMap: newMindMap,
             quizResults: results,
         };
-    }
-    case 'UPDATE_FLASHCARD': {
-        const { id, success } = action.payload;
-        const now = Date.now();
-        const intervals = [1, 3, 7, 14, 30]; // Days
-
-        const newFlashcards = state.flashcards.map(card => {
-            if (card.id === id) {
-                let newBox = card.box;
-                let nextReview = 0;
-
-                if (success) {
-                    newBox = Math.min(5, card.box + 1);
-                    nextReview = now + (intervals[newBox - 1] * 24 * 60 * 60 * 1000);
-                } else {
-                    newBox = 1;
-                    nextReview = now + (1 * 24 * 60 * 60 * 1000); // Reset to 1 day
-                }
-
-                return { ...card, box: newBox, nextReviewDate: nextReview, lastReviewed: now };
-            }
-            return card;
-        });
-        return { ...state, flashcards: newFlashcards };
     }
     case 'RECORD_EXPLANATION_REQUEST': {
         const nodeId = state.activeNodeId;
@@ -416,7 +381,6 @@ function appReducer(state: AppState, action: any): AppState {
             ...loadedState, 
             // Ensure chat history is loaded (if available in save file), otherwise empty
             chatHistory: loadedState.chatHistory || [],
-            flashcards: loadedState.flashcards || [], // Ensure flashcards loaded
             activeNodeId, 
             currentUser: state.currentUser, 
             savedSessions: state.savedSessions, 
@@ -493,6 +457,24 @@ function appReducer(state: AppState, action: any): AppState {
       return { ...state, error: action.payload, status: AppStatus.ERROR, loadingMessage: null };
     case 'DEBUG_UPDATE':
       return { ...state, ...action.payload };
+    // Podcast Actions
+    case 'TOGGLE_PODCAST_MODE':
+        return { 
+            ...state, 
+            isPodcastMode: !state.isPodcastMode,
+            podcastConfig: !state.isPodcastMode ? { ...state.podcastConfig!, selectedNodeIds: [] } : state.podcastConfig // Reset selection on close
+        };
+    case 'TOGGLE_PODCAST_NODE_SELECTION': {
+        const nodeId = action.payload;
+        const currentSelection = state.podcastConfig?.selectedNodeIds || [];
+        let newSelection;
+        if (currentSelection.includes(nodeId)) {
+            newSelection = currentSelection.filter(id => id !== nodeId);
+        } else {
+            newSelection = [...currentSelection, nodeId];
+        }
+        return { ...state, podcastConfig: { ...state.podcastConfig!, selectedNodeIds: newSelection } };
+    }
     default:
       return state;
   }
@@ -831,7 +813,6 @@ function App() {
           nodeContents: state.nodeContents,
           userProgress: state.userProgress,
           weaknesses: state.weaknesses,
-          flashcards: state.flashcards,
           behavior: state.behavior,
           rewards: state.rewards,
           chatHistory: state.chatHistory // Save chat history
@@ -885,7 +866,7 @@ function App() {
               dispatch({ type: 'SET_AUTO_SAVING', payload: false });
           }, 800);
       }
-  }, [state.currentUser, state.sourceContent, state.sourcePageContents, state.sourceImages, state.preferences, state.mindMap, state.suggestedPath, state.preAssessmentAnalysis, state.nodeContents, state.userProgress, state.weaknesses, state.flashcards, state.behavior, state.rewards, state.savedSessions, state.currentSessionId, state.chatHistory, handleCloudSave]);
+  }, [state.currentUser, state.sourceContent, state.sourcePageContents, state.sourceImages, state.preferences, state.mindMap, state.suggestedPath, state.preAssessmentAnalysis, state.nodeContents, state.userProgress, state.weaknesses, state.behavior, state.rewards, state.savedSessions, state.currentSessionId, state.chatHistory, handleCloudSave]);
 
   const handleDeleteSession = (sessionId: string) => {
        if (!state.currentUser) return;
@@ -1053,6 +1034,12 @@ function App() {
 
   // Memoized Node Selection Handler
   const handleNodeSelect = useCallback((nodeId: string) => {
+       // Podcast Selection Logic
+       if (state.isPodcastMode) {
+           dispatch({ type: 'TOGGLE_PODCAST_NODE_SELECTION', payload: nodeId });
+           return;
+       }
+
        if (state.activeNodeId === nodeId) return;
 
        dispatch({ type: 'SELECT_NODE', payload: nodeId });
@@ -1088,7 +1075,7 @@ function App() {
                 console.error(err);
             });
        }
-  }, [state.activeNodeId, state.mindMap, state.nodeContents, state.preAssessmentAnalysis, state.sourceContent, state.sourcePageContents, state.sourceImages, state.preferences]);
+  }, [state.activeNodeId, state.mindMap, state.nodeContents, state.preAssessmentAnalysis, state.sourceContent, state.sourcePageContents, state.sourceImages, state.preferences, state.isPodcastMode]);
   
   const handleCompleteIntro = () => {
       dispatch({ type: 'COMPLETE_INTRO_NODE' });
@@ -1307,6 +1294,21 @@ function App() {
         onClick: () => dispatch({ type: 'TOGGLE_CHAT' })
     },
     {
+        label: "ساخت پادکست",
+        href: "#",
+        icon: <Mic className="text-foreground h-5 w-5 flex-shrink-0" />,
+        onClick: () => {
+             if (state.status !== AppStatus.LEARNING && state.status !== AppStatus.VIEWING_NODE) {
+                 showNotification('لطفاً ابتدا وارد مسیر یادگیری شوید.', 'error');
+             } else {
+                 dispatch({ type: 'TOGGLE_PODCAST_MODE' });
+                 if (!state.isPodcastMode) {
+                     showNotification('حالت انتخاب درس فعال شد. روی درس‌ها کلیک کنید.', 'success');
+                 }
+             }
+        }
+    },
+    {
         label: "پروفایل من",
         href: "#",
         icon: <User className="text-foreground h-5 w-5 flex-shrink-0" />,
@@ -1336,13 +1338,8 @@ function App() {
                 <ChevronLeft className="w-5 h-5" />
             </button>
         </div>
-        <div className="flex-grow overflow-y-auto p-2 space-y-2">
-                {/* New Flashcard System */}
-                <FlashcardSystem 
-                    flashcards={state.flashcards} 
-                    onUpdateCard={(id, success) => dispatch({ type: 'UPDATE_FLASHCARD', payload: { id, success } })} 
-                />
-                
+        <div className="flex-grow overflow-y-auto p-2">
+                <WeaknessTracker weaknesses={state.weaknesses} />
                 <div className="h-px bg-border my-2 mx-4"></div>
                 <PracticeZone />
         </div>
@@ -1384,6 +1381,25 @@ function App() {
              onSubmit={handleWizardComplete}
              onSkip={() => handleWizardComplete(state.preferences)}
           />
+      )}
+
+      {/* Podcast Creator Modal */}
+      {state.isPodcastMode && state.podcastConfig && (
+         <div className="relative z-[100]">
+              {state.podcastConfig.selectedNodeIds.length > 0 ? (
+                   <PodcastCreator 
+                       selectedNodes={state.mindMap.filter(n => state.podcastConfig!.selectedNodeIds.includes(n.id))}
+                       nodeContents={state.nodeContents}
+                       onClose={() => dispatch({ type: 'TOGGLE_PODCAST_MODE' })}
+                       onRemoveNode={(id) => dispatch({ type: 'TOGGLE_PODCAST_NODE_SELECTION', payload: id })}
+                   />
+              ) : (
+                  <div className="fixed top-4 right-1/2 transform translate-x-1/2 z-[150] bg-card/90 backdrop-blur border border-primary p-3 rounded-full shadow-xl flex items-center gap-3 animate-slide-up">
+                       <span className="text-sm font-bold text-primary animate-pulse">لطفاً درس‌های مورد نظر را انتخاب کنید...</span>
+                       <button onClick={() => dispatch({ type: 'TOGGLE_PODCAST_MODE' })} className="p-1 bg-destructive text-white rounded-full"><XCircle className="w-4 h-4" /></button>
+                  </div>
+              )}
+         </div>
       )}
 
       <UserPanel 
@@ -1690,6 +1706,8 @@ function App() {
                             theme={state.theme}
                             activeNodeId={state.activeNodeId}
                             showSuggestedPath={true}
+                            isSelectionMode={state.isPodcastMode}
+                            selectedNodeIds={state.podcastConfig?.selectedNodeIds}
                         />
                          {state.status === AppStatus.LEARNING && (
                             <div className="absolute top-4 right-4 z-30 bg-card/80 backdrop-blur p-3 rounded-lg border border-border shadow-sm max-w-[200px] hidden md:block">
@@ -1698,7 +1716,7 @@ function App() {
                         )}
                     </div>
 
-                    {state.status !== AppStatus.LEARNING && (
+                    {state.status !== AppStatus.LEARNING && !state.isPodcastMode && (
                         <div className="absolute inset-0 z-50 bg-background/95 backdrop-blur-md overflow-y-auto animate-zoom-in">
                             {state.status === AppStatus.VIEWING_NODE && state.activeNodeId && (
                                 <NodeView 

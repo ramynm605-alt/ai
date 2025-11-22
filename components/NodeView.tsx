@@ -1,12 +1,8 @@
-
-
-
 import React, { useState, useRef, useEffect } from 'react';
-import { MindMapNode, NodeContent, Reward, StorySlide } from '../types';
-import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle, BrainCircuit, Edit, Shuffle, Target, CheckCircle, ArrowLeft, Layers, Mic, Play, Pause, Headphones, Download } from './icons';
-import { evaluateNodeInteraction, generateStoryMode, generatePodcastScript, generatePodcastAudio, base64ToAudioBuffer } from '../services/geminiService';
+import { MindMapNode, NodeContent, Reward } from '../types';
+import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle, BrainCircuit, Edit, Shuffle, Target, CheckCircle, ArrowLeft } from './icons';
+import { evaluateNodeInteraction } from '../services/geminiService';
 import BoxLoader from './ui/box-loader';
-import StoryViewer from './StoryViewer';
 
 interface NodeViewProps {
     node: MindMapNode;
@@ -51,16 +47,6 @@ const Section: React.FC<{ title: string; content: string; delay: number }> = ({ 
     </div>
 );
 
-const AudioVisualizer = () => (
-    <div className="flex items-end justify-center gap-0.5 h-4">
-        <div className="w-1 bg-white/80 rounded-full animate-[bounce_1s_infinite] h-2"></div>
-        <div className="w-1 bg-white/80 rounded-full animate-[bounce_1.2s_infinite] h-4"></div>
-        <div className="w-1 bg-white/80 rounded-full animate-[bounce_0.8s_infinite] h-3"></div>
-        <div className="w-1 bg-white/80 rounded-full animate-[bounce_1.1s_infinite] h-5"></div>
-        <div className="w-1 bg-white/80 rounded-full animate-[bounce_0.9s_infinite] h-3"></div>
-    </div>
-);
-
 const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz, onNavigate, prevNode, nextNode, onExplainRequest, isIntroNode, onCompleteIntro, unlockedReward, isStreaming }) => {
     const [selectionPopup, setSelectionPopup] = useState<{ x: number; y: number; text: string } | null>(null);
     const [reminderPopup, setReminderPopup] = useState<{ x: number; y: number; content: string } | null>(null);
@@ -71,18 +57,6 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
     const [taskInput, setTaskInput] = useState('');
     const [taskFeedback, setTaskFeedback] = useState<string | null>(null);
     const [isEvaluatingTask, setIsEvaluatingTask] = useState(false);
-
-    // Story Mode State
-    const [isGeneratingStory, setIsGeneratingStory] = useState(false);
-    const [storySlides, setStorySlides] = useState<StorySlide[] | null>(null);
-
-    // Podcast State
-    const [isGeneratingPodcast, setIsGeneratingPodcast] = useState(false);
-    const [podcastStatus, setPodcastStatus] = useState<'idle' | 'scripting' | 'synthesizing' | 'ready' | 'playing'>('idle');
-    const [audioBuffer, setAudioBuffer] = useState<AudioBuffer | null>(null);
-    const [audioBase64, setAudioBase64] = useState<string | null>(null);
-    const audioContextRef = useRef<AudioContext | null>(null);
-    const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
 
     const handleTaskSubmit = async () => {
         if (!taskInput.trim() || !content.interactiveTask) return;
@@ -138,89 +112,12 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [selectionPopup, reminderPopup]);
 
-    const handleStoryMode = async () => {
-        if (storySlides) return;
-        setIsGeneratingStory(true);
-        try {
-            const fullText = `${content.introduction}\n${content.theory}\n${content.conclusion}`;
-            const slides = await generateStoryMode(node.title, fullText);
-            setStorySlides(slides);
-        } catch (error) {
-            console.error("Story gen failed", error);
-        } finally {
-            setIsGeneratingStory(false);
-        }
-    };
-
-    const handleGeneratePodcast = async () => {
-        if (podcastStatus !== 'idle') return;
-        setIsGeneratingPodcast(true);
-        setPodcastStatus('scripting');
-        try {
-             const fullText = `${content.introduction}\n${content.theory}\n${content.conclusion}`;
-             const script = await generatePodcastScript(node.title, fullText);
-             setPodcastStatus('synthesizing');
-             const base64Audio = await generatePodcastAudio(script);
-             
-             setAudioBase64(base64Audio);
-             const buffer = await base64ToAudioBuffer(base64Audio);
-             setAudioBuffer(buffer);
-             setPodcastStatus('ready');
-        } catch (e) {
-            console.error("Podcast failed", e);
-            setPodcastStatus('idle');
-        } finally {
-            setIsGeneratingPodcast(false);
-        }
-    };
-
-    const togglePodcastPlay = () => {
-        if (podcastStatus === 'playing') {
-            if (sourceNodeRef.current) {
-                sourceNodeRef.current.stop();
-                sourceNodeRef.current = null;
-            }
-            setPodcastStatus('ready');
-        } else if (podcastStatus === 'ready' && audioBuffer) {
-             if (!audioContextRef.current) {
-                 audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({sampleRate: 24000});
-             }
-             const ctx = audioContextRef.current;
-             const source = ctx.createBufferSource();
-             source.buffer = audioBuffer;
-             source.connect(ctx.destination);
-             source.onended = () => setPodcastStatus('ready');
-             source.start(0);
-             sourceNodeRef.current = source;
-             setPodcastStatus('playing');
-        }
-    };
-
-    const handleDownloadPodcast = () => {
-        if (!audioBase64) return;
-        const link = document.createElement("a");
-        link.href = `data:audio/wav;base64,${audioBase64}`;
-        link.download = `zehngah-podcast-${node.id}.wav`;
-        link.click();
-    };
-
-    useEffect(() => {
-        return () => {
-            if (sourceNodeRef.current) {
-                sourceNodeRef.current.stop();
-            }
-            if (audioContextRef.current) {
-                audioContextRef.current.close();
-            }
-        };
-    }, []);
+    // ... (Reminder Popup logic retained) ...
 
     const isEmpty = !content.introduction && !content.theory && !content.example && !isStreaming;
 
     return (
         <div className="min-h-screen bg-background/95" ref={viewRef} onMouseUp={handleSelection} onTouchEnd={handleTouchEnd}>
-             {storySlides && <StoryViewer slides={storySlides} onClose={() => setStorySlides(null)} />}
-             
              {selectionPopup && (
                 <div
                     className="selection-popup animate-pop-in fixed z-[200] bg-foreground text-background px-4 py-2 rounded-lg shadow-xl flex items-center gap-2 cursor-pointer"
@@ -245,69 +142,28 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                         <h2 className="text-sm sm:text-xl font-bold truncate leading-tight">{activeTab === 'content' ? node.title : unlockedReward?.title}</h2>
                      </div>
                      
-                     {/* Actions */}
-                     <div className="flex items-center gap-2">
-                        {!isIntroNode && activeTab === 'content' && (
-                            <>
-                                <button 
-                                    onClick={handleStoryMode}
-                                    disabled={isGeneratingStory || isStreaming}
-                                    className="p-2 rounded-full hover:bg-pink-500/10 text-muted-foreground hover:text-pink-500 transition-colors relative"
-                                    title="استوری آموزشی"
-                                >
-                                    {isGeneratingStory ? <BoxLoader size={16} /> : <Layers className="w-5 h-5" />}
-                                </button>
-                                <button 
-                                    onClick={handleGeneratePodcast}
-                                    disabled={isGeneratingPodcast || isStreaming}
-                                    className="p-2 rounded-full hover:bg-indigo-500/10 text-muted-foreground hover:text-indigo-500 transition-colors relative"
-                                    title="پادکست صوتی"
-                                >
-                                     {isGeneratingPodcast ? <BoxLoader size={16} /> : (podcastStatus === 'playing' ? <div className="w-5 h-5 flex items-center justify-center"><AudioVisualizer /></div> : <Headphones className="w-5 h-5" />)}
-                                </button>
-                            </>
-                        )}
-                         
-                         {!isIntroNode && node.targetSkill && (
-                             <div className="hidden sm:flex items-center gap-1 px-2 py-1 bg-primary/10 rounded-md text-xs font-medium text-primary ml-2">
-                                 <Target className="w-3 h-3" />
-                                 <span>مهارت: {node.targetSkill}</span>
-                             </div>
-                         )}
+                     {/* Skill Badge in Header */}
+                     {!isIntroNode && node.targetSkill && (
+                         <div className="hidden sm:flex items-center gap-1 px-2 py-1 bg-primary/10 rounded-md text-xs font-medium text-primary">
+                             <Target className="w-3 h-3" />
+                             <span>مهارت: {node.targetSkill}</span>
+                         </div>
+                     )}
 
-                        <div className="flex items-center gap-2 md:gap-3 shrink-0">
-                            {unlockedReward && (
-                                <div className="flex items-center p-1 space-x-1 space-x-reverse rounded-lg bg-secondary/80 border border-border">
-                                    <button onClick={() => setActiveTab('content')} className={`px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-bold rounded-md transition-all ${activeTab === 'content' ? 'bg-background shadow text-primary' : 'text-muted-foreground'}`}>درس</button>
-                                    <button onClick={() => setActiveTab('reward')} className={`flex items-center gap-1.5 px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-bold rounded-md transition-all ${activeTab === 'reward' ? 'bg-purple-100 text-purple-700' : 'text-muted-foreground'}`}>
-                                        <Diamond className="w-3 h-3 md:w-3.5 md:h-3.5" />
-                                        <span className="hidden sm:inline">تحلیل</span>
-                                    </button>
-                                </div>
-                            )}
-                            <button onClick={onBack} className="sm:hidden p-2"><XCircle className="w-5 h-5 text-muted-foreground" /></button>
-                        </div>
+                    <div className="flex items-center gap-2 md:gap-3 shrink-0">
+                        {unlockedReward && (
+                            <div className="flex items-center p-1 space-x-1 space-x-reverse rounded-lg bg-secondary/80 border border-border">
+                                <button onClick={() => setActiveTab('content')} className={`px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-bold rounded-md transition-all ${activeTab === 'content' ? 'bg-background shadow text-primary' : 'text-muted-foreground'}`}>درس</button>
+                                <button onClick={() => setActiveTab('reward')} className={`flex items-center gap-1.5 px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-bold rounded-md transition-all ${activeTab === 'reward' ? 'bg-purple-100 text-purple-700' : 'text-muted-foreground'}`}>
+                                    <Diamond className="w-3 h-3 md:w-3.5 md:h-3.5" />
+                                    <span className="hidden sm:inline">تحلیل</span>
+                                </button>
+                            </div>
+                        )}
+                         <button onClick={onBack} className="sm:hidden p-2"><XCircle className="w-5 h-5 text-muted-foreground" /></button>
                     </div>
                 </div>
             </div>
-            
-            {/* Podcast Player Banner */}
-            {podcastStatus !== 'idle' && podcastStatus !== 'scripting' && podcastStatus !== 'synthesizing' && (
-                 <div className="bg-indigo-600 text-white px-4 py-2 sticky top-[60px] z-30 flex items-center justify-between shadow-md animate-slide-up">
-                     <div className="flex items-center gap-3">
-                         {podcastStatus === 'playing' ? <AudioVisualizer /> : <Headphones className="w-5 h-5 animate-pulse" />}
-                         <span className="text-sm font-bold">پادکست هوشمند: {node.title}</span>
-                     </div>
-                     <div className="flex items-center gap-2">
-                         <button onClick={handleDownloadPodcast} className="bg-indigo-500 text-white p-1.5 rounded-full hover:bg-indigo-400" title="دانلود پادکست">
-                             <Download className="w-4 h-4" />
-                         </button>
-                         <button onClick={togglePodcastPlay} className="bg-white text-indigo-600 p-1.5 rounded-full hover:bg-indigo-50">
-                             {podcastStatus === 'playing' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                         </button>
-                     </div>
-                 </div>
-            )}
 
             {/* Main Content */}
             <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 md:py-10 pb-32">
