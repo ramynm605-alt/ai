@@ -30,6 +30,42 @@ function cleanJsonString(str: string): string {
     return str.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
 }
 
+// Helper to escape regex characters
+function escapeRegExp(string: string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Helper to auto-link node titles in text
+function autoLinkNodeTitles(text: string, titles: string[]): string {
+    if (!text || !titles || titles.length === 0) return text;
+
+    const placeholders: string[] = [];
+    
+    // 1. Protect existing matches (already wrapped in [[...]])
+    let currentText = text.replace(/\[\[(.*?)\]\]/g, (match) => {
+        placeholders.push(match);
+        return `__PH_${placeholders.length - 1}__`;
+    });
+
+    // 2. Sort titles by length descending to match longest phrases first
+    const sortedTitles = [...titles].sort((a, b) => b.length - a.length);
+
+    // 3. Replace titles with placeholders wrapping them in brackets
+    for (const title of sortedTitles) {
+        if (title.trim().length < 2) continue; // Skip very short titles
+        const escapedTitle = escapeRegExp(title);
+        const regex = new RegExp(escapedTitle, 'g');
+        
+        currentText = currentText.replace(regex, (match) => {
+             placeholders.push(`[[${match}]]`);
+             return `__PH_${placeholders.length - 1}__`;
+        });
+    }
+
+    // 4. Restore placeholders
+    return currentText.replace(/__PH_(\d+)__/g, (_, index) => placeholders[parseInt(index)]);
+}
+
 // Helper to flatten recursive mind map structure
 function flattenMindMap(node: any, parentId: string | null = null): MindMapNode[] {
     const currentNode: MindMapNode = {
@@ -771,7 +807,12 @@ export async function generateChatResponse(
     `;
 
     const r = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: { parts: [{ text: prompt }] } });
-    return marked.parse(r.text || '');
+    
+    const rawText = r.text || '';
+    // Post-process to ensure links are created even if the model forgets
+    const linkedText = autoLinkNodeTitles(rawText, availableNodes);
+    
+    return marked.parse(linkedText);
 }
 
 export async function generateDailyChallenge(weaknesses: any[], content: string) {
