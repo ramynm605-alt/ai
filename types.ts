@@ -181,11 +181,20 @@ export interface MindMapNode {
   // --- NEW TYPES FOR PODCAST ---
   export type VoiceName = 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Zephyr';
   
+  export type PodcastStatus = 'idle' | 'generating_script' | 'generating_audio' | 'ready' | 'error';
+
   export interface PodcastConfig {
       mode: 'monologue' | 'dialogue';
       speaker1: VoiceName;
       speaker2?: VoiceName; // Only for dialogue
       selectedNodeIds: string[];
+  }
+
+  export interface PodcastState {
+      status: PodcastStatus;
+      progressText: string;
+      audioUrl: string | null;
+      isMinimized: boolean;
   }
 
   export interface AppState {
@@ -232,6 +241,7 @@ export interface MindMapNode {
     // Podcast State
     podcastConfig: PodcastConfig | null;
     isPodcastMode: boolean;
+    podcastState: PodcastState; // New: Tracks background generation
   }
 
   export interface SavableState {

@@ -1,7 +1,7 @@
 
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef, Suspense } from 'react';
-import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession, ChatPersona, PodcastConfig } from './types';
-import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse, generateRemedialNode, generateDailyChallenge, generateDeepAnalysis, generateAdaptiveModifications, generateProactiveChatInitiation } from './services/geminiService';
+import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession, ChatPersona, PodcastConfig, PodcastStatus, PodcastState } from './types';
+import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse, generateRemedialNode, generateDailyChallenge, generateDeepAnalysis, generateAdaptiveModifications, generateProactiveChatInitiation, generatePodcastScript, generatePodcastAudio } from './services/geminiService';
 import { FirebaseService } from './services/firebaseService';
 import { ArrowRight, BookOpen, Brain, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize, SlidersHorizontal, ChevronDown, Sparkles, Trash, Edit, Flame, Diamond, Scroll, User, LogOut, Wand, Bell, Shuffle, FileQuestion, Settings, ChevronLeft, ChevronRight, Mic } from './components/icons';
 import BoxLoader from './components/ui/box-loader';
@@ -25,6 +25,7 @@ const UserPanel = React.lazy(() => import('./components/UserPanel'));
 const PersonalizationWizard = React.lazy(() => import('./components/PersonalizationWizard'));
 const DebugPanel = React.lazy(() => import('./components/DebugPanel'));
 const PodcastCreator = React.lazy(() => import('./components/PodcastCreator'));
+const PodcastPlayer = React.lazy(() => import('./components/PodcastPlayer'));
 
 const CURRENT_APP_VERSION = 7;
 declare var pdfjsLib: any;
@@ -107,7 +108,13 @@ const initialState: AppState = {
   cloudLastSync: null,
   // Podcast
   podcastConfig: { mode: 'monologue', speaker1: 'Puck', selectedNodeIds: [] },
-  isPodcastMode: false
+  isPodcastMode: false,
+  podcastState: {
+      status: 'idle',
+      progressText: '',
+      audioUrl: null,
+      isMinimized: false
+  }
 };
 
 function appReducer(state: AppState, action: any): AppState {
@@ -475,6 +482,8 @@ function appReducer(state: AppState, action: any): AppState {
         }
         return { ...state, podcastConfig: { ...state.podcastConfig!, selectedNodeIds: newSelection } };
     }
+    case 'UPDATE_PODCAST_STATE':
+        return { ...state, podcastState: { ...state.podcastState, ...action.payload } };
     default:
       return state;
   }
@@ -1081,6 +1090,69 @@ function App() {
       dispatch({ type: 'COMPLETE_INTRO_NODE' });
   };
 
+  // --- PODCAST BACKGROUND GENERATION LOGIC ---
+  const handleGeneratePodcast = useCallback(async (config: PodcastConfig) => {
+      // Close the configuration modal
+      dispatch({ type: 'TOGGLE_PODCAST_MODE' });
+
+      // Set initial processing state
+      dispatch({ 
+          type: 'UPDATE_PODCAST_STATE', 
+          payload: { status: 'generating_script', progressText: 'در حال نگارش سناریو پادکست...', audioUrl: null, isMinimized: false } 
+      });
+
+      try {
+          const validContents = config.selectedNodeIds
+            .map(id => ({ node: state.mindMap.find(n => n.id === id), content: state.nodeContents[id] }))
+            .filter(item => item.node && item.content)
+            .map(item => ({
+                title: item.node!.title,
+                text: `${item.content!.introduction}\n${item.content!.theory}\n${item.content!.conclusion}`
+            }));
+
+        if (validContents.length === 0) {
+             throw new Error("محتوای متنی یافت نشد.");
+        }
+
+        // Step 1: Generate Script
+        const script = await generatePodcastScript(validContents, config.mode);
+
+        // Step 2: Update Status
+        dispatch({ 
+            type: 'UPDATE_PODCAST_STATE', 
+            payload: { status: 'generating_audio', progressText: 'در حال ضبط استودیویی (هوش مصنوعی)...' } 
+        });
+
+        // Step 3: Generate Audio
+        const url = await generatePodcastAudio(script, config.speaker1, config.mode === 'dialogue' ? config.speaker2 : undefined, config.mode);
+
+        // Step 4: Success
+        dispatch({ 
+            type: 'UPDATE_PODCAST_STATE', 
+            payload: { status: 'ready', audioUrl: url, progressText: 'آماده پخش' } 
+        });
+
+        showNotification("پادکست شما آماده است!", "success");
+
+      } catch (error: any) {
+          console.error("Podcast Generation Error", error);
+          dispatch({ 
+              type: 'UPDATE_PODCAST_STATE', 
+              payload: { status: 'error', progressText: 'خطا در تولید پادکست: ' + (error.message || 'مشکل ناشناخته'), audioUrl: null } 
+          });
+          showNotification("تولید پادکست با خطا مواجه شد.", "error");
+      }
+
+  }, [state.mindMap, state.nodeContents, showNotification]);
+
+  const handleClosePodcastPlayer = () => {
+      dispatch({ type: 'UPDATE_PODCAST_STATE', payload: { status: 'idle', audioUrl: null, progressText: '' } });
+  };
+
+  const handleMinimizePodcastPlayer = () => {
+      dispatch({ type: 'UPDATE_PODCAST_STATE', payload: { isMinimized: !state.podcastState.isMinimized } });
+  };
+
   // Memoized Quiz Handler
   const handleTakeQuiz = useCallback((nodeId: string) => {
       const node = state.mindMap.find(n => n.id === nodeId);
@@ -1389,9 +1461,9 @@ function App() {
               {state.podcastConfig.selectedNodeIds.length > 0 ? (
                    <PodcastCreator 
                        selectedNodes={state.mindMap.filter(n => state.podcastConfig!.selectedNodeIds.includes(n.id))}
-                       nodeContents={state.nodeContents}
                        onClose={() => dispatch({ type: 'TOGGLE_PODCAST_MODE' })}
                        onRemoveNode={(id) => dispatch({ type: 'TOGGLE_PODCAST_NODE_SELECTION', payload: id })}
+                       onStartGeneration={handleGeneratePodcast}
                    />
               ) : (
                   <div className="fixed top-4 right-1/2 transform translate-x-1/2 z-[150] bg-card/90 backdrop-blur border border-primary p-3 rounded-full shadow-xl flex items-center gap-3 animate-slide-up">
@@ -1401,6 +1473,13 @@ function App() {
               )}
          </div>
       )}
+
+      {/* Floating Podcast Player Widget */}
+      <PodcastPlayer 
+          state={state.podcastState}
+          onMinimize={handleMinimizePodcastPlayer}
+          onClose={handleClosePodcastPlayer}
+      />
 
       <UserPanel 
           isOpen={state.isUserPanelOpen}
