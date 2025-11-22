@@ -1,3 +1,4 @@
+
 "use client";
 import React, { useState, createContext, useContext, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -197,8 +198,7 @@ export const SidebarLink = ({
 }: {
   link: Links;
   className?: string;
-  props?: React.AnchorHTMLAttributes<HTMLAnchorElement>;
-}) => {
+} & React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
   const { open, animate } = useSidebar();
   return (
     <a

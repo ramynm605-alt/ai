@@ -59,7 +59,7 @@ export interface MindMapNode {
     explanationStyle: 'faithful' | 'balanced' | 'creative';
     knowledgeLevel: 'beginner' | 'intermediate' | 'expert';
     learningFocus: 'theoretical' | 'practical' | 'analogies';
-    tone: 'academic' | 'conversational';
+    tone: 'academic' | 'conversational' | 'concise' | 'explanatory' | 'strict';
     addExplanatoryNodes: boolean;
     customInstructions: string;
     learningGoal: string;

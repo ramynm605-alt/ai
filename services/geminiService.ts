@@ -104,7 +104,10 @@ const getPreferenceInstructions = (preferences: LearningPreferences): string => 
         },
         tone: {
             academic: 'آکادمیک و رسمی',
-            conversational: 'دوستانه و محاوره‌ای'
+            conversational: 'دوستانه و محاوره‌ای',
+            concise: 'بسیار خلاصه، تیتروار و مینیمال (Direct & Concise)',
+            explanatory: 'بسیار پرجزئیات، تشریحی و با مثال‌های فراوان (Highly Explanatory)',
+            strict: 'سخت‌گیرانه، دستوری و متمرکز بر دقت علمی (Strict & Demanding)'
         }
     };
 

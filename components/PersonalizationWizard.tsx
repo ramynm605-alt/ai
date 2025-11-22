@@ -24,6 +24,39 @@ const PersonalizationWizard: React.FC<PersonalizationWizardProps> = ({ onSubmit,
         setPrefs(prev => ({ ...prev, [key]: value }));
     };
 
+    const toneOptions: { id: LearningPreferences['tone']; label: string; desc: string; example: string }[] = [
+        { 
+            id: 'academic', 
+            label: 'رسمی و آکادمیک', 
+            desc: 'دقیق، علمی و بدون حاشیه',
+            example: '«طبق قانون دوم نیوتن، نیرو برابر است با حاصل‌ضرب جرم در شتاب.»'
+        },
+        { 
+            id: 'conversational', 
+            label: 'دوستانه و صمیمی', 
+            desc: 'ساده، مثل یک دوست',
+            example: '«ببین، زور وارد شده به جسم میشه وزنش ضربدر شتابی که میگیره.»'
+        },
+        { 
+            id: 'concise', 
+            label: 'خلاصه‌گو', 
+            desc: 'کوتاه، تیتروار و سریع',
+            example: '«F=ma. نیرو = جرم × شتاب. تمام.»'
+        },
+        { 
+            id: 'explanatory', 
+            label: 'شدیداً توضیح‌دهنده', 
+            desc: 'ریشه‌یابی و باز کردن کامل مطلب',
+            example: '«برای درک نیرو، باید بدانیم که جرم، مقاومت جسم در برابر تغییر حرکت است...»'
+        },
+        { 
+            id: 'strict', 
+            label: 'سخت‌گیر', 
+            desc: 'متمرکز بر تعاریف دقیق و اصول',
+            example: '«دقت کنید! نیرو بردار است. هرگز جهت بردار شتاب را فراموش نکنید.»'
+        }
+    ];
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-md">
             <div className="w-full max-w-2xl bg-card border border-border rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-slide-up">
@@ -95,18 +128,23 @@ const PersonalizationWizard: React.FC<PersonalizationWizardProps> = ({ onSubmit,
                                 <MessageSquare className="w-5 h-5 text-primary" />
                                 لحن بیان مربی
                             </h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {[
-                                    { id: 'academic', label: 'رسمی و آکادمیک', desc: 'دقیق، علمی و بدون حاشیه' },
-                                    { id: 'conversational', label: 'دوستانه و صمیمی', desc: 'ساده، مثل یک دوست' }
-                                ].map(opt => (
+                            <div className="grid grid-cols-1 gap-3">
+                                {toneOptions.map(opt => (
                                     <button
                                         key={opt.id}
                                         onClick={() => updatePref('tone', opt.id)}
-                                        className={`p-4 rounded-xl border-2 text-right transition-all ${prefs.tone === opt.id ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-border hover:border-primary/50'}`}
+                                        className={`p-4 rounded-xl border-2 text-right transition-all group ${prefs.tone === opt.id ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-border hover:border-primary/50'}`}
                                     >
-                                        <div className="font-bold mb-1">{opt.label}</div>
-                                        <div className="text-xs text-muted-foreground">{opt.desc}</div>
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                            <div>
+                                                <div className="font-bold mb-1 text-base">{opt.label}</div>
+                                                <div className="text-xs text-muted-foreground">{opt.desc}</div>
+                                            </div>
+                                            <div className={`text-xs px-3 py-2 rounded-lg italic bg-secondary/50 text-secondary-foreground border border-border/50 max-w-full sm:max-w-[50%] ${prefs.tone === opt.id ? 'bg-background' : ''}`}>
+                                                <span className="opacity-70 text-[10px] block mb-1">نمونه:</span>
+                                                {opt.example}
+                                            </div>
+                                        </div>
                                     </button>
                                 ))}
                             </div>
