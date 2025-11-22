@@ -92,11 +92,10 @@ export async function generateLearningPlan(
     preferences: LearningPreferences,
     onMindMapGenerated: (mindMap: MindMapNode[], suggestedPath: string[]) => void,
     onQuestionStream: (question: QuizQuestion) => void
-): Promise<Quiz> { // Returns the final quiz, but streams questions along the way
+): Promise<Quiz> { 
     return withRetry(async () => {
         const preferenceInstructions = getPreferenceInstructions(preferences);
         
-        // Check if this is "Topic Mode" (short content, no pages)
         const isTopicMode = content.length < 500 && !pageContents && images.length === 0;
         
         let contextInstruction = "";
@@ -222,7 +221,6 @@ export async function generateLearningPlan(
                             mindMap = [];
                         }
 
-                        // Mindmap Post-Processing
                         if (mindMap.length > 0) {
                              const nodeIds = new Set(mindMap.map(n => n.id));
                              const roots = mindMap.filter(n => n.parentId === null || !nodeIds.has(n.parentId));
@@ -277,28 +275,23 @@ export async function generateLearningPlan(
                         const q = JSON.parse(jsonStr);
                         const question = { ...q };
 
-                        // --- ROBUST NORMALIZATION LOGIC ---
-                        // 1. Handle 'type' field issues
                         if (!question.type) {
                              if (question.options || question.choices) question.type = 'multiple-choice';
                              else question.type = 'short-answer';
                         }
                         if (question.type === 'multiple_choice') question.type = 'multiple-choice';
                         
-                        // 2. Standardize multiple-choice fields
                         if (question.type === 'multiple-choice') {
                            if (!question.options && question.choices) {
                                question.options = question.choices;
                            }
                            question.options = Array.isArray(question.options) ? question.options : [];
                            
-                           // Ensure valid answer index
                            if (typeof question.correctAnswerIndex !== 'number') {
                                question.correctAnswerIndex = 0;
                            }
                         }
                         
-                        // 3. Fill default metadata
                         if (!question.concept) question.concept = "عمومی";
                         if (!question.difficulty) question.difficulty = "متوسط";
                         if (!question.points) question.points = 20;
@@ -479,9 +472,8 @@ export async function generateNodeContent(
         let fullText = '';
         const contentObj: NodeContent = { introduction: '', theory: '', example: '', connection: '', conclusion: '', suggestedQuestions: [], interactiveTask: '' };
         
-        // Optimization: Throttle parsing to avoid UI freeze on streaming high-token output
         let lastUpdate = 0;
-        const UPDATE_INTERVAL = 150; // ms
+        const UPDATE_INTERVAL = 150; 
 
         for await (const chunk of stream) {
             fullText += chunk.text;
@@ -500,7 +492,6 @@ export async function generateNodeContent(
                 questions: '###QUESTIONS###'
             };
 
-            // Standard parsing
             for (const [key, header] of Object.entries(headers)) {
                 const start = fullText.lastIndexOf(header);
                 if (start !== -1) {
@@ -540,7 +531,6 @@ export async function generateNodeContent(
             });
         }
         
-        // Final update to ensure everything is rendered
         return {
              introduction: await marked.parse(processReminders(contentObj.introduction)),
              theory: await marked.parse(processReminders(contentObj.theory)),
@@ -641,7 +631,6 @@ export async function generateQuiz(topic: string, content: string, images: any[]
                     
                     if(!q.id) q.id = Math.random().toString(36).substr(2,9);
                     
-                    // Normalization for Node Quiz
                     if (!q.type && (q.options || q.choices)) q.type = 'multiple-choice';
                     if (q.type === 'multiple-choice') {
                         if (!q.options && q.choices) q.options = q.choices;
@@ -679,11 +668,88 @@ export async function generatePracticeResponse(topic: string, problem: string) {
     const r = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: { parts: [{ text: prompt }] } });
     return marked.parse(r.text || '');
 }
-export async function generateChatResponse(history: ChatMessage[], message: string, nodeTitle: string | null, content: string) {
-    const prompt = `Tutor mode. Node: ${nodeTitle}. Msg: ${message}. Content: ${content.substring(0,1000)}`;
+
+// -------------------- CHAT & DEBATE LOGIC --------------------
+
+export async function generateProactiveChatInitiation(
+    nodeTitle: string, 
+    nodeContent: string, 
+    isDebateMode: boolean,
+    weaknesses: Weakness[]
+): Promise<string> {
+    return withRetry(async () => {
+        // If debate mode is off, we don't need to be proactive unless specified, 
+        // but the app logic calls this only when triggered.
+        // Here we differentiate tone based on mode.
+        
+        const prompt = `
+        You are the "Zehn-Gah AI Tutor".
+        The user just started reading the node: "${nodeTitle}".
+        Content snippet: "${nodeContent ? nodeContent.substring(0, 500) : 'No content yet'}...".
+        
+        User Weaknesses (if any): ${JSON.stringify(weaknesses.map(w => w.question))}
+        Debate Mode: ${isDebateMode ? 'ON' : 'OFF'}
+
+        Goal: Initiate a conversation proactively.
+        
+        Instructions:
+        1. If Debate Mode is ON: Challenge the user immediately. Pick a concept from the text and play Devil's Advocate or ask a provocative question to test their understanding. Be the "Ruthless Critic" but constructive. Reference their past weaknesses if relevant to this topic.
+        2. If Debate Mode is OFF: Be the "Supportive Mentor". Offer a helpful insight or ask if they need clarity on a specific complex term in the text.
+        3. Keep it short (under 40 words).
+        4. Language: Persian.
+        5. Output format: Just the message text.
+        `;
+        
+        const r = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: { parts: [{ text: prompt }] } });
+        return marked.parse(r.text || '');
+    });
+}
+
+export async function generateChatResponse(
+    history: ChatMessage[], 
+    message: string, 
+    nodeTitle: string | null, 
+    content: string,
+    isDebateMode: boolean = false,
+    weaknesses: Weakness[] = []
+) {
+    const debateInstructions = isDebateMode ? `
+    *** DEBATE MODE ACTIVE (حالت بحث عمیق) ***
+    You are NOT just a passive helper. You are a dialectic partner.
+    
+    **Your Persona (Dynamic Switch based on context):**
+    - **The Ruthless Critic (منتقد بی‌رحم):** If the user makes a claim, attack it. Demand evidence. Expose logical flaws. Be sharp.
+    - **The Devoted Teacher (معلم فداکار):** If the user is struggling or admits a mistake, guide them with passion and high standards.
+    
+    **MANDATORY TASKS in Debate Mode:**
+    1. **Detect Logical Fallacies:** If the user uses Strawman, Ad Hominem, Circular Reasoning, Hasty Generalization, etc., EXPLICITLY call it out (e.g., "این یک مغالطه پهلوان‌پنبه است...").
+    2. **Target Weaknesses:** The user has failed these topics before: ${JSON.stringify(weaknesses.map(w => w.question))}. If the current topic relates to these, steer the debate to expose these weaknesses again to ensure mastery.
+    3. **Check Argument Structure:** If the user's argument is poorly structured, critique the structure itself.
+    4. **No Spoon-feeding:** Do not give the answer. Force the user to think.
+    ` : `
+    *** NORMAL TUTOR MODE ***
+    You are a helpful, patient, and encouraging tutor.
+    Explain concepts clearly. Use analogies.
+    `;
+
+    const prompt = `
+    ${debateInstructions}
+    
+    Context Node: ${nodeTitle || "General Discussion"}
+    Source Content: ${content.substring(0, 2000)}
+    
+    Current Conversation History (Last few turns):
+    ${history.slice(-6).map(h => `${h.role}: ${h.message}`).join('\n')}
+    
+    User New Message: ${message}
+    
+    Output: Response in Persian (Markdown).
+    `;
+
     const r = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: { parts: [{ text: prompt }] } });
     return marked.parse(r.text || '');
 }
+
 export async function generateDailyChallenge(weaknesses: any[], content: string) {
     const prompt = "Daily challenge.";
     const r = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: { parts: [{ text: prompt }] } });

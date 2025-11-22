@@ -194,6 +194,7 @@ export interface MindMapNode {
     error: string | null;
     isChatOpen: boolean;
     isChatFullScreen: boolean;
+    isDebateMode: boolean; // New: Tracks if debate mode is active
     chatHistory: ChatMessage[];
     behavior: UserBehavior;
     rewards: Reward[];
