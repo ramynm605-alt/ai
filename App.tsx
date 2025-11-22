@@ -1083,7 +1083,7 @@ function App() {
 
           const gradingResults = await gradeAndAnalyzeQuiz(state.activeQuiz.questions, answers, nodeContext, state.sourceImages);
           
-          const results: QuizResult[] = gradingResults.map((result) => {
+          const results: QuizResult[] = gradingResults.map((result: any) => {
               const question = state.activeQuiz?.questions.find(q => q.id === result.questionId);
               if (!question) throw new Error(`Question ${result.questionId} not found`);
               return {
@@ -1117,7 +1117,8 @@ function App() {
           dispatch({ type: 'QUIZ_ANALYSIS_LOADED', payload: { results } });
           
       } catch (err: any) {
-          console.error(err);
+          console.error("Error grading quiz:", err);
+          dispatch({ type: 'SET_ERROR', payload: 'خطا در تصحیح آزمون. لطفاً اتصال اینترنت خود را بررسی کرده و دوباره تلاش کنید.' });
       }
   };
 
@@ -1534,11 +1535,14 @@ function App() {
                 </div>
             )}
 
-            {(state.status === AppStatus.LOADING || state.status === AppStatus.GENERATING_REMEDIAL || state.status === AppStatus.GRADING_PRE_ASSESSMENT || state.status === AppStatus.ADAPTING_PLAN) && (
+            {(state.status === AppStatus.LOADING || state.status === AppStatus.GENERATING_REMEDIAL || state.status === AppStatus.GRADING_PRE_ASSESSMENT || state.status === AppStatus.ADAPTING_PLAN || state.status === AppStatus.GRADING_QUIZ) && (
                 <div className="flex flex-col items-center justify-center h-full space-y-6 fade-in">
                     <BoxLoader size={120} />
                     <p className="text-xl font-medium text-muted-foreground animate-pulse px-4 text-center">
-                        {state.loadingMessage || (state.status === AppStatus.GRADING_PRE_ASSESSMENT ? 'در حال تحلیل پاسخ‌ها و تعیین سطح...' : 'در حال پردازش...')}
+                        {state.loadingMessage || 
+                         (state.status === AppStatus.GRADING_PRE_ASSESSMENT ? 'در حال تحلیل پاسخ‌ها و تعیین سطح...' : 
+                          state.status === AppStatus.GRADING_QUIZ ? 'در حال تصحیح آزمون و تحلیل عملکرد...' : 
+                          'در حال پردازش...')}
                     </p>
                     {state.status === AppStatus.ADAPTING_PLAN && (
                         <div className="flex items-center gap-2 text-sm text-purple-500 bg-purple-500/10 px-3 py-1 rounded-full">
@@ -1594,7 +1598,7 @@ function App() {
                 />
             )}
 
-            {(state.status === AppStatus.LEARNING || state.status === AppStatus.VIEWING_NODE || state.status === AppStatus.TAKING_QUIZ || state.status === AppStatus.GRADING_QUIZ || state.status === AppStatus.QUIZ_REVIEW) && (
+            {(state.status === AppStatus.LEARNING || state.status === AppStatus.VIEWING_NODE || state.status === AppStatus.TAKING_QUIZ || state.status === AppStatus.QUIZ_REVIEW) && (
                 <div className="flex flex-col h-full relative">
                     <div className="absolute inset-0 z-0">
                         <MindMap 
@@ -1639,14 +1643,6 @@ function App() {
                                     quiz={state.activeQuiz} 
                                     onSubmit={handleQuizSubmit} 
                                 />
-                            )}
-
-                            {state.status === AppStatus.GRADING_QUIZ && (
-                                <div className="flex flex-col items-center justify-center h-full space-y-4">
-                                    <BoxLoader size={100} />
-                                    <p className="text-lg font-medium">در حال تصحیح و تحلیل پاسخ‌ها...</p>
-                                    <p className="text-sm text-muted-foreground animate-pulse">اگر عملکردتان عالی باشد، پاداش دریافت می‌کنید...</p>
-                                </div>
                             )}
 
                             {state.status === AppStatus.QUIZ_REVIEW && state.quizResults && (

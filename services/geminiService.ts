@@ -684,15 +684,56 @@ export async function generateQuiz(topic: string, content: string, images: any[]
         return { questions, isStreaming: false };
     });
 }
+
+const gradingSchema = {
+    type: Type.ARRAY,
+    items: {
+        type: Type.OBJECT,
+        properties: {
+            questionId: { type: Type.STRING },
+            isCorrect: { type: Type.BOOLEAN },
+            score: { type: Type.NUMBER },
+            analysis: { type: Type.STRING }
+        },
+        required: ["questionId", "isCorrect", "score", "analysis"]
+    }
+};
+
 export async function gradeAndAnalyzeQuiz(questions: any[], userAnswers: any, content: string, images: any[]) {
-     const prompt = `Grade quiz. Content: ${content.substring(0,2000)}. Q&A: ${JSON.stringify({questions, userAnswers})}. JSON Array output.`;
-     const response = await ai.models.generateContent({
-         model: "gemini-2.5-flash",
-         contents: { parts: [{ text: prompt }] },
-         config: { responseMimeType: "application/json" }
-     });
-     return JSON.parse(cleanJsonString(response.text || '[]'));
+    return withRetry(async () => {
+        const prompt = `
+        Grade this quiz.
+        
+        Source Content: ${content.substring(0, 2000)}.
+        
+        Questions and User Answers: 
+        ${JSON.stringify({ questions, userAnswers })}
+        
+        Instructions:
+        1. For each question, determine if the answer is correct.
+        2. Assign a score based on correctness (points are defined in question).
+        3. Provide a brief analysis/feedback in Persian.
+        4. **CRITICAL**: Return an array of objects. Each object MUST represent one question and MUST use the EXACT 'id' from the input question as 'questionId'.
+        
+        Output JSON Format (Strict):
+        [
+          { "questionId": "EXACT_ID_FROM_INPUT", "isCorrect": boolean, "score": number, "analysis": "string" }
+        ]
+        `;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: { parts: [{ text: prompt }] },
+            config: { 
+                responseMimeType: "application/json",
+                responseSchema: gradingSchema
+            }
+        });
+
+        return JSON.parse(cleanJsonString(response.text || '[]'));
+    });
 }
+
 export async function generateFinalExam(content: string, images: any[], weaknessTopics: string, onQuestionStream: any): Promise<Quiz> {
     return generateQuiz("Final Exam", content, images, onQuestionStream);
 }
