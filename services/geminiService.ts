@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, GradingResult, PreAssessmentAnalysis, ChatMessage, Weakness } from '../types';
+import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, GradingResult, PreAssessmentAnalysis, ChatMessage, Weakness, ChatPersona } from '../types';
 import { marked } from 'marked';
 
 const API_KEY = process.env.API_KEY;
@@ -678,10 +678,6 @@ export async function generateProactiveChatInitiation(
     weaknesses: Weakness[]
 ): Promise<string> {
     return withRetry(async () => {
-        // If debate mode is off, we don't need to be proactive unless specified, 
-        // but the app logic calls this only when triggered.
-        // Here we differentiate tone based on mode.
-        
         const prompt = `
         You are the "Zehn-Gah AI Tutor".
         The user just started reading the node: "${nodeTitle}".
@@ -711,39 +707,67 @@ export async function generateChatResponse(
     nodeTitle: string | null, 
     content: string,
     isDebateMode: boolean = false,
-    weaknesses: Weakness[] = []
+    weaknesses: Weakness[] = [],
+    chatPersona: ChatPersona = 'supportive_coach',
+    availableNodes: string[] = []
 ) {
-    const debateInstructions = isDebateMode ? `
-    *** DEBATE MODE ACTIVE (حالت بحث عمیق) ***
-    You are NOT just a passive helper. You are a dialectic partner.
     
-    **Your Persona (Dynamic Switch based on context):**
-    - **The Ruthless Critic (منتقد بی‌رحم):** If the user makes a claim, attack it. Demand evidence. Expose logical flaws. Be sharp.
-    - **The Devoted Teacher (معلم فداکار):** If the user is struggling or admits a mistake, guide them with passion and high standards.
-    
-    **MANDATORY TASKS in Debate Mode:**
-    1. **Detect Logical Fallacies:** If the user uses Strawman, Ad Hominem, Circular Reasoning, Hasty Generalization, etc., EXPLICITLY call it out (e.g., "این یک مغالطه پهلوان‌پنبه است...").
-    2. **Target Weaknesses:** The user has failed these topics before: ${JSON.stringify(weaknesses.map(w => w.question))}. If the current topic relates to these, steer the debate to expose these weaknesses again to ensure mastery.
-    3. **Check Argument Structure:** If the user's argument is poorly structured, critique the structure itself.
-    4. **No Spoon-feeding:** Do not give the answer. Force the user to think.
-    ` : `
-    *** NORMAL TUTOR MODE ***
-    You are a helpful, patient, and encouraging tutor.
-    Explain concepts clearly. Use analogies.
-    `;
+    // --- PERSONA DEFINITIONS ---
+    const personas = {
+        supportive_coach: `
+            Role: Supportive & Patient Coach.
+            Tone: Friendly, encouraging, empathetic.
+            Style: Simplify complex topics, use analogies, praise good questions.
+        `,
+        strict_professor: `
+            Role: Strict Academic Professor.
+            Tone: Formal, precise, authoritative.
+            Style: Focus on accuracy, definitions, and academic rigor. Correct terminologies immediately. No fluff.
+        `,
+        socratic_tutor: `
+            Role: Socratic Tutor.
+            Tone: Curious, questioning.
+            Style: NEVER give the answer directly. Guide the user by asking follow-up questions. Make them think.
+        `,
+        devil_advocate: `
+            Role: Devil's Advocate.
+            Tone: Challenging, skeptical.
+            Style: Whatever the user says, present the counter-argument. Test the robustness of their logic.
+        `,
+        ruthless_critic: `
+            Role: Ruthless Logic Critic.
+            Tone: Sharp, direct, analytical.
+            Style: Spot logical fallacies immediately. Demand evidence. Dismantle weak arguments.
+        `
+    };
+
+    const selectedPersonaInstruction = personas[chatPersona] || personas['supportive_coach'];
 
     const prompt = `
-    ${debateInstructions}
+    **SYSTEM INSTRUCTION: YOU ARE THE ZEHNL-GAH AI TUTOR**
     
-    Context Node: ${nodeTitle || "General Discussion"}
-    Source Content: ${content.substring(0, 2000)}
+    **Current Persona:**
+    ${selectedPersonaInstruction}
+
+    **Context:**
+    - Current Topic/Node: "${nodeTitle || "General Discussion"}"
+    - Source Content (Reference): ${content.substring(0, 2000)}
+    - Debate Mode Active: ${isDebateMode ? "YES (Lean into the challenge aspects)" : "NO"}
     
-    Current Conversation History (Last few turns):
+    **Reference Linking Rule (VERY IMPORTANT):**
+    If you mention another topic that exists in the "Available Nodes" list below, you MUST wrap its title in double brackets like this: [[Node Title]].
+    This will create a clickable link for the user.
+    
+    **Available Nodes for Linking:**
+    ${JSON.stringify(availableNodes)}
+
+    **Conversation History:**
     ${history.slice(-6).map(h => `${h.role}: ${h.message}`).join('\n')}
     
-    User New Message: ${message}
+    **User Input:** ${message}
     
-    Output: Response in Persian (Markdown).
+    **Output:**
+    Response in Persian (Markdown).
     `;
 
     const r = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: { parts: [{ text: prompt }] } });

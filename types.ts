@@ -169,6 +169,14 @@ export interface MindMapNode {
       data: SavableState;
   }
 
+  // --- NEW TYPES FOR CHAT PERSONA ---
+  export type ChatPersona = 
+    | 'supportive_coach'   // Normal: Default, friendly
+    | 'strict_professor'   // Normal: Academic, concise
+    | 'socratic_tutor'     // Debate: Asks questions, never answers directly
+    | 'devil_advocate'     // Debate: Challenges views
+    | 'ruthless_critic';   // Debate: Logic checker
+
   export interface AppState {
     theme: 'light' | 'balanced' | 'dark';
     status: AppStatus;
@@ -194,7 +202,8 @@ export interface MindMapNode {
     error: string | null;
     isChatOpen: boolean;
     isChatFullScreen: boolean;
-    isDebateMode: boolean; // New: Tracks if debate mode is active
+    isDebateMode: boolean; 
+    chatPersona: ChatPersona; // New Field
     chatHistory: ChatMessage[];
     behavior: UserBehavior;
     rewards: Reward[];

@@ -1,6 +1,6 @@
 
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef, Suspense } from 'react';
-import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession } from './types';
+import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession, ChatPersona } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse, generateRemedialNode, generateDailyChallenge, generateDeepAnalysis, generateAdaptiveModifications, generateProactiveChatInitiation } from './services/geminiService';
 import { FirebaseService } from './services/firebaseService';
 import { ArrowRight, BookOpen, Brain, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize, SlidersHorizontal, ChevronDown, Sparkles, Trash, Edit, Flame, Diamond, Scroll, User, LogOut, Wand, Bell, Shuffle, FileQuestion, Settings, ChevronLeft, ChevronRight } from './components/icons';
@@ -85,7 +85,8 @@ const initialState: AppState = {
   error: null,
   isChatOpen: false,
   isChatFullScreen: false,
-  isDebateMode: false, // Default OFF
+  isDebateMode: false, 
+  chatPersona: 'supportive_coach', // Default Persona
   chatHistory: [],
   // Engagement
   behavior: DEFAULT_BEHAVIOR,
@@ -121,13 +122,12 @@ function appReducer(state: AppState, action: any): AppState {
             status: AppStatus.PLAN_REVIEW, 
             mindMap: action.payload.mindMap, 
             suggestedPath: action.payload.suggestedPath,
-            preAssessment: { questions: [], isStreaming: true }, // Initialize Pre-Assessment
+            preAssessment: { questions: [], isStreaming: true }, 
             loadingMessage: null, 
             chatHistory: [welcomeMessage] 
         };
     }
     case 'CONFIRM_PLAN':
-        // Transition strictly to Pre-Assessment
         return { ...state, status: AppStatus.PRE_ASSESSMENT };
     case 'PRE_ASSESSMENT_QUESTION_STREAMED':
       if (!state.preAssessment) return state;
@@ -169,7 +169,6 @@ function appReducer(state: AppState, action: any): AppState {
       if (!state.activeQuiz) return state;
       return { ...state, activeQuiz: { ...state.activeQuiz, isStreaming: false } };
     case 'SUBMIT_QUIZ':
-        // Update study hours histogram
         const hour = new Date().getHours();
         const newStudyHours = [...state.behavior.studyHours];
         newStudyHours[hour]++;
@@ -273,7 +272,6 @@ function appReducer(state: AppState, action: any): AppState {
         const nodeId = state.activeNodeId!;
         const current = state.userProgress[nodeId] || { status: 'in_progress', attempts: 0, proficiency: 0, explanationCount: 0, lastAttemptScore: 0 };
         
-        // Decrease Grit score for giving up
         const newBehavior = { ...state.behavior, gritScore: state.behavior.gritScore - 1 };
 
         const newProgress = { ...state.userProgress, [nodeId]: { ...current, status: 'completed' as const } };
@@ -292,12 +290,10 @@ function appReducer(state: AppState, action: any): AppState {
         };
     }
     case 'RETRY_QUIZ_IMMEDIATELY': {
-        // Increase Grit score for trying again
         return { ...state, behavior: { ...state.behavior, gritScore: state.behavior.gritScore + 1 } };
     }
     case 'UNLOCK_REWARD': {
         const newReward = action.payload;
-        // Deduplicate
         if (state.rewards.some(r => r.id === newReward.id)) return state;
         return { ...state, rewards: [...state.rewards, newReward] };
     }
@@ -336,33 +332,25 @@ function appReducer(state: AppState, action: any): AppState {
         };
     case 'LOAD_STATE': {
         const loadedState = action.payload;
-        
-        // --- VALIDATION: Ensure critical data exists ---
         if (!loadedState || typeof loadedState !== 'object') {
             return { ...state, error: "فایل جلسه نامعتبر است.", status: AppStatus.IDLE };
         }
-        
         const hasMindMap = loadedState.mindMap && Array.isArray(loadedState.mindMap) && loadedState.mindMap.length > 0;
         if (!hasMindMap) {
              return { ...state, error: "اطلاعات نقشه ذهنی در این جلسه یافت نشد.", status: AppStatus.IDLE };
         }
-        // ----------------------------------------------
-
-        // Validate activeNodeId: Ensure the node actually exists in the mind map
         let activeNodeId = loadedState.activeNodeId;
         if (activeNodeId && Array.isArray(loadedState.mindMap)) {
              const exists = loadedState.mindMap.some((n: any) => n.id === activeNodeId);
              if (!exists) {
-                 console.warn(`Active node ${activeNodeId} not found in mind map. Resetting.`);
                  activeNodeId = null;
              }
         } else {
             activeNodeId = null;
         }
 
-        let nextStatus = AppStatus.PLAN_REVIEW; // Default fallback if mindmap exists
+        let nextStatus = AppStatus.PLAN_REVIEW; 
 
-        // Intelligently determine status based on what data is present
         if (loadedState.finalExam) {
             nextStatus = AppStatus.FINAL_EXAM;
         } else if (loadedState.quizResults) {
@@ -370,15 +358,12 @@ function appReducer(state: AppState, action: any): AppState {
         } else if (loadedState.activeQuiz) {
             nextStatus = AppStatus.TAKING_QUIZ;
         } else if (activeNodeId) {
-             // If active node exists, check if content is loaded
              if (loadedState.nodeContents && loadedState.nodeContents[activeNodeId]) {
                  nextStatus = AppStatus.VIEWING_NODE;
              } else {
-                 // Fallback to learning if no content loaded for active node
                  nextStatus = AppStatus.LEARNING;
              }
         } else if (loadedState.userProgress && Object.keys(loadedState.userProgress).length > 0) {
-             // If user has made progress, assume they are in Learning mode
              nextStatus = AppStatus.LEARNING;
         } else if (loadedState.preAssessmentAnalysis) {
             nextStatus = AppStatus.LEARNING;
@@ -389,7 +374,7 @@ function appReducer(state: AppState, action: any): AppState {
         return { 
             ...initialState, 
             ...loadedState, 
-            activeNodeId, // Use validated id
+            activeNodeId, 
             currentUser: state.currentUser, 
             savedSessions: state.savedSessions, 
             currentSessionId: action.sessionId, 
@@ -406,7 +391,6 @@ function appReducer(state: AppState, action: any): AppState {
         let newStreak = state.behavior.dailyStreak;
         let showBriefing = false;
 
-        // Only show daily briefing if user has some progress (MindMap exists)
         if (state.mindMap.length > 0) {
             if (diffHours > 24 && diffHours < 48) {
                 newStreak += 1;
@@ -433,7 +417,6 @@ function appReducer(state: AppState, action: any): AppState {
         return { ...state, showDailyBriefing: false };
     case 'SET_DAILY_CHALLENGE':
         return { ...state, dailyChallengeContent: action.payload };
-    // --- User Panel Actions ---
     case 'TOGGLE_USER_PANEL':
         return { ...state, isUserPanelOpen: !state.isUserPanelOpen };
     case 'SET_USER':
@@ -454,6 +437,8 @@ function appReducer(state: AppState, action: any): AppState {
       return { ...state, isChatFullScreen: !state.isChatFullScreen };
     case 'TOGGLE_DEBATE_MODE':
       return { ...state, isDebateMode: !state.isDebateMode };
+    case 'SET_CHAT_PERSONA':
+        return { ...state, chatPersona: action.payload };
     case 'ADD_CHAT_MESSAGE':
       return { ...state, chatHistory: [...state.chatHistory, action.payload] };
     case 'TRIGGER_PROACTIVE_DEBATE':
@@ -461,7 +446,6 @@ function appReducer(state: AppState, action: any): AppState {
         return { ...state, isChatOpen: true, chatHistory: [...state.chatHistory, action.payload] };
     case 'SET_ERROR':
       return { ...state, error: action.payload, status: AppStatus.ERROR, loadingMessage: null };
-    // --- DEBUG ACTION ---
     case 'DEBUG_UPDATE':
       return { ...state, ...action.payload };
     default:
@@ -503,7 +487,6 @@ function App() {
       setNotification({ message: msg, type });
   }, []);
 
-  // Watch for app-level errors
   useEffect(() => {
       if (state.error) {
           showNotification(state.error, 'error');
@@ -513,18 +496,11 @@ function App() {
   // --- PROACTIVE DEBATE TRIGGER LOGIC ---
   useEffect(() => {
       let timeout: any;
-      
-      // Only trigger if user is viewing a node, chat is closed, and debate mode is ON
-      // BUT with the new requirement, the user can manually start it. This auto-trigger is a fallback or "surprise"
       if (state.status === AppStatus.VIEWING_NODE && state.activeNodeId && state.isDebateMode && !state.isChatOpen) {
-          // Small delay to let user read a bit first (e.g., 4 seconds)
           timeout = setTimeout(async () => {
-              // Double check status hasn't changed
               if (state.status !== AppStatus.VIEWING_NODE || state.isChatOpen) return;
               
-              // Don't trigger if we recently chatted in this node
               if (state.chatHistory.length > 0 && state.chatHistory[state.chatHistory.length - 1].role === 'model' && state.chatHistory.length % 2 === 0) {
-                   // Maybe just triggered? Skip.
               }
 
               const node = state.mindMap.find(n => n.id === state.activeNodeId);
@@ -547,13 +523,11 @@ function App() {
                       console.error("Failed to init debate", e);
                   }
               }
-          }, 10000); // Increased delay since we now have manual start
+          }, 10000); 
       }
-      
       return () => clearTimeout(timeout);
   }, [state.status, state.activeNodeId, state.isDebateMode, state.isChatOpen, state.mindMap, state.nodeContents, showNotification]);
 
-  // New: Handle manual debate initiation by user
   const handleDebateInitiation = useCallback(async () => {
     let nodeTitle = "General";
     let nodeContent = "";
@@ -567,8 +541,6 @@ function App() {
     }
 
     try {
-        // Assuming user opens chat via button, so we don't use TRIGGER_PROACTIVE_DEBATE (which opens chat)
-        // but just add message. However, ChatPanel calls this.
         const msgText = await generateProactiveChatInitiation(
             nodeTitle,
             nodeContent || state.sourceContent.substring(0, 1000),
@@ -588,8 +560,59 @@ function App() {
     }
   }, [state.activeNodeId, state.mindMap, state.nodeContents, state.sourceContent, state.isDebateMode, state.weaknesses]);
 
+  // --- Node Navigation from Chat ---
+  const handleNodeNavigate = useCallback((nodeIdOrTitle: string) => {
+      let nodeId = nodeIdOrTitle;
+      const nodeByTitle = state.mindMap.find(n => n.title.trim() === nodeIdOrTitle.trim());
+      if (nodeByTitle) nodeId = nodeByTitle.id;
+      
+      // Ensure node exists
+      const nodeExists = state.mindMap.some(n => n.id === nodeId);
 
-  // Cloud Sync Logic extracted
+      if (nodeExists) {
+          dispatch({ type: 'SELECT_NODE', payload: nodeId });
+           const node = state.mindMap.find(n => n.id === nodeId);
+       
+            if (state.nodeContents[nodeId]) {
+                dispatch({ type: 'NODE_CONTENT_LOADED', payload: state.nodeContents[nodeId] });
+            } else if (node) {
+                const strengths = state.preAssessmentAnalysis?.strengths || [];
+                const weaknesses = state.preAssessmentAnalysis?.weaknesses || [];
+                const isIntro = node.parentId === null;
+                
+                dispatch({ type: 'NODE_CONTENT_STREAM_START' });
+                
+                let nodeContext = state.sourceContent;
+                if (state.sourcePageContents && node.sourcePages.length > 0) {
+                        nodeContext = node.sourcePages.map(p => state.sourcePageContents![p-1]).join('\n');
+                }
+
+                generateNodeContent(
+                    node.title, 
+                    nodeContext, 
+                    state.sourceImages,
+                    state.preferences, 
+                    strengths, 
+                    weaknesses,
+                    isIntro,
+                    node.type, 
+                    (partialContent) => dispatch({ type: 'NODE_CONTENT_STREAM_UPDATE', payload: partialContent })
+                ).then(content => {
+                    dispatch({ type: 'NODE_CONTENT_STREAM_END', payload: { nodeId, content } });
+                }).catch((err: any) => {
+                    console.error(err);
+                });
+            }
+            
+            if (window.innerWidth < 768 && state.isChatOpen) {
+                 // Close chat on mobile to see content
+                 dispatch({ type: 'TOGGLE_CHAT' });
+            }
+      } else {
+          showNotification(`درس "${nodeIdOrTitle}" پیدا نشد.`, 'error');
+      }
+  }, [state.mindMap, state.nodeContents, state.sourceContent, state.sourcePageContents, state.sourceImages, state.preferences, state.preAssessmentAnalysis, state.isChatOpen, showNotification]);
+
   const handleCloudLoad = useCallback(async (userId: string) => {
        dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'syncing' } });
        try {
@@ -746,7 +769,6 @@ function App() {
       showNotification("با موفقیت خارج شدید");
   };
 
-  // Memoized Save Session Handler
   const handleSaveSession = useCallback(async (title: string, isAutoSave = false) => {
       if (!state.currentUser) return;
       
@@ -837,7 +859,6 @@ function App() {
       dispatch({ type: 'LOAD_STATE', payload: session.data, sessionId: session.id });
   };
   
-  // Auto-Save Logic
   useEffect(() => {
       if (state.status === AppStatus.LEARNING && state.currentUser && state.currentSessionId && state.mindMap.length > 0) {
           const timer = setTimeout(() => {
@@ -1150,14 +1171,19 @@ function App() {
                   }
               }
           }
+          
+          // Include the Mind Map titles for reference
+          const allNodeTitles = state.mindMap.map(n => n.title);
 
           const responseText = await generateChatResponse(
               state.chatHistory, 
               message, 
               nodeTitle, 
               contextContent,
-              state.isDebateMode, // Passing Debate Mode Status
-              state.weaknesses    // Passing Weaknesses for targeting
+              state.isDebateMode, 
+              state.weaknesses,
+              state.chatPersona, // Pass selected Persona
+              allNodeTitles      // Pass available nodes for linking
           );
           
           const modelMsg: ChatMessage = { role: 'model', message: responseText };
@@ -1165,7 +1191,7 @@ function App() {
       } catch (error) {
           dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'model', message: "متاسفانه ارتباط با سرور برقرار نشد." } });
       }
-  }, [state.sourceContent, state.activeNodeId, state.mindMap, state.nodeContents, state.chatHistory, state.isDebateMode, state.weaknesses]);
+  }, [state.sourceContent, state.activeNodeId, state.mindMap, state.nodeContents, state.chatHistory, state.isDebateMode, state.weaknesses, state.chatPersona]);
 
   const handleExplainRequest = (text: string) => {
       if (!state.isChatOpen) dispatch({ type: 'TOGGLE_CHAT' });
@@ -1692,14 +1718,17 @@ function App() {
             <ChatPanel 
                 history={state.chatHistory} 
                 isFullScreen={state.isChatFullScreen} 
-                isDebateMode={state.isDebateMode} // Passing new prop
+                isDebateMode={state.isDebateMode} 
+                chatPersona={state.chatPersona}
                 initialMessage=""
                 onSend={handleChatSend} 
                 onClose={() => dispatch({ type: 'TOGGLE_CHAT' })}
                 onToggleFullScreen={() => dispatch({ type: 'TOGGLE_FULLSCREEN_CHAT' })}
-                onToggleDebateMode={() => dispatch({ type: 'TOGGLE_DEBATE_MODE' })} // Passing toggle handler
+                onToggleDebateMode={() => dispatch({ type: 'TOGGLE_DEBATE_MODE' })} 
                 onInitialMessageConsumed={() => {}}
-                onInitiateDebate={handleDebateInitiation} // Passing new handler
+                onInitiateDebate={handleDebateInitiation}
+                onSetPersona={(persona) => dispatch({ type: 'SET_CHAT_PERSONA', payload: persona })}
+                onNodeSelect={handleNodeNavigate} // Use the newly created navigation handler
             />
         )}
       
