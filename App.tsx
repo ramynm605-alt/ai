@@ -1,6 +1,8 @@
 
+
+
 import React, { useState, useReducer, useCallback, useEffect, useMemo, useRef, Suspense } from 'react';
-import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession, ChatPersona } from './types';
+import { AppState, MindMapNode, Quiz, Weakness, LearningPreferences, NodeContent, AppStatus, UserAnswer, QuizResult, SavableState, PreAssessmentAnalysis, ChatMessage, QuizQuestion, NodeProgress, Reward, UserBehavior, UserProfile, SavedSession, ChatPersona, Flashcard } from './types';
 import { generateLearningPlan, generateNodeContent, generateQuiz, generateFinalExam, generateCorrectiveSummary, generatePracticeResponse, gradeAndAnalyzeQuiz, analyzePreAssessment, generateChatResponse, generateRemedialNode, generateDailyChallenge, generateDeepAnalysis, generateAdaptiveModifications, generateProactiveChatInitiation } from './services/geminiService';
 import { FirebaseService } from './services/firebaseService';
 import { ArrowRight, BookOpen, Brain, BrainCircuit, CheckCircle, ClipboardList, Home, MessageSquare, Moon, Sun, XCircle, Save, Upload, FileText, Target, Maximize, Minimize, SlidersHorizontal, ChevronDown, Sparkles, Trash, Edit, Flame, Diamond, Scroll, User, LogOut, Wand, Bell, Shuffle, FileQuestion, Settings, ChevronLeft, ChevronRight } from './components/icons';
@@ -16,7 +18,7 @@ const MindMap = React.lazy(() => import('./components/MindMap'));
 const NodeView = React.lazy(() => import('./components/NodeView'));
 const QuizView = React.lazy(() => import('./components/QuizView'));
 const QuizReview = React.lazy(() => import('./components/QuizReview'));
-const WeaknessTracker = React.lazy(() => import('./components/WeaknessTracker'));
+const FlashcardSystem = React.lazy(() => import('./components/FlashcardSystem'));
 const PracticeZone = React.lazy(() => import('./components/PracticeZone'));
 const PreAssessmentReview = React.lazy(() => import('./components/PreAssessmentReview'));
 const ChatPanel = React.lazy(() => import('./components/ChatPanel'));
@@ -25,7 +27,7 @@ const UserPanel = React.lazy(() => import('./components/UserPanel'));
 const PersonalizationWizard = React.lazy(() => import('./components/PersonalizationWizard'));
 const DebugPanel = React.lazy(() => import('./components/DebugPanel'));
 
-const CURRENT_APP_VERSION = 7;
+const CURRENT_APP_VERSION = 8;
 declare var pdfjsLib: any;
 declare var google: any;
 
@@ -78,6 +80,7 @@ const initialState: AppState = {
   streamingNodeContent: null,
   userProgress: {},
   weaknesses: [],
+  flashcards: [],
   finalExam: null,
   quizResults: null,
   correctiveSummary: '',
@@ -236,13 +239,24 @@ function appReducer(state: AppState, action: any): AppState {
         }
 
         const newWeaknesses = [...state.weaknesses];
+        const newFlashcards = [...state.flashcards];
+        
         results.forEach((r: QuizResult) => {
             if (!r.isCorrect) {
+                 // Add to weaknesses if not exists
                  if (!newWeaknesses.some(w => w.question === r.question.question)) {
                      newWeaknesses.push({ 
                          question: r.question.question, 
                          incorrectAnswer: JSON.stringify(r.userAnswer), 
                          correctAnswer: r.question.type === 'multiple-choice' ? r.question.options[r.question.correctAnswerIndex] : r.question.correctAnswer 
+                     });
+                     // Auto-convert to Flashcard
+                     newFlashcards.push({
+                         id: `fc_${Date.now()}_${Math.random()}`,
+                         front: r.question.question,
+                         back: r.question.type === 'multiple-choice' ? r.question.options[r.question.correctAnswerIndex] : r.question.correctAnswer,
+                         box: 1,
+                         nextReviewDate: Date.now() + 86400000 // 1 Day
                      });
                  }
             }
@@ -253,9 +267,34 @@ function appReducer(state: AppState, action: any): AppState {
             status: AppStatus.QUIZ_REVIEW, 
             userProgress: newProgress, 
             weaknesses: newWeaknesses,
+            flashcards: newFlashcards,
             mindMap: newMindMap,
             quizResults: results,
         };
+    }
+    case 'UPDATE_FLASHCARD': {
+        const { id, success } = action.payload;
+        const now = Date.now();
+        const intervals = [1, 3, 7, 14, 30]; // Days
+
+        const newFlashcards = state.flashcards.map(card => {
+            if (card.id === id) {
+                let newBox = card.box;
+                let nextReview = 0;
+
+                if (success) {
+                    newBox = Math.min(5, card.box + 1);
+                    nextReview = now + (intervals[newBox - 1] * 24 * 60 * 60 * 1000);
+                } else {
+                    newBox = 1;
+                    nextReview = now + (1 * 24 * 60 * 60 * 1000); // Reset to 1 day
+                }
+
+                return { ...card, box: newBox, nextReviewDate: nextReview, lastReviewed: now };
+            }
+            return card;
+        });
+        return { ...state, flashcards: newFlashcards };
     }
     case 'RECORD_EXPLANATION_REQUEST': {
         const nodeId = state.activeNodeId;
@@ -377,6 +416,7 @@ function appReducer(state: AppState, action: any): AppState {
             ...loadedState, 
             // Ensure chat history is loaded (if available in save file), otherwise empty
             chatHistory: loadedState.chatHistory || [],
+            flashcards: loadedState.flashcards || [], // Ensure flashcards loaded
             activeNodeId, 
             currentUser: state.currentUser, 
             savedSessions: state.savedSessions, 
@@ -791,6 +831,7 @@ function App() {
           nodeContents: state.nodeContents,
           userProgress: state.userProgress,
           weaknesses: state.weaknesses,
+          flashcards: state.flashcards,
           behavior: state.behavior,
           rewards: state.rewards,
           chatHistory: state.chatHistory // Save chat history
@@ -844,7 +885,7 @@ function App() {
               dispatch({ type: 'SET_AUTO_SAVING', payload: false });
           }, 800);
       }
-  }, [state.currentUser, state.sourceContent, state.sourcePageContents, state.sourceImages, state.preferences, state.mindMap, state.suggestedPath, state.preAssessmentAnalysis, state.nodeContents, state.userProgress, state.weaknesses, state.behavior, state.rewards, state.savedSessions, state.currentSessionId, state.chatHistory, handleCloudSave]);
+  }, [state.currentUser, state.sourceContent, state.sourcePageContents, state.sourceImages, state.preferences, state.mindMap, state.suggestedPath, state.preAssessmentAnalysis, state.nodeContents, state.userProgress, state.weaknesses, state.flashcards, state.behavior, state.rewards, state.savedSessions, state.currentSessionId, state.chatHistory, handleCloudSave]);
 
   const handleDeleteSession = (sessionId: string) => {
        if (!state.currentUser) return;
@@ -1295,8 +1336,13 @@ function App() {
                 <ChevronLeft className="w-5 h-5" />
             </button>
         </div>
-        <div className="flex-grow overflow-y-auto p-2">
-                <WeaknessTracker weaknesses={state.weaknesses} />
+        <div className="flex-grow overflow-y-auto p-2 space-y-2">
+                {/* New Flashcard System */}
+                <FlashcardSystem 
+                    flashcards={state.flashcards} 
+                    onUpdateCard={(id, success) => dispatch({ type: 'UPDATE_FLASHCARD', payload: { id, success } })} 
+                />
+                
                 <div className="h-px bg-border my-2 mx-4"></div>
                 <PracticeZone />
         </div>

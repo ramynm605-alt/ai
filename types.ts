@@ -54,6 +54,23 @@ export interface MindMapNode {
     incorrectAnswer: string;
     correctAnswer: string;
   }
+
+  export interface Flashcard {
+      id: string;
+      front: string;
+      back: string;
+      box: number; // 1 to 5 (Leitner boxes)
+      nextReviewDate: number; // Timestamp
+      lastReviewed?: number;
+  }
+
+  export interface StorySlide {
+      id: string;
+      title: string;
+      content: string; // Short text (max 280 chars)
+      emoji: string;
+      bgGradient: string;
+  }
   
   export interface LearningPreferences {
     explanationStyle: 'faithful' | 'balanced' | 'creative';
@@ -195,6 +212,7 @@ export interface MindMapNode {
     streamingNodeContent: NodeContent | null;
     userProgress: { [key: string]: NodeProgress };
     weaknesses: Weakness[];
+    flashcards: Flashcard[]; // New: Leitner System Cards
     finalExam: Quiz | null;
     quizResults: QuizResult[] | null;
     correctiveSummary: string;
@@ -232,7 +250,8 @@ export interface MindMapNode {
     nodeContents: { [key: string]: NodeContent };
     userProgress: { [key: string]: NodeProgress };
     weaknesses: Weakness[];
+    flashcards: Flashcard[];
     behavior: UserBehavior;
     rewards: Reward[];
-    chatHistory: ChatMessage[]; // New: Save chat history per session
+    chatHistory: ChatMessage[]; 
   }

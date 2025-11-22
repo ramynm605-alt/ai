@@ -1,6 +1,10 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
-import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, GradingResult, PreAssessmentAnalysis, ChatMessage, Weakness, ChatPersona } from '../types';
+
+
+
+
+import { GoogleGenAI, Type, Modality } from "@google/genai";
+import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, GradingResult, PreAssessmentAnalysis, ChatMessage, Weakness, ChatPersona, StorySlide, Flashcard } from '../types';
 import { marked } from 'marked';
 
 const API_KEY = process.env.API_KEY;
@@ -119,6 +123,24 @@ const getPreferenceInstructions = (preferences: LearningPreferences): string => 
 
     return instructions;
 };
+
+// --- AUDIO UTILS ---
+
+function decode(base64: string) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+export async function base64ToAudioBuffer(base64: string): Promise<AudioBuffer> {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({sampleRate: 24000});
+    const arrayBuffer = decode(base64).buffer;
+    return await audioContext.decodeAudioData(arrayBuffer);
+}
 
 
 export async function generateLearningPlan(
@@ -865,4 +887,117 @@ export async function generateDeepAnalysis(title: string, content: string) {
     const prompt = `Deep analysis for ${title}.`;
     const r = await ai.models.generateContent({ model: 'gemini-2.5-pro', contents: { parts: [{ text: prompt }] } });
     return marked.parse(r.text || '');
+}
+
+// -------------------- MICRO-LEARNING STORIES --------------------
+
+const storySlideSchema = {
+    type: Type.ARRAY,
+    items: {
+        type: Type.OBJECT,
+        properties: {
+            id: { type: Type.STRING },
+            title: { type: Type.STRING },
+            content: { type: Type.STRING, description: "Maximum 280 characters, punchy and visual." },
+            emoji: { type: Type.STRING },
+            bgGradient: { type: Type.STRING, description: "CSS gradient string e.g. 'from-purple-500 to-pink-500'" }
+        },
+        required: ["id", "title", "content", "emoji", "bgGradient"]
+    }
+};
+
+export async function generateStoryMode(title: string, content: string): Promise<StorySlide[]> {
+    return withRetry(async () => {
+        const prompt = `
+        Convert the following lesson content into 5 to 7 "Instagram Story" style slides.
+        
+        Lesson Topic: "${title}"
+        Content: "${content.substring(0, 2000)}..."
+        
+        Requirements:
+        1.  **Bite-sized**: Each slide must have short, punchy text (max 280 chars).
+        2.  **Visual**: Suggest an emoji and a vibrant CSS gradient (Tailwind classes like 'from-blue-500 to-cyan-500').
+        3.  **Flow**: Start with a hook, explain key points, end with a takeaway.
+        4.  **Language**: Persian.
+        
+        Output JSON array of slides.
+        `;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: { parts: [{ text: prompt }] },
+            config: { responseMimeType: "application/json", responseSchema: storySlideSchema }
+        });
+
+        return JSON.parse(cleanJsonString(response.text || '[]'));
+    });
+}
+
+// -------------------- PODCAST GENERATOR --------------------
+
+export async function generatePodcastScript(title: string, content: string): Promise<string> {
+    return withRetry(async () => {
+        const prompt = `
+        Create a short, engaging podcast script (approx. 2 minutes read time) about "${title}".
+        
+        Characters:
+        - Host (Joe): Enthusiastic, curious, asks questions.
+        - Guest (Jane): Expert, calm, explanatory.
+        
+        Content Base: "${content.substring(0, 2000)}..."
+        
+        Format:
+        Write ONLY the dialogue in this format:
+        Joe: [Text]
+        Jane: [Text]
+        
+        Important Rules:
+        1. Language: **Persian (Farsi)**.
+        2. **Speaker Names**: You MUST use English names 'Joe' and 'Jane' followed by a colon. Do not translate speaker names.
+        3. **Tone**: Use **Colloquial/Spoken Persian (محاوره‌ای)**. It should sound like a real conversation, not a read article. Use informal verbs (e.g., "می‌گم" instead of "می‌گویم").
+        4. Keep it dynamic and fun.
+        `;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: { parts: [{ text: prompt }] }
+        });
+
+        return response.text || '';
+    });
+}
+
+export async function generatePodcastAudio(script: string): Promise<string> {
+     return withRetry(async () => {
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash-preview-tts",
+          contents: [{ parts: [{ text: script }] }],
+          config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: {
+                multiSpeakerVoiceConfig: {
+                  speakerVoiceConfigs: [
+                        {
+                            speaker: 'Joe',
+                            voiceConfig: {
+                              prebuiltVoiceConfig: { voiceName: 'Kore' }
+                            }
+                        },
+                        {
+                            speaker: 'Jane',
+                            voiceConfig: {
+                              prebuiltVoiceConfig: { voiceName: 'Fenrir' }
+                            }
+                        }
+                  ]
+                }
+            }
+          }
+        });
+        
+        // Return base64 audio data
+        const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (!audioData) throw new Error("No audio generated");
+        return audioData;
+     });
 }
