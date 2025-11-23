@@ -4,6 +4,15 @@ export interface ChatMessage {
   message: string;
 }
 
+export type ResourceType = 'file' | 'link' | 'text';
+
+export interface LearningResource {
+    id: string;
+    type: ResourceType;
+    title: string;
+    content: string;
+    metadata?: any; // For page numbers or specific file info
+}
 
 export interface MindMapNode {
     id: string;
@@ -200,7 +209,8 @@ export interface MindMapNode {
   export interface AppState {
     theme: 'light' | 'balanced' | 'dark';
     status: AppStatus;
-    sourceContent: string;
+    resources: LearningResource[]; // Multi-resource support
+    sourceContent: string; // Combined content for legacy support/generation
     sourcePageContents: string[] | null;
     sourceImages: { mimeType: string, data: string }[];
     preferences: LearningPreferences;
@@ -246,6 +256,7 @@ export interface MindMapNode {
 
   export interface SavableState {
     version: number;
+    resources: LearningResource[];
     sourceContent: string;
     sourcePageContents: string[] | null;
     sourceImages: { mimeType: string, data: string }[];

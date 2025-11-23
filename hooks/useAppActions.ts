@@ -1,7 +1,7 @@
 
 import { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { AppStatus, ChatMessage, PodcastConfig, QuizResult, Reward, SavableState, SavedSession, UserAnswer, UserBehavior, UserProfile, Weakness, LearningPreferences } from '../types';
+import { AppStatus, ChatMessage, PodcastConfig, QuizResult, Reward, SavableState, SavedSession, UserAnswer, UserBehavior, UserProfile, Weakness, LearningPreferences, LearningResource } from '../types';
 import { FirebaseService } from '../services/firebaseService';
 import { generateChatResponse, generateDailyChallenge, generateDeepAnalysis, generateLearningPlan, generateNodeContent, generatePodcastAudio, generatePodcastScript, generateProactiveChatInitiation, generateQuiz, generateRemedialNode, gradeAndAnalyzeQuiz, analyzePreAssessment } from '../services/geminiService';
 
@@ -95,6 +95,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
 
         const sessionData: SavableState = {
             version: 7, // Current Version
+            resources: state.resources,
             sourceContent: state.sourceContent,
             sourcePageContents: state.sourcePageContents,
             sourceImages: state.sourceImages,
@@ -217,6 +218,19 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
 
     // --- Content & Navigation Actions ---
 
+    const addResource = (resource: LearningResource) => {
+        if (state.resources.length >= 5) {
+            showNotification("ظرفیت منابع (۵ عدد) تکمیل شده است.", "error");
+            return;
+        }
+        dispatch({ type: 'ADD_RESOURCE', payload: resource });
+        showNotification("منبع با موفقیت اضافه شد.");
+    };
+
+    const handleRemoveResource = (id: string) => {
+        dispatch({ type: 'REMOVE_RESOURCE', payload: id });
+    };
+
     const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (!file) return;
@@ -230,54 +244,130 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                   const loadingTask = pdfjsLib.getDocument(arrayBuffer);
                   const pdf = await loadingTask.promise;
                   let fullText = '';
-                  let pageContents: string[] = [];
+                  // We might discard page contents for multi-source simplicity or keep them in metadata
                   for (let i = 1; i <= pdf.numPages; i++) {
                       const page = await pdf.getPage(i);
                       const textContent = await page.getTextContent();
                       const pageText = textContent.items.map((item: any) => item.str).join(' ');
                       fullText += pageText + '\n\n';
-                      pageContents.push(pageText);
                   }
-                   dispatch({ type: 'INIT_WIZARD', payload: { sourceContent: fullText, sourcePageContents: pageContents, sourceImages: [] } });
+                  
+                  addResource({
+                      id: Math.random().toString(36).substr(2, 9),
+                      type: 'file',
+                      title: file.name,
+                      content: fullText,
+                      metadata: { mimeType: file.type }
+                  });
+
               } catch (error: any) {
                   console.error("PDF Error:", error);
                   dispatch({ type: 'SET_ERROR', payload: 'خطا در خواندن فایل PDF.' });
               }
           };
           reader.readAsArrayBuffer(file);
-      } else if (file.type.startsWith('image/')) {
+      } else if (file.type.startsWith('text/') || file.name.endsWith('.txt')) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+              const text = e.target?.result as string;
+              addResource({
+                  id: Math.random().toString(36).substr(2, 9),
+                  type: 'file',
+                  title: file.name,
+                  content: text,
+                  metadata: { mimeType: file.type }
+              });
+          };
+          reader.readAsText(file);
+      } else if (file.type.startsWith('image/') || file.type.startsWith('audio/')) {
+          // Note: Image/Audio handling for multi-source needs careful prompt engineering.
+          // For now, we will add them but generatePlanInternal logic might need to be aware.
+          // Currently assuming images are handled via state.sourceImages, 
+          // but we should ideally attach them to the resource.
+          
           const reader = new FileReader();
           reader.onload = (e) => {
                const result = e.target?.result as string;
                const base64Data = result.split(',')[1];
-               const mimeType = file.type;
-               dispatch({ type: 'INIT_WIZARD', payload: { sourceContent: "تصویر آپلود شد.", sourcePageContents: null, sourceImages: [{mimeType, data: base64Data}] } });
+               
+               // For image/audio, content might be empty text or a description? 
+               // Or we store the base64 in metadata.
+               
+               const resource: LearningResource = {
+                   id: Math.random().toString(36).substr(2, 9),
+                   type: 'file',
+                   title: file.name,
+                   content: file.type.startsWith('audio/') ? "[Audio File]" : "[Image File]",
+                   metadata: { mimeType: file.type, data: base64Data }
+               };
+               addResource(resource);
           }
           reader.readAsDataURL(file);
       } else {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-              const text = e.target?.result as string;
-              dispatch({ type: 'INIT_WIZARD', payload: { sourceContent: text, sourcePageContents: null, sourceImages: [] } });
-          };
-          reader.readAsText(file);
+           dispatch({ type: 'SET_ERROR', payload: 'فرمت فایل پشتیبانی نمی‌شود.' });
       }
+      
+      // Reset input
+      event.target.value = '';
     };
 
     const handleStartFromText = (textInput: string) => {
         if (textInput.trim().length > 10) { 
-            dispatch({ type: 'INIT_WIZARD', payload: { sourceContent: textInput, sourcePageContents: null, sourceImages: [] } });
+            addResource({
+                id: Math.random().toString(36).substr(2, 9),
+                type: 'text',
+                title: 'متن وارد شده',
+                content: textInput
+            });
         } else {
-            dispatch({ type: 'SET_ERROR', payload: 'لطفاً حداقل ۱۰ کاراکتر متن وارد کنید.' });
+            showNotification('لطفاً حداقل ۱۰ کاراکتر متن وارد کنید.', 'error');
         }
     };
   
     const handleTopicStudy = (topicInput: string) => {
         if (topicInput.trim().length > 2) {
-            dispatch({ type: 'INIT_WIZARD', payload: { sourceContent: topicInput, sourcePageContents: null, sourceImages: [] } });
+             addResource({
+                id: Math.random().toString(36).substr(2, 9),
+                type: 'text',
+                title: `موضوع: ${topicInput}`,
+                content: topicInput,
+                metadata: { isTopic: true }
+            });
         } else {
-            dispatch({ type: 'SET_ERROR', payload: 'لطفاً یک موضوع معتبر وارد کنید.' });
+            showNotification('لطفاً یک موضوع معتبر وارد کنید.', 'error');
         }
+    };
+
+    const handleUrlInput = (url: string) => {
+        if (!url || url.length < 5) return;
+        addResource({
+            id: Math.random().toString(36).substr(2, 9),
+            type: 'link',
+            title: url,
+            content: `Please analyze the content from this URL: ${url}. If it is a YouTube video, extract the key educational concepts.`
+        });
+    };
+
+    // This function finalizes the resources and moves to Wizard
+    const handleFinalizeResources = () => {
+        if (state.resources.length === 0) {
+            showNotification("لطفاً حداقل یک منبع اضافه کنید.", "error");
+            return;
+        }
+
+        // Combine resources into sourceContent for the prompt
+        // Also extract images if any
+        let combinedContent = "";
+        let combinedImages: { mimeType: string, data: string }[] = [];
+
+        state.resources.forEach((res, index) => {
+            combinedContent += `\n\n[[Resource ${index + 1}: ${res.title}]]\n${res.content}\n----------------\n`;
+            if (res.metadata?.data && res.metadata?.mimeType) {
+                combinedImages.push({ mimeType: res.metadata.mimeType, data: res.metadata.data });
+            }
+        });
+
+        dispatch({ type: 'INIT_WIZARD', payload: { sourceContent: combinedContent, sourcePageContents: null, sourceImages: combinedImages } });
     };
 
     const handleWizardComplete = (prefs: LearningPreferences) => {
@@ -285,10 +375,10 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         // The generation is triggered via useEffect in main component when status changes to LOADING
     };
 
-    // Note: This logic is usually called inside useEffect in the UI when status becomes LOADING
-    // We export it so it can be called if needed, but primarily it's state-driven.
-    // However, to keep it clean, we'll keep the logic here but triggering it might happen in UI.
     const generatePlanInternal = useCallback(() => {
+        // If we have resources in state, we use them (already combined in handleFinalizeResources, 
+        // but let's ensure we use the sourceContent in state which INIT_WIZARD set).
+        
         return generateLearningPlan(
             state.sourceContent, 
             state.sourcePageContents, 
@@ -660,6 +750,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         handleFileUpload,
         handleStartFromText,
         handleTopicStudy,
+        handleUrlInput,
         handleWizardComplete,
         handleNodeSelect,
         handleNodeNavigate,
@@ -672,5 +763,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         handleDebateInitiation,
         togglePodcastMode,
         startPodcastGeneration,
+        handleRemoveResource,
+        handleFinalizeResources,
     };
 };

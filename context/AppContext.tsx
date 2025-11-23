@@ -14,6 +14,7 @@ const DEFAULT_BEHAVIOR: UserBehavior = {
 const initialState: AppState = {
   theme: 'dark',
   status: AppStatus.IDLE,
+  resources: [],
   sourceContent: '',
   sourcePageContents: null,
   sourceImages: [],
@@ -75,10 +76,25 @@ function appReducer(state: AppState, action: any): AppState {
   switch (action.type) {
     case 'SET_THEME':
       return { ...state, theme: action.payload };
+    
+    // Resource Management
+    case 'ADD_RESOURCE':
+       return { ...state, resources: [...state.resources, action.payload] };
+    case 'REMOVE_RESOURCE':
+       return { ...state, resources: state.resources.filter(r => r.id !== action.payload) };
+    case 'CLEAR_RESOURCES':
+       return { ...state, resources: [], sourceContent: '', sourceImages: [] };
+
     case 'INIT_WIZARD':
-       return { ...state, status: AppStatus.WIZARD, sourceContent: action.payload.sourceContent, sourcePageContents: action.payload.sourcePageContents, sourceImages: action.payload.sourceImages };
+       // Used when we finalize the resources and move to customization
+       return { 
+           ...state, 
+           status: AppStatus.WIZARD, 
+           sourceContent: action.payload.sourceContent,
+           // Keep images if they were added via resources, logic handled in action
+       };
     case 'FINISH_WIZARD':
-       return { ...state, status: AppStatus.LOADING, preferences: action.payload, loadingMessage: 'در حال تحلیل محتوا و طراحی مسیر یادگیری شخصی...' };
+       return { ...state, status: AppStatus.LOADING, preferences: action.payload, loadingMessage: 'در حال تحلیل منابع و طراحی نقشه ذهنی...' };
     case 'START_GENERATION':
       return { ...state, status: AppStatus.LOADING, loadingMessage: 'در حال تولید نقشه ذهنی...' };
     case 'MIND_MAP_GENERATED': {
@@ -338,6 +354,7 @@ function appReducer(state: AppState, action: any): AppState {
         return { 
             ...initialState, 
             ...loadedState, 
+            resources: loadedState.resources || [], // Backward compatibility
             chatHistory: loadedState.chatHistory || [],
             activeNodeId, 
             currentUser: state.currentUser, 

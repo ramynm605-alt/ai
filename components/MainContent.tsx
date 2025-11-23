@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAppActions } from '../hooks/useAppActions';
 import { AppStatus } from '../types';
-import { FileText, Wand, FileQuestion, Shuffle, BrainCircuit, Upload, ArrowRight, Sparkles, Target, MessageSquare, XCircle } from './icons';
+import { FileText, Wand, FileQuestion, Shuffle, BrainCircuit, Upload, ArrowRight, ArrowLeft, Sparkles, Target, MessageSquare, XCircle, FileAudio, Youtube, Link, Globe, Music, Trash, CheckCircle } from './icons';
 import BoxLoader from './ui/box-loader';
 import MindMap from './MindMap';
 import NodeView from './NodeView';
@@ -31,22 +31,41 @@ interface MainContentProps {
     actions: ReturnType<typeof useAppActions>;
 }
 
+type InputTab = 'explore' | 'upload' | 'link' | 'text';
+type ViewMode = 'landing' | 'action';
+
 const MainContent: React.FC<MainContentProps> = ({ actions }) => {
     const { state, dispatch } = useApp();
     const [textInput, setTextInput] = useState('');
     const [topicInput, setTopicInput] = useState('');
+    const [urlInput, setUrlInput] = useState('');
+    const [activeTab, setActiveTab] = useState<InputTab>('upload');
+    const [viewMode, setViewMode] = useState<ViewMode>('landing');
+    
     const fileInputRef = useRef<HTMLInputElement>(null);
     const hasStartedGeneration = useRef(false);
 
     const handleRandomStudy = () => {
         const randomTopic = RANDOM_TOPICS[Math.floor(Math.random() * RANDOM_TOPICS.length)];
         setTopicInput(randomTopic);
-        dispatch({ type: 'INIT_WIZARD', payload: { sourceContent: randomTopic, sourcePageContents: null, sourceImages: [] } });
+    };
+
+    const handleEnterAction = (tab: InputTab) => {
+        setActiveTab(tab);
+        setViewMode('action');
+    };
+
+    const handleBackToLanding = () => {
+        if (state.resources.length > 0) {
+             // Maybe warn user or just go back? For now just go back.
+        }
+        setViewMode('landing');
     };
 
     // Trigger plan generation when status is LOADING
     useEffect(() => {
         if (state.status === AppStatus.LOADING && state.mindMap.length === 0 && !hasStartedGeneration.current) {
+            // Check sourceContent which is set by INIT_WIZARD when finalizing resources
             if (state.sourceContent || (state.sourceImages && state.sourceImages.length > 0)) {
                 hasStartedGeneration.current = true;
                 actions.generatePlanInternal().catch(err => {
@@ -61,105 +80,362 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
         }
     }, [state.status, state.mindMap.length, state.sourceContent, state.sourceImages, actions]);
 
+    const renderResourceList = () => {
+        if (state.resources.length === 0) return null;
+
+        return (
+            <div className="mt-8 bg-card border border-border rounded-2xl p-4 md:p-6 animate-slide-up">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-lg flex items-center gap-2">
+                        <FileText className="w-5 h-5 text-primary" />
+                        <span>منابع انتخاب شده</span>
+                        <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground">{state.resources.length}/5</span>
+                    </h3>
+                </div>
+                <div className="space-y-3">
+                    {state.resources.map((res, idx) => (
+                        <div key={res.id} className="flex items-center justify-between p-3 bg-secondary/30 border border-border rounded-xl">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                                <div className="w-8 h-8 rounded-full bg-background flex items-center justify-center text-muted-foreground shrink-0 border border-border">
+                                    {res.type === 'file' ? <FileText className="w-4 h-4" /> : 
+                                     res.type === 'link' ? <Link className="w-4 h-4" /> : 
+                                     <FileQuestion className="w-4 h-4" />}
+                                </div>
+                                <span className="text-sm font-medium truncate">{res.title}</span>
+                            </div>
+                            <button 
+                                onClick={() => actions.handleRemoveResource(res.id)}
+                                className="p-2 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-lg transition-colors"
+                            >
+                                <Trash className="w-4 h-4" />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+                <div className="mt-6">
+                     <button 
+                        onClick={actions.handleFinalizeResources}
+                        className="w-full py-4 bg-gradient-to-r from-primary to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
+                    >
+                        <span>شروع پردازش و ساخت نقشه</span>
+                        <Sparkles className="w-5 h-5" />
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
+    const renderInputSection = () => {
+        // If max resources reached, block input UI
+        if (state.resources.length >= 5) {
+             return (
+                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-6 text-center">
+                    <CheckCircle className="w-12 h-12 text-yellow-500 mx-auto mb-3" />
+                    <h3 className="font-bold text-yellow-600 mb-1">ظرفیت تکمیل شد</h3>
+                    <p className="text-sm text-yellow-600/80 mb-4">شما ۵ منبع را انتخاب کرده‌اید. برای اضافه کردن مورد جدید، یکی از موارد لیست پایین را حذف کنید.</p>
+                </div>
+             )
+        }
+
+        switch (activeTab) {
+            case 'explore':
+                return (
+                    <div className="bg-card rounded-2xl p-6 border border-border shadow-sm flex flex-col relative animate-fade-in">
+                        <div className="flex items-center justify-between gap-2 mb-6">
+                             <div className="flex items-center gap-3">
+                                <div className="p-2 bg-purple-500/10 rounded-lg text-purple-600">
+                                    <BrainCircuit className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-lg text-foreground">کاوش موضوعی</h3>
+                                    <p className="text-xs text-muted-foreground">اضافه کردن موضوع به لیست منابع</p>
+                                </div>
+                             </div>
+                             <button 
+                                onClick={handleRandomStudy}
+                                className="flex items-center gap-1 px-3 py-1.5 bg-secondary text-secondary-foreground text-xs font-medium rounded-full hover:bg-secondary/80 transition-colors"
+                            >
+                                <Shuffle className="w-3 h-3" />
+                                <span>شانسی</span>
+                            </button>
+                        </div>
+                        
+                        <div className="relative mb-8">
+                            <input 
+                                type="text"
+                                className="w-full px-4 py-4 pr-12 text-lg bg-background border-2 border-border rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all placeholder:text-muted-foreground/50"
+                                placeholder="مثلاً: استراتژی بازاریابی دیجیتال..."
+                                value={topicInput}
+                                onChange={(e) => setTopicInput(e.target.value)}
+                                onKeyPress={(e) => {
+                                    if(e.key === 'Enter' && topicInput.trim()) {
+                                        actions.handleTopicStudy(topicInput);
+                                        setTopicInput('');
+                                    }
+                                }}
+                            />
+                            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground">
+                                <FileQuestion className="w-6 h-6" />
+                            </div>
+                        </div>
+
+                        <div className="mt-auto">
+                            <button 
+                                onClick={() => {
+                                    actions.handleTopicStudy(topicInput);
+                                    setTopicInput('');
+                                }}
+                                disabled={!topicInput.trim()}
+                                className="w-full py-4 flex items-center justify-center gap-2 bg-secondary text-foreground border border-border font-bold rounded-xl hover:bg-purple-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                            >
+                                <span>افزودن موضوع به لیست</span>
+                                <ArrowRight className="w-5 h-5 rotate-180" />
+                            </button>
+                        </div>
+                    </div>
+                );
+
+            case 'upload':
+                return (
+                    <div 
+                        className="bg-card rounded-2xl p-6 border-2 border-dashed border-primary/20 hover:border-primary/50 transition-all flex flex-col items-center justify-center text-center group cursor-pointer animate-fade-in relative overflow-hidden min-h-[300px]"
+                        onClick={() => fileInputRef.current?.click()}
+                    >
+                         <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                        
+                        <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                            <Upload className="w-10 h-10 text-primary" />
+                        </div>
+                        
+                        <h3 className="text-xl font-bold text-foreground mb-2">بارگذاری فایل</h3>
+                        <p className="text-muted-foreground max-w-xs mx-auto mb-8">
+                            فایل خود را اینجا رها کنید یا کلیک کنید (PDF, TXT, Image, Audio)
+                        </p>
+
+                        <div className="flex flex-wrap justify-center gap-3">
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary rounded-lg text-xs font-medium text-muted-foreground">
+                                <FileText className="w-4 h-4" /> PDF / TXT
+                            </div>
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary rounded-lg text-xs font-medium text-muted-foreground">
+                                <FileAudio className="w-4 h-4" /> MP3 / WAV
+                            </div>
+                        </div>
+
+                        <input 
+                            type="file" 
+                            ref={fileInputRef} 
+                            className="hidden" 
+                            onChange={actions.handleFileUpload} 
+                            accept=".pdf,.txt,image/*,audio/*" 
+                        />
+                    </div>
+                );
+
+            case 'link':
+                return (
+                     <div className="bg-card rounded-2xl p-6 border border-border shadow-sm flex flex-col animate-fade-in">
+                        <div className="flex items-center gap-3 mb-6">
+                             <div className="p-2 bg-red-500/10 rounded-lg text-red-600">
+                                <Youtube className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-lg text-foreground">لینک و یوتیوب</h3>
+                                <p className="text-xs text-muted-foreground">تحلیل محتوای ویدیو یا وبسایت</p>
+                            </div>
+                        </div>
+
+                        <div className="relative mb-8">
+                            <input 
+                                type="text"
+                                className="w-full px-4 py-4 pr-12 text-lg bg-background border-2 border-border rounded-xl focus:border-red-500 focus:ring-4 focus:ring-red-500/10 transition-all placeholder:text-muted-foreground/50 text-left ltr"
+                                placeholder="https://youtube.com/..."
+                                value={urlInput}
+                                onChange={(e) => setUrlInput(e.target.value)}
+                            />
+                            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground">
+                                <Link className="w-6 h-6" />
+                            </div>
+                        </div>
+
+                        <div className="mt-auto">
+                            <button 
+                                onClick={() => {
+                                    actions.handleUrlInput(urlInput);
+                                    setUrlInput('');
+                                }}
+                                disabled={urlInput.length < 5}
+                                className="w-full py-4 flex items-center justify-center gap-2 bg-secondary text-foreground border border-border font-bold rounded-xl hover:bg-red-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                            >
+                                <span>افزودن لینک</span>
+                                <ArrowRight className="w-5 h-5 rotate-180" />
+                            </button>
+                        </div>
+                    </div>
+                );
+
+            case 'text':
+                return (
+                     <div className="bg-card rounded-2xl p-6 border border-border shadow-sm flex flex-col animate-fade-in">
+                        <div className="flex items-center gap-3 mb-4">
+                             <div className="p-2 bg-blue-500/10 rounded-lg text-blue-600">
+                                <FileText className="w-6 h-6" />
+                            </div>
+                            <h3 className="font-bold text-lg text-foreground">متن خام</h3>
+                        </div>
+
+                         <textarea 
+                            className="w-full flex-grow p-4 bg-secondary/30 rounded-xl border border-border resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-foreground placeholder:text-muted-foreground/50 min-h-[120px] mb-6" 
+                            placeholder="متن مقاله، جزوه یا کتاب خود را اینجا پیست کنید..."
+                            value={textInput}
+                            onChange={(e) => setTextInput(e.target.value)}
+                        />
+
+                        <div className="mt-auto">
+                            <button 
+                                onClick={() => {
+                                    actions.handleStartFromText(textInput);
+                                    setTextInput('');
+                                }}
+                                disabled={textInput.trim().length < 10}
+                                className="w-full py-4 flex items-center justify-center gap-2 bg-secondary text-foreground border border-border font-bold rounded-xl hover:bg-blue-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                            >
+                                <span>افزودن متن</span>
+                                <ArrowRight className="w-5 h-5 rotate-180" />
+                            </button>
+                        </div>
+                    </div>
+                );
+        }
+    };
+
     return (
         <div className="flex-grow relative z-10 overflow-y-auto scroll-smooth">
             {state.status === AppStatus.IDLE && (
-                <div className="max-w-5xl mx-auto mt-4 md:mt-10 p-4 md:p-6 space-y-6 md:space-y-8 animate-slide-up pb-32">
-                    <div className="text-center space-y-4">
-                        <h2 className="text-3xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-600 py-2">
-                           یادگیری عمیق با طعم هوش مصنوعی
-                        </h2>
-                        <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-                            محتوای آموزشی خود را بارگذاری کنید یا یک موضوع را انتخاب کنید تا ذهن‌گاه آن را به یک نقشه ذهنی تعاملی، آزمون و مسیر یادگیری تبدیل کند.
-                        </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
-                         <div className="stylish-textarea-wrapper p-1 bg-gradient-to-br from-border to-transparent">
-                            <div className="bg-card rounded-xl p-4 h-full flex flex-col relative">
-                                <div className="flex items-center gap-2 mb-3 text-primary">
-                                    <FileText className="w-5 h-5" />
-                                    <span className="font-bold">متن خام</span>
-                                </div>
-                                <textarea 
-                                    className="w-full flex-grow bg-transparent border-none resize-none focus:ring-0 text-foreground placeholder:text-muted-foreground/50 min-h-[120px] mb-12" 
-                                    placeholder="متن مقاله، جزوه یا کتاب خود را اینجا پیست کنید..."
-                                    value={textInput}
-                                    onChange={(e) => setTextInput(e.target.value)}
-                                />
-                                <div className="absolute bottom-4 left-4 right-4">
-                                    <button 
-                                        onClick={() => actions.handleStartFromText(textInput)}
-                                        disabled={!textInput.trim()}
-                                        className="w-full py-3 flex items-center justify-center gap-2 bg-primary text-primary-foreground font-bold rounded-lg hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 shadow-md"
-                                    >
-                                        <span>شروع پردازش</span>
-                                        <Wand className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                         <div className="stylish-textarea-wrapper p-1 bg-gradient-to-b from-border to-transparent">
-                            <div className="bg-card rounded-xl p-4 h-full flex flex-col relative">
-                                <div className="flex items-center justify-between gap-2 mb-3 text-purple-500">
-                                    <div className="flex items-center gap-2">
-                                        <FileQuestion className="w-5 h-5" />
-                                        <span className="font-bold">کاوش موضوعی</span>
-                                    </div>
-                                    <button 
-                                        onClick={handleRandomStudy}
-                                        className="p-1.5 bg-purple-500/10 rounded-full hover:bg-purple-500/20 transition-colors"
-                                        title="موضوع شانسی"
-                                    >
-                                        <Shuffle className="w-4 h-4" />
-                                    </button>
-                                </div>
-                                <textarea 
-                                    className="w-full flex-grow bg-transparent border-none resize-none focus:ring-0 text-foreground placeholder:text-muted-foreground/50 min-h-[120px] mb-12" 
-                                    placeholder="موضوعی که دوست دارید یاد بگیرید را بنویسید (مثلاً: تاریخ روم باستان)..."
-                                    value={topicInput}
-                                    onChange={(e) => setTopicInput(e.target.value)}
-                                />
-                                <div className="absolute bottom-4 left-4 right-4">
-                                    <button 
-                                        onClick={() => actions.handleTopicStudy(topicInput)}
-                                        disabled={!topicInput.trim()}
-                                        className="w-full py-3 flex items-center justify-center gap-2 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 shadow-md"
-                                    >
-                                        <span>تحقیق و ساخت مسیر</span>
-                                        <BrainCircuit className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="stylish-textarea-wrapper p-1 bg-gradient-to-bl from-border to-transparent group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-                             <div className="bg-card rounded-xl p-4 h-full flex flex-col items-center justify-center text-center border-2 border-dashed border-transparent group-hover:border-primary/20 transition-all min-h-[200px]">
-                                <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-primary shadow-sm">
-                                    <Upload className="w-8 h-8" />
-                                </div>
-                                <h3 className="font-bold text-lg">آپلود فایل</h3>
-                                <p className="text-sm text-muted-foreground mt-2">PDF، متن یا تصویر</p>
-                                <input type="file" ref={fileInputRef} className="hidden" onChange={actions.handleFileUpload} accept=".pdf,.txt,image/*" />
-                            </div>
-                        </div>
-                    </div>
+                <div className="max-w-5xl mx-auto mt-6 md:mt-12 p-4 md:p-6 pb-32">
                     
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mt-8 md:mt-12">
-                        {[
-                            { icon: BrainCircuit, title: "نقشه ذهنی", desc: "ساختاردهی هوشمند" },
-                            { icon: Target, title: "آزمون تطبیقی", desc: "سنجش دقیق سطح" },
-                            { icon: MessageSquare, title: "مربی شخصی", desc: "رفع اشکال آنی" },
-                            { icon: Sparkles, title: "خلاصه ساز", desc: "مرور سریع" }
-                        ].map((f, i) => (
-                            <div key={i} className="p-3 md:p-4 rounded-xl bg-secondary/30 border border-border text-center hover:bg-secondary/50 transition-colors">
-                                <f.icon className="w-6 h-6 md:w-8 md:h-8 mx-auto mb-2 text-primary" />
-                                <h4 className="font-bold text-xs md:text-sm">{f.title}</h4>
-                                <p className="text-[10px] md:text-xs text-muted-foreground mt-1">{f.desc}</p>
+                    {viewMode === 'landing' ? (
+                        /* LANDING MODE: Hero + Main Choices */
+                        <div className="animate-slide-up">
+                            {/* Hero Section */}
+                            <div className="text-center space-y-6 mb-12">
+                                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-secondary/50 border border-border text-xs font-medium text-muted-foreground mb-2">
+                                     <Sparkles className="w-3.5 h-3.5 text-primary" />
+                                     <span>هوش مصنوعی نسخه ۲.۵</span>
+                                </div>
+                                <h2 className="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary via-indigo-500 to-purple-600 leading-tight">
+                                   امروز چه چیزی یاد می‌گیریم؟
+                                </h2>
+                                <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+                                    پلتفرم هوشمند تبدیل محتوا به مسیر یادگیری تعاملی.
+                                    <br className="hidden md:block" />
+                                    یکی از روش‌های زیر را برای شروع انتخاب کنید:
+                                </p>
                             </div>
-                        ))}
-                    </div>
+
+                            {/* Main Action Cards */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+                                {/* Option 1: Source Upload */}
+                                <button 
+                                    onClick={() => handleEnterAction('upload')}
+                                    className="relative group p-8 rounded-3xl bg-card border-2 border-primary/20 hover:border-primary transition-all duration-300 text-center shadow-lg hover:shadow-2xl hover:shadow-primary/10 overflow-hidden"
+                                >
+                                    <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    <div className="w-20 h-20 mx-auto bg-primary/10 rounded-full flex items-center justify-center text-primary mb-6 group-hover:scale-110 transition-transform">
+                                        <Upload className="w-10 h-10" />
+                                    </div>
+                                    <h3 className="text-2xl font-bold mb-3">بارگذاری منابع</h3>
+                                    <p className="text-muted-foreground text-sm">
+                                        ترکیب چندین منبع (تا ۵ عدد) از فایل‌های PDF، صوتی، ویدیو یوتیوب یا متن برای دقت بالاتر.
+                                    </p>
+                                    <div className="mt-6 inline-flex items-center gap-2 text-primary font-bold text-sm">
+                                        <span>مدیریت منابع</span>
+                                        <ArrowLeft className="w-4 h-4" />
+                                    </div>
+                                </button>
+
+                                {/* Option 2: Topic Exploration */}
+                                <button 
+                                    onClick={() => handleEnterAction('explore')}
+                                    className="relative group p-8 rounded-3xl bg-card border-2 border-border hover:border-purple-500/50 transition-all duration-300 text-center shadow-lg hover:shadow-2xl hover:shadow-purple-500/10 overflow-hidden"
+                                >
+                                    <div className="absolute inset-0 bg-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    <div className="w-20 h-20 mx-auto bg-purple-500/10 rounded-full flex items-center justify-center text-purple-600 mb-6 group-hover:scale-110 transition-transform">
+                                        <BrainCircuit className="w-10 h-10" />
+                                    </div>
+                                    <h3 className="text-2xl font-bold mb-3">کاوش موضوعی</h3>
+                                    <p className="text-muted-foreground text-sm">
+                                        فقط یک موضوع وارد کنید (مثل "اقتصاد خرد" یا "تاریخ ایران") تا هوش مصنوعی برایتان سرفصل بسازد.
+                                    </p>
+                                    <div className="mt-6 inline-flex items-center gap-2 text-purple-600 font-bold text-sm">
+                                        <span>شروع کاوش</span>
+                                        <ArrowLeft className="w-4 h-4" />
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        /* ACTION MODE: Tabs & Inputs */
+                        <div className="max-w-4xl mx-auto animate-slide-up">
+                            {/* Back Button */}
+                            <div className="flex items-center justify-between mb-6">
+                                <button 
+                                    onClick={handleBackToLanding}
+                                    className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors group"
+                                >
+                                    <div className="p-2 rounded-full bg-secondary group-hover:bg-secondary/80">
+                                        <ArrowRight className="w-4 h-4" />
+                                    </div>
+                                    <span className="text-sm font-bold">بازگشت</span>
+                                </button>
+                                {activeTab !== 'explore' && state.resources.length > 0 && (
+                                    <div className="text-sm font-bold text-primary bg-primary/10 px-3 py-1 rounded-full">
+                                        {state.resources.length} منبع اضافه شده
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Custom Tabs */}
+                            <div className="flex p-1 bg-secondary/50 rounded-2xl mb-6 mx-auto max-w-3xl overflow-x-auto">
+                                <button 
+                                    onClick={() => setActiveTab('upload')}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 min-w-[100px] rounded-xl text-sm font-bold transition-all duration-300 ${activeTab === 'upload' ? 'bg-background text-foreground shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+                                >
+                                    <Upload className="w-5 h-5" />
+                                    <span>آپلود فایل</span>
+                                </button>
+                                 <button 
+                                    onClick={() => setActiveTab('link')}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 min-w-[100px] rounded-xl text-sm font-bold transition-all duration-300 ${activeTab === 'link' ? 'bg-background text-foreground shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+                                >
+                                    <Globe className="w-5 h-5" />
+                                    <span>لینک</span>
+                                </button>
+                                 <button 
+                                    onClick={() => setActiveTab('text')}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 min-w-[100px] rounded-xl text-sm font-bold transition-all duration-300 ${activeTab === 'text' ? 'bg-background text-foreground shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+                                >
+                                    <FileText className="w-5 h-5" />
+                                    <span>متن</span>
+                                </button>
+                                <button 
+                                    onClick={() => setActiveTab('explore')}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 min-w-[100px] rounded-xl text-sm font-bold transition-all duration-300 ${activeTab === 'explore' ? 'bg-background text-foreground shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+                                >
+                                    <BrainCircuit className="w-5 h-5" />
+                                    <span>موضوع</span>
+                                </button>
+                            </div>
+
+                            {/* Input Area Content */}
+                            <div>
+                                {renderInputSection()}
+                            </div>
+
+                            {/* Resource List (Visible if resources exist) */}
+                            {renderResourceList()}
+
+                        </div>
+                    )}
                 </div>
             )}
 

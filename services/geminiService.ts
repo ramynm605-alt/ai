@@ -135,7 +135,11 @@ export async function generateLearningPlan(
     return withRetry(async () => {
         const preferenceInstructions = getPreferenceInstructions(preferences);
         
-        const isTopicMode = content.length < 500 && !pageContents && images.length === 0;
+        // Detection logic: If content is short and no images, it's a topic request.
+        // However, with multi-resource support, content might be long but composed of multiple short texts.
+        // We rely on the structure. If it contains "[[Resource" markers, it's extraction mode.
+        const isMultiSource = content.includes("[[Resource");
+        const isTopicMode = !isMultiSource && content.length < 500 && !pageContents && images.length === 0;
         
         let contextInstruction = "";
         if (isTopicMode) {
@@ -149,6 +153,7 @@ export async function generateLearningPlan(
             contextInstruction = `
             *** حالت استخراج محتوا (Extraction Mode) ***
             وظیفه تو استخراج ساختار و نقشه ذهنی بر اساس محتوای متنی ارائه شده در پایین است.
+            ${isMultiSource ? 'توجه: محتوا از چندین منبع مختلف (Resource) جمع‌آوری شده است. وظیفه تو ترکیب این منابع و ایجاد یک نقشه ذهنی واحد و منسجم است.' : ''}
             فقط از مطالبی که در متن وجود دارد استفاده کن.
             `;
         }
@@ -168,7 +173,7 @@ export async function generateLearningPlan(
         2. **اصل عدم هم‌پوشانی:** گره فرزند نباید کل محتوای گره پدر را تکرار کند.
         3. **گره ریشه (اجباری):** باید دقیقاً یک گره با parentId: null با عنوان "مقدمه و نقشه راه" وجود داشته باشد.
         4. **گره پایان (اجباری):** آخرین گره باید "جمع‌بندی و نتیجه‌گیری" باشد.
-        5. **فشردگی:** بین ۵ تا ۱۲ گره کل.
+        5. **فشردگی:** بین ۵ تا ۱۵ گره کل (با توجه به حجم منابع).
 
         **فرمت JSON گره:**
         {
