@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { Quiz, QuizQuestion, MultipleChoiceQuestion, ShortAnswerQuestion, UserAnswer } from '../types';
 
@@ -9,20 +8,27 @@ interface QuizViewProps {
     onSubmit: (answers: Record<string, UserAnswer>) => void;
 }
 
-const getDifficultyChip = (difficulty: 'آسان' | 'متوسط' | 'سخت') => {
-    const styles = {
+const getDifficultyChip = (difficulty: string) => {
+    const styles: Record<string, string> = {
         'آسان': 'bg-success/20 text-success',
         'متوسط': 'bg-yellow-400/20 text-yellow-600',
         'سخت': 'bg-destructive/20 text-destructive',
+        'بسیار سخت': 'bg-purple-500/20 text-purple-600',
+        'چالش‌برانگیز': 'bg-indigo-500/20 text-indigo-600',
     };
     // A little hacky, but need to adjust for dark mode text colors
-    const darkStyles = {
+    const darkStyles: Record<string, string> = {
         'آسان': 'dark:text-green-300',
         'متوسط': 'dark:text-yellow-300',
-        'سخت': 'dark:text-red-300'
+        'سخت': 'dark:text-red-300',
+        'بسیار سخت': 'dark:text-purple-300',
+        'چالش‌برانگیز': 'dark:text-indigo-300',
     }
 
-    return <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${styles[difficulty]} ${darkStyles[difficulty]}`}>{difficulty}</span>;
+    const style = styles[difficulty] || styles['متوسط'];
+    const darkStyle = darkStyles[difficulty] || darkStyles['متوسط'];
+
+    return <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${style} ${darkStyle}`}>{difficulty}</span>;
 }
 
 
@@ -59,7 +65,7 @@ const ShortAnswerRenderer: React.FC<{ question: ShortAnswerQuestion; answer: str
             value={answer}
             onChange={(e) => onAnswer(e.target.value)}
             className="w-full p-3 transition-colors duration-200 border rounded-md shadow-sm h-36 bg-background text-foreground border-border focus:ring-2 focus:ring-ring focus:border-primary"
-            placeholder="پاسخ خود را اینجا بنویسید..."
+            placeholder="پاسخ تشریحی و کامل خود را اینجا بنویسید..."
         />
     </div>
 );
@@ -99,7 +105,7 @@ const QuizView: React.FC<QuizViewProps> = ({ title, quiz, onSubmit }) => {
              <div className="flex items-center justify-center min-h-full p-4 sm:p-6 bg-background">
                 <div className="w-full max-w-3xl p-6 text-center border rounded-lg shadow-xl sm:p-8 bg-card">
                      <h2 className="text-2xl font-bold text-card-foreground">{title}</h2>
-                     <p className="mt-4 text-muted-foreground">در حال آماده‌سازی سوالات آزمون...</p>
+                     <p className="mt-4 text-muted-foreground">در حال آماده‌سازی سوالات چالش‌برانگیز...</p>
                 </div>
             </div>
         )
@@ -133,7 +139,7 @@ const QuizView: React.FC<QuizViewProps> = ({ title, quiz, onSubmit }) => {
                 </div>
 
                 {isWaitingForQuestion ? (
-                    <div className="py-20 text-center text-muted-foreground">در حال ایجاد سوال بعدی...</div>
+                    <div className="py-20 text-center text-muted-foreground">در حال طراحی سوال بعدی...</div>
                 ) : (
                     <>
                         <div className="flex items-center justify-between mb-8">

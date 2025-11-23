@@ -337,18 +337,33 @@ export async function generateLearningPlan(
             ...
         }
 
-        **وظیفه دوم: ایجاد پیش‌آزمون هوشمند (۵ سوال)**
-        ۵ سوال طراحی کن که هر کدام **دقیقاً** یک بُعد معنایی از متن را بسنجد.
-        
-        **فرمت JSON سوال:**
+        **وظیفه دوم: ایجاد پیش‌آزمون هوشمند و چندبعدی (۵ سوال)**
+        ۵ سوال طراحی کن.
+        **قوانین حیاتی سوالات:**
+        1. **تنوع نوع سوال:** از ۵ سوال، حتماً ۱ یا ۲ سوال به صورت 'short-answer' (تشریحی کوتاه) باشد. بقیه 'multiple-choice'.
+        2. **سطح سختی بالا:** سوالات نباید صرفاً حافظه‌ای باشند. باید مهارت "تحلیل"، "ارزیابی" یا "ترکیب" را بسنجند.
+        3. **چندبعدی بودن:** هر سوال باید ارتباط بین دو یا چند مفهوم متن را بسنجد، نه فقط یک نکته کوچک.
+        4. **درجه سختی:** از مقادیر 'سخت'، 'بسیار سخت' یا 'چالش‌برانگیز' استفاده کن.
+
+        **فرمت JSON سوال (Multiple Choice):**
         {
-          "question": "متن سوال",
+          "question": "متن سوال چندلایه و تحلیلی",
           "options": ["گزینه ۱", "گزینه ۲", "گزینه ۳", "گزینه ۴"],
           "correctAnswerIndex": number,
           "type": "multiple-choice",
-          "difficulty": "متوسط",
+          "difficulty": "بسیار سخت",
           "points": 20,
-          "concept": "تگ مفهوم (مثلاً: واژگان، استدلال، جزئیات)"
+          "concept": "تگ مفهوم (مثلاً: تحلیل ساختاری)"
+        }
+
+        **فرمت JSON سوال (Short Answer):**
+        {
+          "question": "یک سوال باز که نیاز به استدلال دارد (مثلا: چرا X باعث Y شد؟)",
+          "type": "short-answer",
+          "correctAnswer": "خلاصه پاسخ مورد انتظار برای نمایش به کاربر بعد از جواب دادن",
+          "difficulty": "چالش‌برانگیز",
+          "points": 20,
+          "concept": "استدلال"
         }
 
         **دستورالعمل خروجی (استریم):**
@@ -797,19 +812,50 @@ export async function generateRemedialNode(originalNodeId: string, parentTitle: 
         targetSkill: "بازآموزی"
     };
 }
+
 export async function generateQuiz(topic: string, content: string, images: any[], onQuestionStream: any): Promise<Quiz> {
     return withRetry(async () => {
-        const prompt = `Generate 3 quiz questions for "${topic}". 
-        JSON format required: 
+        // Dynamic question count based on content length.
+        // Approx 1 question per 800 characters, clamped between 3 and 10.
+        const contentLength = content.length;
+        const questionCount = Math.max(3, Math.min(10, Math.ceil(contentLength / 800)));
+
+        const prompt = `
+        Generate ${questionCount} challenging quiz questions for "${topic}".
+        
+        **STRICT REQUIREMENTS FOR DIFFICULTY:**
+        1. **Difficulty Level:** Questions must be 'Hard' ('سخت'), 'Very Hard' ('بسیار سخت'), or 'Challenging' ('چالش‌برانگیز'). No easy questions.
+        2. **Cognitive Level:** Focus on Bloom's Taxonomy levels: Analysis, Synthesis, and Evaluation.
+        3. **Multi-dimensional:** Questions should require connecting two or more concepts from the text, not just recalling a single fact.
+        4. **Question Types:**
+           - 70% Multiple Choice (complex distractors).
+           - 30% Short Answer (requiring explanation/reasoning).
+        
+        **JSON Formats:**
+        
+        *Multiple Choice:*
         {
-          "question": "string",
-          "options": ["opt1", "opt2", "opt3", "opt4"],
-          "correctAnswerIndex": number,
+          "question": "Scenario-based question...",
+          "options": ["Distractor 1", "Correct Answer", "Distractor 2", "Distractor 3"],
+          "correctAnswerIndex": 1,
           "type": "multiple-choice",
-          "difficulty": "متوسط",
-          "points": 20
+          "difficulty": "بسیار سخت",
+          "points": 20,
+          "concept": "Deep Analysis"
         }
-        Stream each question wrapped in [QUESTION_START] and [QUESTION_END].`;
+
+        *Short Answer:*
+        {
+          "question": "Explain the relationship between X and Y...",
+          "type": "short-answer",
+          "correctAnswer": "Key points expected in the answer...",
+          "difficulty": "چالش‌برانگیز",
+          "points": 30,
+          "concept": "Synthesis"
+        }
+
+        Stream each question wrapped in [QUESTION_START] and [QUESTION_END].
+        `;
 
         const stream = await ai.models.generateContentStream({
             model: "gemini-2.5-flash",
@@ -828,6 +874,8 @@ export async function generateQuiz(topic: string, content: string, images: any[]
                     if(!q.id) q.id = Math.random().toString(36).substr(2,9);
                     
                     if (!q.type && (q.options || q.choices)) q.type = 'multiple-choice';
+                    else if (!q.type) q.type = 'short-answer';
+
                     if (q.type === 'multiple-choice') {
                         if (!q.options && q.choices) q.options = q.choices;
                         if (!q.options) q.options = [];
@@ -862,7 +910,7 @@ const gradingSchema = {
 export async function gradeAndAnalyzeQuiz(questions: any[], userAnswers: any, content: string, images: any[]) {
     return withRetry(async () => {
         const prompt = `
-        Grade this quiz.
+        Grade this quiz carefully.
         
         Source Content: ${content.substring(0, 2000)}.
         
@@ -870,10 +918,13 @@ export async function gradeAndAnalyzeQuiz(questions: any[], userAnswers: any, co
         ${JSON.stringify({ questions, userAnswers })}
         
         Instructions:
-        1. For each question, determine if the answer is correct.
-        2. Assign a score based on correctness (points are defined in question).
-        3. Provide a brief analysis/feedback in Persian.
-        4. **CRITICAL**: Return an array of objects. Each object MUST represent one question and MUST use the EXACT 'id' from the input question as 'questionId'.
+        1. For Multiple Choice: Boolean check.
+        2. For Short Answer: Semantic check. Does the user's answer capture the core meaning of the 'correctAnswer' provided in the question object?
+           - Be strict on reasoning.
+           - Be lenient on exact wording.
+        3. Assign a score based on correctness (points are defined in question).
+        4. Provide a brief analysis/feedback in Persian.
+        5. **CRITICAL**: Return an array of objects. Each object MUST represent one question and MUST use the EXACT 'id' from the input question as 'questionId'.
         
         Output JSON Format (Strict):
         [
@@ -895,7 +946,62 @@ export async function gradeAndAnalyzeQuiz(questions: any[], userAnswers: any, co
 }
 
 export async function generateFinalExam(content: string, images: any[], weaknessTopics: string, onQuestionStream: any): Promise<Quiz> {
-    return generateQuiz("Final Exam", content, images, onQuestionStream);
+    return withRetry(async () => {
+        // Ensure final exam has enough questions to cover the topic comprehensively
+        const questionCount = 10; 
+
+        const prompt = `
+        Generate a Final Exam with ${questionCount} questions.
+        
+        **Context:**
+        The user has finished the course. This exam determines their mastery.
+        Previous Weaknesses: ${weaknessTopics || "None specifically identified."}
+        
+        **Requirements:**
+        1. **Difficulty:** Very Hard / Challenging.
+        2. **Format:** 50% Multiple Choice, 50% Short Answer (Descriptive).
+        3. **Focus:** Synthesis of the entire material. Questions must connect the beginning, middle, and end of the learning path.
+        4. **Weakness Targeting:** If weaknesses are listed, prioritize questions that test those areas again.
+        
+        Stream each question wrapped in [QUESTION_START] and [QUESTION_END].
+        `;
+
+        const stream = await ai.models.generateContentStream({
+            model: "gemini-2.5-flash",
+            contents: { parts: [{ text: prompt }] },
+        });
+        const questions: QuizQuestion[] = [];
+        let buffer = '';
+        for await (const chunk of stream) {
+            buffer += chunk.text;
+            let s, e;
+            while ((s = buffer.indexOf('[QUESTION_START]')) !== -1 && (e = buffer.indexOf('[QUESTION_END]', s)) !== -1) {
+                try {
+                    const jsonStr = cleanJsonString(buffer.substring(s + 16, e));
+                    const q = JSON.parse(jsonStr);
+                    
+                    if(!q.id) q.id = Math.random().toString(36).substr(2,9);
+                    
+                    if (!q.type) {
+                        if (q.options || q.choices) q.type = 'multiple-choice';
+                        else q.type = 'short-answer';
+                    }
+
+                    if (q.type === 'multiple-choice') {
+                        if (!q.options && q.choices) q.options = q.choices;
+                        if (!q.options) q.options = [];
+                    }
+
+                    questions.push(q);
+                    onQuestionStream(q);
+                } catch(err) {
+                    console.error("Exam parsing error", err);
+                }
+                buffer = buffer.substring(e + 14);
+            }
+        }
+        return { questions, isStreaming: false };
+    });
 }
 export async function generateCorrectiveSummary(content: string, images: any[], incorrectItems: any[]) {
     return "Summary";

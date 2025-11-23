@@ -44,7 +44,7 @@ export interface MindMapNode {
   export interface BaseQuestion {
     id: string;
     question: string;
-    difficulty: 'آسان' | 'متوسط' | 'سخت';
+    difficulty: 'آسان' | 'متوسط' | 'سخت' | 'بسیار سخت' | 'چالش‌برانگیز';
     points: number;
     type: QuestionType;
     concept?: string; // New: The specific concept/dimension this question tests
