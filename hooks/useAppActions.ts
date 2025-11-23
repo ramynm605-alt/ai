@@ -1,9 +1,9 @@
 
 import { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { AppStatus, ChatMessage, PodcastConfig, QuizResult, Reward, SavableState, SavedSession, UserAnswer, UserBehavior, UserProfile, Weakness, LearningPreferences, LearningResource } from '../types';
+import { AppStatus, ChatMessage, PodcastConfig, PodcastState, QuizResult, Reward, SavableState, SavedSession, UserAnswer, UserBehavior, UserProfile, Weakness, LearningPreferences, LearningResource } from '../types';
 import { FirebaseService } from '../services/firebaseService';
-import { generateChatResponse, generateDailyChallenge, generateDeepAnalysis, generateLearningPlan, generateNodeContent, generatePodcastAudio, generatePodcastScript, generateProactiveChatInitiation, generateQuiz, generateRemedialNode, gradeAndAnalyzeQuiz, analyzePreAssessment } from '../services/geminiService';
+import { generateChatResponse, generateDailyChallenge, generateDeepAnalysis, generateLearningPlan, generateNodeContent, generatePodcastAudio, generatePodcastScript, generateProactiveChatInitiation, generateQuiz, generateRemedialNode, gradeAndAnalyzeQuiz, analyzePreAssessment, analyzeResourceContent } from '../services/geminiService';
 
 declare var pdfjsLib: any;
 
@@ -218,13 +218,64 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
 
     // --- Content & Navigation Actions ---
 
+    // NEW: Async Resource Processing
+    const processResource = async (resource: LearningResource) => {
+        try {
+            dispatch({ type: 'UPDATE_RESOURCE', payload: { id: resource.id, updates: { isProcessing: true } } });
+            
+            const rawText = resource.content;
+            const media = resource.metadata?.data ? { mimeType: resource.metadata.mimeType, data: resource.metadata.data } : null;
+
+            const analysis = await analyzeResourceContent(resource.title, rawText, media, resource.type);
+            
+            dispatch({ 
+                type: 'UPDATE_RESOURCE', 
+                payload: { 
+                    id: resource.id, 
+                    updates: { 
+                        isProcessing: false,
+                        content: analysis.extractedText, // Update content with cleaned/transcribed version
+                        validation: analysis.validation
+                    } 
+                } 
+            });
+            showNotification(`منبع "${resource.title}" تحلیل شد.`, 'success');
+        } catch (error) {
+            console.error("Resource processing failed", error);
+             dispatch({ 
+                type: 'UPDATE_RESOURCE', 
+                payload: { 
+                    id: resource.id, 
+                    updates: { 
+                        isProcessing: false,
+                        validation: {
+                            isValid: false,
+                            qualityScore: 0,
+                            issues: ["خطا در پردازش هوشمند منبع"],
+                            summary: "امکان تحلیل این فایل وجود نداشت."
+                        }
+                    } 
+                } 
+            });
+            showNotification(`خطا در تحلیل منبع "${resource.title}".`, 'error');
+        }
+    };
+
     const addResource = (resource: LearningResource) => {
         if (state.resources.length >= 5) {
             showNotification("ظرفیت منابع (۵ عدد) تکمیل شده است.", "error");
             return;
         }
-        dispatch({ type: 'ADD_RESOURCE', payload: resource });
-        showNotification("منبع با موفقیت اضافه شد.");
+        dispatch({ type: 'ADD_RESOURCE', payload: { ...resource, isProcessing: true } });
+        processResource(resource); // Trigger async analysis
+    };
+
+    const handleUpdateResourceContent = (id: string, newContent: string) => {
+         dispatch({ type: 'UPDATE_RESOURCE', payload: { id, updates: { content: newContent } } });
+    };
+
+    const handleUpdateResourceInstructions = (id: string, instructions: string) => {
+        dispatch({ type: 'UPDATE_RESOURCE', payload: { id, updates: { instructions } } });
     };
 
     const handleRemoveResource = (id: string) => {
@@ -244,7 +295,6 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                   const loadingTask = pdfjsLib.getDocument(arrayBuffer);
                   const pdf = await loadingTask.promise;
                   let fullText = '';
-                  // We might discard page contents for multi-source simplicity or keep them in metadata
                   for (let i = 1; i <= pdf.numPages; i++) {
                       const page = await pdf.getPage(i);
                       const textContent = await page.getTextContent();
@@ -280,24 +330,16 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
           };
           reader.readAsText(file);
       } else if (file.type.startsWith('image/') || file.type.startsWith('audio/')) {
-          // Note: Image/Audio handling for multi-source needs careful prompt engineering.
-          // For now, we will add them but generatePlanInternal logic might need to be aware.
-          // Currently assuming images are handled via state.sourceImages, 
-          // but we should ideally attach them to the resource.
-          
           const reader = new FileReader();
           reader.onload = (e) => {
                const result = e.target?.result as string;
                const base64Data = result.split(',')[1];
                
-               // For image/audio, content might be empty text or a description? 
-               // Or we store the base64 in metadata.
-               
                const resource: LearningResource = {
                    id: Math.random().toString(36).substr(2, 9),
                    type: 'file',
                    title: file.name,
-                   content: file.type.startsWith('audio/') ? "[Audio File]" : "[Image File]",
+                   content: "", // Content will be filled by AI
                    metadata: { mimeType: file.type, data: base64Data }
                };
                addResource(resource);
@@ -307,7 +349,6 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
            dispatch({ type: 'SET_ERROR', payload: 'فرمت فایل پشتیبانی نمی‌شود.' });
       }
       
-      // Reset input
       event.target.value = '';
     };
 
@@ -344,15 +385,21 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
             id: Math.random().toString(36).substr(2, 9),
             type: 'link',
             title: url,
-            content: `Please analyze the content from this URL: ${url}. If it is a YouTube video, extract the key educational concepts.`
+            content: "" // AI will infer context
         });
     };
 
     // This function finalizes the resources and moves to Wizard
-    const handleFinalizeResources = () => {
+    const handleFinalizeResources = (globalInstructions: string = "") => {
         if (state.resources.length === 0) {
             showNotification("لطفاً حداقل یک منبع اضافه کنید.", "error");
             return;
+        }
+
+        const processing = state.resources.some(r => r.isProcessing);
+        if (processing) {
+             showNotification("لطفاً صبر کنید تا تحلیل منابع تمام شود.", "error");
+             return;
         }
 
         // Combine resources into sourceContent for the prompt
@@ -361,11 +408,19 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         let combinedImages: { mimeType: string, data: string }[] = [];
 
         state.resources.forEach((res, index) => {
-            combinedContent += `\n\n[[Resource ${index + 1}: ${res.title}]]\n${res.content}\n----------------\n`;
+            let resourceHeader = `[[Resource ${index + 1}: ${res.title}]]`;
+            if (res.instructions && res.instructions.trim()) {
+                resourceHeader += `\n[User Instruction for this resource: ${res.instructions.trim()}]`;
+            }
+            combinedContent += `\n\n${resourceHeader}\n${res.content}\n----------------\n`;
             if (res.metadata?.data && res.metadata?.mimeType) {
                 combinedImages.push({ mimeType: res.metadata.mimeType, data: res.metadata.data });
             }
         });
+
+        if (globalInstructions.trim()) {
+            combinedContent += `\n\n[[GLOBAL USER INSTRUCTIONS FOR RESOURCE USAGE]]\n${globalInstructions.trim()}\n`;
+        }
 
         dispatch({ type: 'INIT_WIZARD', payload: { sourceContent: combinedContent, sourcePageContents: null, sourceImages: combinedImages } });
     };
@@ -765,5 +820,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         startPodcastGeneration,
         handleRemoveResource,
         handleFinalizeResources,
+        handleUpdateResourceContent, 
+        handleUpdateResourceInstructions, // Exported new action
     };
 };

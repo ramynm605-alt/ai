@@ -6,12 +6,22 @@ export interface ChatMessage {
 
 export type ResourceType = 'file' | 'link' | 'text';
 
+export interface ResourceValidation {
+    isValid: boolean;
+    qualityScore: number; // 0 to 100
+    issues: string[]; // e.g., ["Low contrast PDF", "Audio too quiet"]
+    summary: string;
+}
+
 export interface LearningResource {
     id: string;
     type: ResourceType;
     title: string;
-    content: string;
+    content: string; // The extracted text
     metadata?: any; // For page numbers or specific file info
+    validation?: ResourceValidation; // New: AI Analysis result
+    isProcessing?: boolean; // New: To show loading spinner per resource
+    instructions?: string; // New: Specific instructions for this resource
 }
 
 export interface MindMapNode {

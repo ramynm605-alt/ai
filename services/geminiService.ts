@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, GradingResult, PreAssessmentAnalysis, ChatMessage, Weakness, ChatPersona, VoiceName } from '../types';
+import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, GradingResult, PreAssessmentAnalysis, ChatMessage, Weakness, ChatPersona, VoiceName, ResourceValidation } from '../types';
 import { marked } from 'marked';
 
 const API_KEY = process.env.API_KEY;
@@ -123,6 +123,153 @@ const getPreferenceInstructions = (preferences: LearningPreferences): string => 
     return instructions;
 };
 
+// --- New: Analyze Resource Content ---
+export async function analyzeResourceContent(
+    title: string,
+    rawText: string | null,
+    media: { mimeType: string, data: string } | null,
+    resourceType: 'file' | 'link' | 'text'
+): Promise<{ extractedText: string; validation: ResourceValidation }> {
+    return withRetry(async () => {
+        let prompt = "";
+        let parts: any[] = [];
+        let config: any = { responseMimeType: "application/json" };
+        const isMedia = !!media;
+
+        if (resourceType === 'link') {
+             // For links, we use Google Search to find the content.
+             // When using tools, we MUST NOT set responseMimeType.
+             config = {
+                 tools: [{ googleSearch: {} }]
+             };
+
+             prompt = `
+             You are a Resource Validator for an education app.
+             The user provided a link: "${title}".
+             
+             Tasks:
+             1. Use Google Search to find the comprehensive content of this page or video.
+             2. If it is a YouTube video:
+                - Search for the transcript, summary, or key takeaways of this specific video title or URL.
+                - Extract the educational spoken content.
+             3. If it is a web article:
+                - Extract the main text.
+             4. "extractedText": Compile a detailed educational text (at least 500 words if possible) based on the search results.
+             5. "validation": Assess quality.
+             
+             IMPORTANT: Output valid JSON inside a code block like this:
+             \`\`\`json
+             {
+                "isValid": boolean,
+                "qualityScore": number (0-100),
+                "issues": string[],
+                "summary": "Short summary.",
+                "extractedText": "The detailed content found via search."
+             }
+             \`\`\`
+             `;
+             parts = [{ text: prompt }];
+        } else if (isMedia) {
+            // Audio or Image
+            prompt = `
+            You are a Resource Validator. 
+            Analyze the attached media (${media?.mimeType}).
+            
+            Tasks:
+            1. Transcribe the text (if image) or audio (if audio file). 
+               - If it's an image of a diagram, describe it in detail.
+               - If it's an audio lecture, transcribe the main points.
+            2. Assess the quality (Is it legible/audible? Is it educational?).
+            
+            Output JSON:
+            {
+               "isValid": boolean,
+               "qualityScore": number (0-100),
+               "issues": string[],
+               "summary": "Short summary of content.",
+               "extractedText": "The FULL transcription or detailed description in Persian."
+            }
+            `;
+            parts = [
+                { text: prompt },
+                { inlineData: { mimeType: media!.mimeType, data: media!.data } }
+            ];
+        } else {
+             // Plain Text / PDF Text
+             prompt = `
+             You are a Resource Validator.
+             Analyze the following text content (extracted from PDF or input).
+             
+             Tasks:
+             1. Check for gibberish or encoding errors (common in PDF extraction).
+             2. Assess if it is sufficient for generating a lesson plan.
+             3. Clean up the text if it has minor formatting issues (return the cleaned version in extractedText).
+             
+             Text Preview:
+             ${rawText ? rawText.substring(0, 5000) : "No text provided"}...
+             
+             Output JSON:
+             {
+                "isValid": boolean,
+                "qualityScore": number (0-100),
+                "issues": string[],
+                "summary": "Short summary of the text topic.",
+                "extractedText": "The cleaned text content (keep it full length if possible, or key parts)."
+             }
+             `;
+             parts = [{ text: prompt }];
+        }
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: { parts },
+            config: config
+        });
+
+        let textToParse = response.text || '{}';
+        
+        // Robust extraction for Link mode where JSON is not enforced by API
+        if (resourceType === 'link') {
+            const jsonMatch = textToParse.match(/```json\s*([\s\S]*?)\s*```/) || textToParse.match(/```\s*([\s\S]*?)\s*```/);
+            if (jsonMatch) {
+                textToParse = jsonMatch[1];
+            }
+        } else {
+            textToParse = cleanJsonString(textToParse);
+        }
+
+        let result;
+        try {
+            result = JSON.parse(textToParse);
+        } catch (e) {
+            console.error("JSON Parse Error", e, textToParse);
+            // Fallback for malformed JSON
+            result = {
+                isValid: true,
+                qualityScore: 50,
+                issues: ["خطا در فرمت خروجی هوش مصنوعی"],
+                summary: "محتوا دریافت شد اما فرمت آن کامل نیست.",
+                extractedText: textToParse // Treat raw response as text if JSON fails
+            };
+        }
+        
+        // Fallback if extractedText is empty/short but rawText was long (avoid losing data)
+        if (rawText && (!result.extractedText || result.extractedText.length < rawText.length / 2)) {
+             result.extractedText = rawText;
+        }
+
+        return {
+            extractedText: result.extractedText || rawText || "",
+            validation: {
+                isValid: result.isValid ?? true,
+                qualityScore: result.qualityScore ?? 80,
+                issues: result.issues || [],
+                summary: result.summary || "بدون توضیحات"
+            }
+        };
+    });
+}
+
 
 export async function generateLearningPlan(
     content: string, 
@@ -135,9 +282,6 @@ export async function generateLearningPlan(
     return withRetry(async () => {
         const preferenceInstructions = getPreferenceInstructions(preferences);
         
-        // Detection logic: If content is short and no images, it's a topic request.
-        // However, with multi-resource support, content might be long but composed of multiple short texts.
-        // We rely on the structure. If it contains "[[Resource" markers, it's extraction mode.
         const isMultiSource = content.includes("[[Resource");
         const isTopicMode = !isMultiSource && content.length < 500 && !pageContents && images.length === 0;
         
@@ -146,15 +290,12 @@ export async function generateLearningPlan(
             contextInstruction = `
             *** حالت تحقیق موضوعی (Topic Mode) ***
             متن ورودی کاربر کوتاه است: "${content}".
-            وظیفه تو این است که به عنوان یک متخصص، خودت یک برنامه درسی (Curriculum) جامع و سلسله‌مراتبی برای یادگیری این موضوع طراحی کنی.
-            از دانش داخلی خودت استفاده کن. سرفصل‌ها باید از مقدماتی تا پیشرفته باشند.
+            به عنوان یک متخصص، یک برنامه درسی (Curriculum) جامع طراحی کن.
             `;
         } else {
             contextInstruction = `
-            *** حالت استخراج محتوا (Extraction Mode) ***
-            وظیفه تو استخراج ساختار و نقشه ذهنی بر اساس محتوای متنی ارائه شده در پایین است.
-            ${isMultiSource ? 'توجه: محتوا از چندین منبع مختلف (Resource) جمع‌آوری شده است. وظیفه تو ترکیب این منابع و ایجاد یک نقشه ذهنی واحد و منسجم است.' : ''}
-            فقط از مطالبی که در متن وجود دارد استفاده کن.
+            *** حالت استخراج معنایی (Semantic Extraction Mode) ***
+            وظیفه تو تحلیل عمیق متن و شکستن آن به "واحدهای یادگیری معنایی" (Semantic Chunking) است.
             `;
         }
 
@@ -163,22 +304,33 @@ export async function generateLearningPlan(
             : `متن:\n---\n${content}\n---`;
         
         const prompt = `
-        **وظیفه اول: ایجاد نقشه ذهنی (Chunking) با اهداف آموزشی روشن**
+        **وظیفه اول: ایجاد نقشه ذهنی با تقطیع هوشمند (Smart Semantic Chunking)**
         ${contextInstruction}
         
-        **قوانین ساختاری (بسیار مهم):**
+        **الگوریتم تقسیم‌بندی محتوا (بسیار مهم):**
+        1. **تحلیل مرزهای معنایی:** متن را اسکن کن و نقاطی که موضوع بحث تغییر می‌کند (Topic Shift) را شناسایی کن. 
+           - هرگز بر اساس تعداد کاراکتر یا صفحه تقسیم نکن.
+           - به دنبال "نشانگرهای گفتمان" (مثل: اما، بنابراین، در نتیجه، نکته بعدی، در مقابل) باش تا مرزها را پیدا کنی.
+        2. **اصل اتمیک بودن (Atomic Units):** هر گره باید یک "مفهوم کامل و مستقل" را برساند.
+           - اگر یک پاراگراف صرفاً توضیحی برای پاراگراف قبلی است، باید در همان گره ادغام شود.
+           - اگر یک پاراگراف موضوع جدیدی را باز می‌کند، شروع یک گره جدید است.
+        3. **مدیریت پیچیدگی:**
+           - اگر یک بخش از متن خیلی عمیق و طولانی است، آن را به گره‌های فرزند (Parent/Child) بشکن.
+           - اگر چند بخش کوتاه و مرتبط هستند، آن‌ها را در یک گره والد ادغام کن.
+        4. **پیوستگی:** مطمئن شو که جریان منطقی (Narrative Flow) بین گره‌ها حفظ شود.
+
+        **قوانین ساختاری JSON:**
         1. هر گره (Node) باید **حتماً** دو فیلد جدید داشته باشد:
-           - \`learningObjective\`: یک جمله کوتاه که هدف یادگیری آن گره را مشخص کند (مثلاً: "درک تفاوت بین X و Y").
-           - \`targetSkill\`: مهارت شناختی هدف (مثلاً: "تحلیل"، "استنباط"، "کاربرد"، "نقد"، "به‌خاطرسپاری").
-        2. **اصل عدم هم‌پوشانی:** گره فرزند نباید کل محتوای گره پدر را تکرار کند.
-        3. **گره ریشه (اجباری):** باید دقیقاً یک گره با parentId: null با عنوان "مقدمه و نقشه راه" وجود داشته باشد.
-        4. **گره پایان (اجباری):** آخرین گره باید "جمع‌بندی و نتیجه‌گیری" باشد.
-        5. **فشردگی:** بین ۵ تا ۱۵ گره کل (با توجه به حجم منابع).
+           - \`learningObjective\`: یک جمله کوتاه که هدف یادگیری آن گره را مشخص کند.
+           - \`targetSkill\`: مهارت شناختی هدف (مثلاً: "تحلیل"، "استنباط"، "کاربرد"، "نقد").
+        2. **گره ریشه (اجباری):** باید دقیقاً یک گره با parentId: null با عنوان "مقدمه و نقشه راه" وجود داشته باشد.
+        3. **گره پایان (اجباری):** آخرین گره باید "جمع‌بندی و نتیجه‌گیری" باشد.
+        4. **تعداد گره‌ها:** هوشمندانه تصمیم بگیر. برای متون کوتاه ۳-۵ گره، برای متون بلند و پیچیده ۱۰-۲۰ گره.
 
         **فرمت JSON گره:**
         {
             "id": "string",
-            "title": "string",
+            "title": "عنوان گویا و جذاب",
             "parentId": "string | null",
             "learningObjective": "هدف یادگیری مشخص این گره",
             "targetSkill": "مهارت شناختی هدف",
@@ -186,11 +338,9 @@ export async function generateLearningPlan(
         }
 
         **وظیفه دوم: ایجاد پیش‌آزمون هوشمند (۵ سوال)**
-        ۵ سوال طراحی کن که هر کدام **دقیقاً** یک بُعد مشخص از متن را بسنجد.
-        تگ‌ها (concept): "واژگان"، "مفاهیم اصلی"، "استنباط"، "ساختار"، "کاربرد".
+        ۵ سوال طراحی کن که هر کدام **دقیقاً** یک بُعد معنایی از متن را بسنجد.
         
         **فرمت JSON سوال:**
-        باید دقیقا از این ساختار استفاده کنی. نوع سوال همیشه باید "multiple-choice" باشد.
         {
           "question": "متن سوال",
           "options": ["گزینه ۱", "گزینه ۲", "گزینه ۳", "گزینه ۴"],
@@ -198,7 +348,7 @@ export async function generateLearningPlan(
           "type": "multiple-choice",
           "difficulty": "متوسط",
           "points": 20,
-          "concept": "یکی از تگ‌های بالا"
+          "concept": "تگ مفهوم (مثلاً: واژگان، استدلال، جزئیات)"
         }
 
         **دستورالعمل خروجی (استریم):**
@@ -459,6 +609,8 @@ export async function generateNodeContent(
         عنوان درس: "${nodeTitle}"
         نقش آموزشی: معلم خصوصی.
         هدف: نه تنها انتقال دانش، بلکه **درگیر کردن فعال کاربر** (Active Learning).
+        
+        مهم: فقط و فقط بر محتوای مرتبط با "${nodeTitle}" تمرکز کن. اطلاعات غیرمرتبط موجود در متن منبع را نادیده بگیر.
         `;
 
         const prompt = `

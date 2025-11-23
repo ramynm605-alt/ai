@@ -82,6 +82,11 @@ function appReducer(state: AppState, action: any): AppState {
        return { ...state, resources: [...state.resources, action.payload] };
     case 'REMOVE_RESOURCE':
        return { ...state, resources: state.resources.filter(r => r.id !== action.payload) };
+    case 'UPDATE_RESOURCE':
+        return {
+            ...state,
+            resources: state.resources.map(r => r.id === action.payload.id ? { ...r, ...action.payload.updates } : r)
+        };
     case 'CLEAR_RESOURCES':
        return { ...state, resources: [], sourceContent: '', sourceImages: [] };
 
