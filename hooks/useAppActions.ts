@@ -16,7 +16,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
     const handleCloudLoad = useCallback(async (userId: string) => {
        dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'syncing' } });
        try {
-           const cloudData = await FirebaseService.loadUserData(userId);
+           const cloudData: any = await FirebaseService.loadUserData(userId);
            
            if (cloudData && cloudData.sessions) {
                 const cloudTime = new Date(cloudData.lastModified || 0).getTime();
@@ -481,7 +481,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
             }
             const feedback = await evaluateFeynmanExplanation(targetNode.title, content, explanation, audioBase64);
             dispatch({ type: 'FEYNMAN_FEEDBACK_RECEIVED', payload: feedback });
-        } catch (e) {
+        } catch (e: any) {
             console.error("Feynman Analysis Error", e);
             showNotification("خطا در تحلیل توضیح شما", 'error');
             dispatch({ type: 'CLOSE_FEYNMAN' });
@@ -627,7 +627,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                 state.sourceImages
             );
             dispatch({ type: 'ADD_REMEDIAL_NODE', payload: { remedialNode, originalNodeId: node.id } });
-        } catch (e) {
+        } catch (e: any) {
              dispatch({ type: 'SET_ERROR', payload: 'خطا در تولید درس تقویتی.' });
              dispatch({ type: 'CANCEL_REMEDIAL_GENERATION' });
         }
@@ -658,7 +658,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                     suggestedPath: state.suggestedPath 
                 } 
             });
-        } catch (error) {
+        } catch (error: any) {
             console.error("Pre-assessment analysis failed", error);
             dispatch({ type: 'SET_ERROR', payload: 'خطا در تحلیل پیش‌آزمون.' });
         }
@@ -694,7 +694,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
             );
             const modelMsg: ChatMessage = { role: 'model', message: responseText };
             dispatch({ type: 'ADD_CHAT_MESSAGE', payload: modelMsg });
-        } catch (error) {
+        } catch (error: any) {
             dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'model', message: "متاسفانه ارتباط با سرور برقرار نشد." } });
         } finally {
             dispatch({ type: 'SET_CHAT_LOADING', payload: false });
@@ -727,7 +727,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                 type: 'TRIGGER_PROACTIVE_DEBATE', 
                 payload: { role: 'model', message: msgText }
             });
-        } catch(e) {
+        } catch(e: any) {
             console.error("Failed to initiate debate manually", e);
             dispatch({ 
                 type: 'ADD_CHAT_MESSAGE', 
@@ -806,7 +806,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
 
             dispatch({ type: 'ADD_FLASHCARDS', payload: newCards });
             showNotification(`${newCards.length} کارت مرور به جعبه لایتنر شما اضافه شد!`, "success");
-        } catch (e) {
+        } catch (e: any) {
             console.error("Flashcard generation failed", e);
             showNotification("خطا در تولید کارت‌های مرور.", 'error');
         }

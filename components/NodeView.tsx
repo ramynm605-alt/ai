@@ -113,7 +113,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
     const isEmpty = !content.introduction && !content.theory && !content.example && !isStreaming;
 
     return (
-        <div className="min-h-screen bg-background/95" ref={viewRef} onMouseUp={handleSelection} onTouchEnd={handleTouchEnd}>
+        <div className="min-h-screen bg-background" ref={viewRef} onMouseUp={handleSelection} onTouchEnd={handleTouchEnd} style={{ WebkitOverflowScrolling: 'touch' }}>
              {selectionPopup && (
                 <div
                     className="selection-popup animate-pop-in fixed z-[200] bg-foreground text-background px-4 py-2 rounded-lg shadow-xl flex items-center gap-2 cursor-pointer"
@@ -129,7 +129,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
             )}
 
             {/* Hero Header - Optimized for Mobile */}
-            <div className="sticky top-0 z-40 bg-background/85 backdrop-blur border-b border-border/50 shadow-sm transition-all">
+            <div className="sticky top-0 z-40 bg-background md:bg-background/85 md:backdrop-blur border-b border-border/50 shadow-sm transition-all">
                 <div className="max-w-5xl mx-auto px-3 h-16 flex items-center justify-between gap-2">
                      <div className="flex items-center gap-2 flex-1 overflow-hidden">
                         <button onClick={onBack} className="p-2.5 rounded-xl hover:bg-accent transition-colors group shrink-0 border border-transparent hover:border-border active:scale-95">

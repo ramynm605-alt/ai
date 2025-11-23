@@ -534,6 +534,8 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
         }
     };
 
+    const isNodeViewActive = state.status === AppStatus.VIEWING_NODE || state.status === AppStatus.TAKING_QUIZ || state.status === AppStatus.QUIZ_REVIEW;
+
     return (
         <div className="flex-grow relative z-10 overflow-y-auto scroll-smooth">
             {reviewResource && renderReviewModal()}
@@ -755,9 +757,10 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                 />
             )}
 
-            {(state.status === AppStatus.LEARNING || state.status === AppStatus.VIEWING_NODE || state.status === AppStatus.TAKING_QUIZ || state.status === AppStatus.QUIZ_REVIEW) && (
+            {(state.status === AppStatus.LEARNING || isNodeViewActive) && (
                 <div className="flex flex-col h-full relative">
-                    <div className="absolute inset-0 z-0">
+                    {/* Optimization: Hide MindMap when NodeView is active to save GPU resources */}
+                    <div className={`absolute inset-0 z-0 ${isNodeViewActive ? 'hidden' : ''}`}>
                         <MindMap 
                             nodes={state.mindMap} 
                             progress={Object.keys(state.userProgress).reduce((acc, key) => ({...acc, [key]: state.userProgress[key].status}), {} as {[key: string]: 'completed' | 'failed' | 'in_progress'})} 
@@ -777,8 +780,8 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                         )}
                     </div>
 
-                    {state.status !== AppStatus.LEARNING && !state.isPodcastMode && (
-                        <div className="absolute inset-0 z-50 bg-background/95 backdrop-blur-md overflow-y-auto animate-zoom-in">
+                    {isNodeViewActive && !state.isPodcastMode && (
+                        <div className="fixed inset-0 z-[100] bg-background overflow-y-auto animate-zoom-in node-view-container">
                             {state.status === AppStatus.VIEWING_NODE && state.activeNodeId && (
                                 <NodeView 
                                     node={state.mindMap.find(n => n.id === state.activeNodeId)!} 
