@@ -891,6 +891,53 @@ export async function evaluateNodeInteraction(
     });
 }
 
+// --- FEYNMAN TECHNIQUE EVALUATION ---
+export async function evaluateFeynmanExplanation(
+    nodeTitle: string,
+    nodeContent: string,
+    userExplanation: string,
+    audioData: string | null // Base64 encoded audio if available
+): Promise<string> {
+    return withRetry(async () => {
+        const prompt = `
+        **نقش:** تو یک دانش‌آموز کنجکاو هستی و من معلم تو هستم. (Feynman Technique Reverse Roleplay).
+        
+        **موضوع درس:** "${nodeTitle}"
+        
+        **توضیحات من (معلم):**
+        (اگر فایل صوتی پیوست شده باشد، آن را گوش بده. اگر متن است، متن زیر را بخوان)
+        "${userExplanation}"
+        
+        **مرجع علمی (متن اصلی درس):**
+        ${nodeContent.substring(0, 3000)}...
+        
+        **وظیفه تو:**
+        توضیحات من را با متن اصلی مقایسه کن.
+        
+        ۱. آیا من مفهوم را درست فهمیده‌ام؟ (دقت علمی)
+        ۲. آیا توانستم به زبان ساده بیان کنم یا فقط کلمات کتاب را تکرار کردم؟ (عمق یادگیری)
+        ۳. چه بخش‌های مهمی را جا انداختم؟
+        
+        **لحن پاسخ:**
+        دوستانه، تشویق‌کننده اما دقیق. مثل یک دانش‌آموز که می‌گوید "آقا/خانم معلم، من این قسمت را خوب فهمیدم اما آن قسمت هنوز برایم گنگ است چون..."
+        
+        پاسخ را کوتاه و در قالب Markdown فارسی بده.
+        `;
+
+        const parts: any[] = [{ text: prompt }];
+        if (audioData) {
+            parts.push({ inlineData: { mimeType: "audio/wav", data: audioData } });
+        }
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash-native-audio-preview-09-2025", // Use audio-capable model if needed, or flash standard for text
+            contents: { parts },
+        });
+
+        return await marked.parse(response.text || '');
+    });
+}
+
 export async function generateRemedialNode(originalNodeId: string, parentTitle: string, weaknesses: Weakness[], content: string, images: any[]) {
     const prompt = `Create Remedial Node JSON for "${parentTitle}" mistakes: ${JSON.stringify(weaknesses)}.`;
     const response = await ai.models.generateContent({

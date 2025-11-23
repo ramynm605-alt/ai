@@ -125,6 +125,7 @@ export interface MindMapNode {
     ERROR = 'ERROR',
     GENERATING_REMEDIAL = 'GENERATING_REMEDIAL',
     PODCAST_CREATION = 'PODCAST_CREATION', // New status for podcast UI
+    FEYNMAN_CHALLENGE = 'FEYNMAN_CHALLENGE', // New status for Reverse Teaching
   }
 
   export type UserAnswer = string | number;
@@ -216,6 +217,13 @@ export interface MindMapNode {
       isMinimized: boolean;
   }
 
+  // --- NEW TYPES FOR FEYNMAN CHALLENGE ---
+  export interface FeynmanState {
+      targetNode: MindMapNode;
+      feedback: string | null;
+      isAnalyzing: boolean;
+  }
+
   export interface AppState {
     theme: 'light' | 'balanced' | 'dark';
     status: AppStatus;
@@ -261,7 +269,9 @@ export interface MindMapNode {
     // Podcast State
     podcastConfig: PodcastConfig | null;
     isPodcastMode: boolean;
-    podcastState: PodcastState; // New: Tracks background generation
+    podcastState: PodcastState; 
+    // Feynman State
+    feynmanState: FeynmanState | null;
   }
 
   export interface SavableState {

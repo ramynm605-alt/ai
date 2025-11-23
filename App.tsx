@@ -22,6 +22,7 @@ const UserPanel = React.lazy(() => import('./components/UserPanel'));
 const DebugPanel = React.lazy(() => import('./components/DebugPanel'));
 const PodcastCreator = React.lazy(() => import('./components/PodcastCreator'));
 const PodcastPlayer = React.lazy(() => import('./components/PodcastPlayer'));
+const FeynmanMode = React.lazy(() => import('./components/FeynmanMode'));
 
 const NotificationToast = ({ message, type = 'success', onClose }: { message: string, type?: 'success' | 'error', onClose: () => void }) => {
     useEffect(() => {
@@ -204,6 +205,15 @@ const AppLayout = () => {
                         nextNode={state.mindMap.find(n => state.userProgress[n.id]?.status !== 'completed' && !n.locked) || null}
                         onContinue={() => dispatch({ type: 'DISMISS_BRIEFING' })}
                         onDismiss={() => dispatch({ type: 'DISMISS_BRIEFING' })}
+                    />
+                )}
+
+                {/* FEYNMAN CHALLENGE MODE UI */}
+                {state.status === AppStatus.FEYNMAN_CHALLENGE && state.feynmanState && (
+                    <FeynmanMode 
+                        state={state.feynmanState}
+                        onSubmit={actions.submitFeynmanExplanation}
+                        onClose={() => dispatch({ type: 'CLOSE_FEYNMAN' })}
                     />
                 )}
 

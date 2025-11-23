@@ -3,7 +3,7 @@ import { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { AppStatus, ChatMessage, PodcastConfig, PodcastState, QuizResult, Reward, SavableState, SavedSession, UserAnswer, UserBehavior, UserProfile, Weakness, LearningPreferences, LearningResource } from '../types';
 import { FirebaseService } from '../services/firebaseService';
-import { generateChatResponse, generateDailyChallenge, generateDeepAnalysis, generateLearningPlan, generateNodeContent, generatePodcastAudio, generatePodcastScript, generateProactiveChatInitiation, generateQuiz, generateRemedialNode, gradeAndAnalyzeQuiz, analyzePreAssessment, analyzeResourceContent } from '../services/geminiService';
+import { generateChatResponse, generateDailyChallenge, generateDeepAnalysis, generateLearningPlan, generateNodeContent, generatePodcastAudio, generatePodcastScript, generateProactiveChatInitiation, generateQuiz, generateRemedialNode, gradeAndAnalyzeQuiz, analyzePreAssessment, analyzeResourceContent, evaluateFeynmanExplanation } from '../services/geminiService';
 
 declare var pdfjsLib: any;
 
@@ -458,6 +458,52 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         });
     }, [state.sourceContent, state.sourcePageContents, state.sourceImages, state.preferences, state.currentUser, dispatch, handleSaveSession]);
 
+    // --- Feynman Challenge Trigger ---
+    const triggerFeynmanChallenge = useCallback(() => {
+        // Find a completed node
+        const completedNodeIds = Object.keys(state.userProgress).filter(id => state.userProgress[id].status === 'completed');
+        
+        if (completedNodeIds.length === 0) return;
+
+        // Pick one randomly
+        const randomId = completedNodeIds[Math.floor(Math.random() * completedNodeIds.length)];
+        const targetNode = state.mindMap.find(n => n.id === randomId);
+
+        if (targetNode) {
+            dispatch({ type: 'START_FEYNMAN', payload: targetNode });
+        }
+    }, [state.userProgress, state.mindMap, dispatch]);
+
+    const submitFeynmanExplanation = async (explanation: string, audioBlob?: Blob) => {
+        const targetNode = state.feynmanState?.targetNode;
+        if (!targetNode) return;
+
+        dispatch({ type: 'ANALYZING_FEYNMAN' });
+
+        try {
+            const content = state.nodeContents[targetNode.id]?.theory || state.sourceContent;
+            
+            let audioBase64 = null;
+            if (audioBlob) {
+                const reader = new FileReader();
+                audioBase64 = await new Promise<string>((resolve) => {
+                    reader.onloadend = () => {
+                        const result = reader.result as string;
+                        resolve(result.split(',')[1]);
+                    };
+                    reader.readAsDataURL(audioBlob);
+                });
+            }
+
+            const feedback = await evaluateFeynmanExplanation(targetNode.title, content, explanation, audioBase64);
+            dispatch({ type: 'FEYNMAN_FEEDBACK_RECEIVED', payload: feedback });
+        } catch (e) {
+            console.error("Feynman Analysis Error", e);
+            showNotification("خطا در تحلیل توضیح شما", 'error');
+            dispatch({ type: 'CLOSE_FEYNMAN' });
+        }
+    };
+
     const handleNodeSelect = useCallback((nodeId: string) => {
          if (state.isPodcastMode) {
              dispatch({ type: 'TOGGLE_PODCAST_NODE_SELECTION', payload: nodeId });
@@ -502,6 +548,12 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
     }, [state, dispatch]);
 
     const handleNodeNavigate = useCallback((nodeIdOrTitle: string) => {
+        // Trigger Feynman Challenge with probability (e.g., 20%) when navigating back or around
+        // But only if user has completed nodes
+        if (Math.random() < 0.2) { // 20% chance
+             triggerFeynmanChallenge();
+        }
+
         let nodeId = nodeIdOrTitle;
         const nodeByTitle = state.mindMap.find(n => n.title.trim() === nodeIdOrTitle.trim());
         if (nodeByTitle) nodeId = nodeByTitle.id;
@@ -519,7 +571,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         } else {
             showNotification(`درس "${nodeIdOrTitle}" پیدا نشد.`, 'error');
         }
-    }, [state.mindMap, state.isChatOpen, handleNodeSelect, dispatch, showNotification]);
+    }, [state.mindMap, state.isChatOpen, handleNodeSelect, dispatch, showNotification, triggerFeynmanChallenge]);
 
     const handleTakeQuiz = useCallback((nodeId: string) => {
         const node = state.mindMap.find(n => n.id === nodeId);
@@ -827,6 +879,8 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         handleRemoveResource,
         handleFinalizeResources,
         handleUpdateResourceContent, 
-        handleUpdateResourceInstructions, // Exported new action
+        handleUpdateResourceInstructions, 
+        triggerFeynmanChallenge, // Trigger randomly or manually
+        submitFeynmanExplanation
     };
 };

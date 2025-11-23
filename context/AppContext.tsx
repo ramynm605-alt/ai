@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { AppState, AppStatus, ChatMessage, MindMapNode, NodeProgress, PodcastConfig, PodcastState, Quiz, QuizResult, Reward, SavedSession, UserBehavior, UserProfile, Weakness, LearningPreferences, PreAssessmentAnalysis, NodeContent, UserAnswer } from '../types';
+import { AppState, AppStatus, ChatMessage, MindMapNode, NodeProgress, PodcastConfig, PodcastState, Quiz, QuizResult, Reward, SavedSession, UserBehavior, UserProfile, Weakness, LearningPreferences, PreAssessmentAnalysis, NodeContent, UserAnswer, FeynmanState } from '../types';
 
 // --- Default Behavior & Initial State ---
 const DEFAULT_BEHAVIOR: UserBehavior = {
@@ -68,7 +68,8 @@ const initialState: AppState = {
       progressText: '',
       audioUrl: null,
       isMinimized: false
-  }
+  },
+  feynmanState: null,
 };
 
 // --- Reducer Function ---
@@ -457,6 +458,21 @@ function appReducer(state: AppState, action: any): AppState {
     }
     case 'UPDATE_PODCAST_STATE':
         return { ...state, podcastState: { ...state.podcastState, ...action.payload } };
+    
+    // Feynman Challenge Actions
+    case 'START_FEYNMAN':
+        return { 
+            ...state, 
+            status: AppStatus.FEYNMAN_CHALLENGE, 
+            feynmanState: { targetNode: action.payload, feedback: null, isAnalyzing: false } 
+        };
+    case 'ANALYZING_FEYNMAN':
+        return { ...state, feynmanState: { ...state.feynmanState!, isAnalyzing: true } };
+    case 'FEYNMAN_FEEDBACK_RECEIVED':
+        return { ...state, feynmanState: { ...state.feynmanState!, isAnalyzing: false, feedback: action.payload } };
+    case 'CLOSE_FEYNMAN':
+        return { ...state, status: AppStatus.LEARNING, feynmanState: null };
+
     default:
       return state;
   }
