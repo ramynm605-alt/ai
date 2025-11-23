@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { AppState, AppStatus, ChatMessage, MindMapNode, NodeProgress, PodcastConfig, PodcastState, Quiz, QuizResult, Reward, SavedSession, UserBehavior, UserProfile, Weakness, LearningPreferences, PreAssessmentAnalysis, NodeContent, UserAnswer, FeynmanState } from '../types';
+import { AppState, AppStatus, ChatMessage, MindMapNode, NodeProgress, PodcastConfig, PodcastState, Quiz, QuizResult, Reward, SavedSession, UserBehavior, UserProfile, Weakness, LearningPreferences, PreAssessmentAnalysis, NodeContent, UserAnswer, FeynmanState, Flashcard, FlashcardGrade } from '../types';
 
 // --- Default Behavior & Initial State ---
 const DEFAULT_BEHAVIOR: UserBehavior = {
@@ -51,6 +51,7 @@ const initialState: AppState = {
   chatHistory: [],
   behavior: DEFAULT_BEHAVIOR,
   rewards: [],
+  flashcards: [],
   showDailyBriefing: false,
   dailyChallengeContent: null,
   currentUser: null,
@@ -72,13 +73,43 @@ const initialState: AppState = {
   feynmanState: null,
 };
 
+// --- Helper: SM-2 Algorithm for SRS ---
+const calculateNextReview = (
+    grade: FlashcardGrade, 
+    previousInterval: number, 
+    previousRepetition: number, 
+    previousEaseFactor: number
+): { interval: number, repetition: number, easeFactor: number } => {
+    let interval: number;
+    let repetition: number;
+    let easeFactor: number;
+
+    if (grade >= 3) {
+        if (previousRepetition === 0) {
+            interval = 1;
+        } else if (previousRepetition === 1) {
+            interval = 6;
+        } else {
+            interval = Math.round(previousInterval * previousEaseFactor);
+        }
+        repetition = previousRepetition + 1;
+    } else {
+        interval = 1;
+        repetition = 0;
+    }
+
+    easeFactor = previousEaseFactor + (0.1 - (5 - grade) * (0.08 + (5 - grade) * 0.02));
+    if (easeFactor < 1.3) easeFactor = 1.3;
+
+    return { interval, repetition, easeFactor };
+};
+
 // --- Reducer Function ---
 function appReducer(state: AppState, action: any): AppState {
   switch (action.type) {
     case 'SET_THEME':
       return { ...state, theme: action.payload };
-    
-    // Resource Management
+    // ... existing cases ...
     case 'ADD_RESOURCE':
        return { ...state, resources: [...state.resources, action.payload] };
     case 'REMOVE_RESOURCE':
@@ -90,14 +121,11 @@ function appReducer(state: AppState, action: any): AppState {
         };
     case 'CLEAR_RESOURCES':
        return { ...state, resources: [], sourceContent: '', sourceImages: [] };
-
     case 'INIT_WIZARD':
-       // Used when we finalize the resources and move to customization
        return { 
            ...state, 
            status: AppStatus.WIZARD, 
            sourceContent: action.payload.sourceContent,
-           // Keep images if they were added via resources, logic handled in action
        };
     case 'FINISH_WIZARD':
        return { ...state, status: AppStatus.LOADING, preferences: action.payload, loadingMessage: 'در حال تحلیل منابع و طراحی نقشه ذهنی...' };
@@ -362,6 +390,7 @@ function appReducer(state: AppState, action: any): AppState {
             ...loadedState, 
             resources: loadedState.resources || [], // Backward compatibility
             chatHistory: loadedState.chatHistory || [],
+            flashcards: loadedState.flashcards || [], // Load flashcards
             activeNodeId, 
             currentUser: state.currentUser, 
             savedSessions: state.savedSessions, 
@@ -385,6 +414,9 @@ function appReducer(state: AppState, action: any): AppState {
                 showBriefing = true;
             } else if (diffHours >= 48) {
                 newStreak = 1;
+                showBriefing = true;
+            } else if (new Date(state.behavior.lastLoginDate).getDate() !== now.getDate()) {
+                // Same day logic to ensure daily brief shows at least once a day
                 showBriefing = true;
             }
         }
@@ -473,12 +505,48 @@ function appReducer(state: AppState, action: any): AppState {
     case 'CLOSE_FEYNMAN':
         return { ...state, status: AppStatus.LEARNING, feynmanState: null };
 
+    // --- SRS Actions ---
+    case 'ADD_FLASHCARDS': {
+        const newCards = action.payload;
+        // Prevent duplicates
+        const uniqueNewCards = newCards.filter((nc: Flashcard) => !state.flashcards.some(ec => ec.front === nc.front));
+        return { ...state, flashcards: [...state.flashcards, ...uniqueNewCards] };
+    }
+    case 'START_FLASHCARD_REVIEW':
+        return { ...state, status: AppStatus.REVIEWING_FLASHCARDS };
+    case 'FINISH_FLASHCARD_REVIEW':
+        return { ...state, status: AppStatus.LEARNING }; // Or back to Dashboard/Idle depending on context
+    case 'UPDATE_FLASHCARD_REVIEW': {
+        const { id, grade } = action.payload;
+        const cardIndex = state.flashcards.findIndex(c => c.id === id);
+        if (cardIndex === -1) return state;
+
+        const card = state.flashcards[cardIndex];
+        const { interval, repetition, easeFactor } = calculateNextReview(grade, card.interval, card.repetition, card.easeFactor);
+        
+        const nextDate = new Date();
+        nextDate.setDate(nextDate.getDate() + interval);
+
+        const updatedCard: Flashcard = {
+            ...card,
+            interval,
+            repetition,
+            easeFactor,
+            nextReviewDate: nextDate.toISOString()
+        };
+
+        const newFlashcards = [...state.flashcards];
+        newFlashcards[cardIndex] = updatedCard;
+
+        return { ...state, flashcards: newFlashcards };
+    }
+
     default:
       return state;
   }
 }
 
-// --- Context Setup ---
+// ... (AppContext creation and Provider - NO CHANGES) ...
 interface AppContextProps {
   state: AppState;
   dispatch: React.Dispatch<any>;

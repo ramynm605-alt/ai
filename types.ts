@@ -126,6 +126,7 @@ export interface MindMapNode {
     GENERATING_REMEDIAL = 'GENERATING_REMEDIAL',
     PODCAST_CREATION = 'PODCAST_CREATION', // New status for podcast UI
     FEYNMAN_CHALLENGE = 'FEYNMAN_CHALLENGE', // New status for Reverse Teaching
+    REVIEWING_FLASHCARDS = 'REVIEWING_FLASHCARDS', // New Status for SRS
   }
 
   export type UserAnswer = string | number;
@@ -179,6 +180,20 @@ export interface MindMapNode {
       avatarColor: string;
       joinDate: string;
   }
+
+  // --- SRS Types ---
+  export interface Flashcard {
+      id: string;
+      nodeId: string;
+      front: string; // Question / Concept
+      back: string;  // Answer / Definition
+      interval: number; // Days
+      repetition: number;
+      easeFactor: number;
+      nextReviewDate: string; // ISO Date
+  }
+
+  export type FlashcardGrade = 1 | 2 | 3 | 4; // 1: Again, 2: Hard, 3: Good, 4: Easy
 
   export interface SavedSession {
       id: string;
@@ -256,6 +271,7 @@ export interface MindMapNode {
     chatHistory: ChatMessage[];
     behavior: UserBehavior;
     rewards: Reward[];
+    flashcards: Flashcard[]; // New SRS
     showDailyBriefing: boolean;
     dailyChallengeContent: string | null;
     currentUser: UserProfile | null;
@@ -289,5 +305,6 @@ export interface MindMapNode {
     weaknesses: Weakness[];
     behavior: UserBehavior;
     rewards: Reward[];
-    chatHistory: ChatMessage[]; // New: Save chat history per session
+    chatHistory: ChatMessage[]; 
+    flashcards: Flashcard[]; // Save cards
   }

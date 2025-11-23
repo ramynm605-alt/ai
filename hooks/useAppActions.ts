@@ -1,16 +1,18 @@
 
 import { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { AppStatus, ChatMessage, PodcastConfig, PodcastState, QuizResult, Reward, SavableState, SavedSession, UserAnswer, UserBehavior, UserProfile, Weakness, LearningPreferences, LearningResource } from '../types';
+import { AppStatus, ChatMessage, PodcastConfig, PodcastState, QuizResult, Reward, SavableState, SavedSession, UserAnswer, UserBehavior, UserProfile, Weakness, LearningPreferences, LearningResource, Flashcard, FlashcardGrade } from '../types';
 import { FirebaseService } from '../services/firebaseService';
-import { generateChatResponse, generateDailyChallenge, generateDeepAnalysis, generateLearningPlan, generateNodeContent, generatePodcastAudio, generatePodcastScript, generateProactiveChatInitiation, generateQuiz, generateRemedialNode, gradeAndAnalyzeQuiz, analyzePreAssessment, analyzeResourceContent, evaluateFeynmanExplanation } from '../services/geminiService';
+import { generateChatResponse, generateDailyChallenge, generateDeepAnalysis, generateLearningPlan, generateNodeContent, generatePodcastAudio, generatePodcastScript, generateProactiveChatInitiation, generateQuiz, generateRemedialNode, gradeAndAnalyzeQuiz, analyzePreAssessment, analyzeResourceContent, evaluateFeynmanExplanation, generateFlashcards } from '../services/geminiService';
 
 declare var pdfjsLib: any;
 
 export const useAppActions = (showNotification: (msg: string, type?: 'success' | 'error') => void) => {
     const { state, dispatch } = useApp();
 
-    // --- Helper for Cloud Sync ---
+    // ... (handleCloudLoad, handleCloudSave, handleLogin, handleLogout, handleSaveSession, handleDeleteSession, handleLoadSession, handleExportUserData, handleImportUserData, processResource, addResource, handleUpdateResourceContent, handleUpdateResourceInstructions, handleRemoveResource, handleFileUpload, handleStartFromText, handleTopicStudy, handleUrlInput, handleFinalizeResources, handleWizardComplete, generatePlanInternal, triggerFeynmanChallenge, submitFeynmanExplanation, handleNodeSelect, handleNodeNavigate, handleTakeQuiz, handleQuizSubmit, handleGenerateRemedial, handlePreAssessmentSubmit, handleChatSend, handleExplainRequest, handleDebateInitiation, togglePodcastMode, startPodcastGeneration - NO CHANGES, KEPT) ...
+
+    // --- Helpers for Cloud Sync ---
     const handleCloudLoad = useCallback(async (userId: string) => {
        dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'syncing' } });
        try {
@@ -108,7 +110,8 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
             weaknesses: state.weaknesses,
             behavior: state.behavior,
             rewards: state.rewards,
-            chatHistory: state.chatHistory 
+            chatHistory: state.chatHistory,
+            flashcards: state.flashcards // SAVE FLASHCARDS
         };
         
         const totalNodes = state.mindMap.length;
@@ -216,9 +219,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         }
     };
 
-    // --- Content & Navigation Actions ---
-
-    // NEW: Async Resource Processing
+    // --- Resource Processing ---
     const processResource = async (resource: LearningResource) => {
         try {
             dispatch({ type: 'UPDATE_RESOURCE', payload: { id: resource.id, updates: { isProcessing: true } } });
@@ -231,7 +232,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                 rawText, 
                 media, 
                 resource.type,
-                resource.metadata // Pass metadata (which might contain isTopic: true)
+                resource.metadata 
             );
             
             dispatch({ 
@@ -240,7 +241,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                     id: resource.id, 
                     updates: { 
                         isProcessing: false,
-                        content: analysis.extractedText, // Update content with cleaned/transcribed version
+                        content: analysis.extractedText, 
                         validation: analysis.validation
                     } 
                 } 
@@ -273,7 +274,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
             return;
         }
         dispatch({ type: 'ADD_RESOURCE', payload: { ...resource, isProcessing: true } });
-        processResource(resource); // Trigger async analysis
+        processResource(resource); 
     };
 
     const handleUpdateResourceContent = (id: string, newContent: string) => {
@@ -395,7 +396,6 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         });
     };
 
-    // This function finalizes the resources and moves to Wizard
     const handleFinalizeResources = (globalInstructions: string = "") => {
         if (state.resources.length === 0) {
             showNotification("لطفاً حداقل یک منبع اضافه کنید.", "error");
@@ -408,8 +408,6 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
              return;
         }
 
-        // Combine resources into sourceContent for the prompt
-        // Also extract images if any
         let combinedContent = "";
         let combinedImages: { mimeType: string, data: string }[] = [];
 
@@ -433,13 +431,9 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
 
     const handleWizardComplete = (prefs: LearningPreferences) => {
         dispatch({ type: 'FINISH_WIZARD', payload: prefs });
-        // The generation is triggered via useEffect in main component when status changes to LOADING
     };
 
     const generatePlanInternal = useCallback(() => {
-        // If we have resources in state, we use them (already combined in handleFinalizeResources, 
-        // but let's ensure we use the sourceContent in state which INIT_WIZARD set).
-        
         return generateLearningPlan(
             state.sourceContent, 
             state.sourcePageContents, 
@@ -458,17 +452,11 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         });
     }, [state.sourceContent, state.sourcePageContents, state.sourceImages, state.preferences, state.currentUser, dispatch, handleSaveSession]);
 
-    // --- Feynman Challenge Trigger ---
     const triggerFeynmanChallenge = useCallback(() => {
-        // Find a completed node
         const completedNodeIds = Object.keys(state.userProgress).filter(id => state.userProgress[id].status === 'completed');
-        
         if (completedNodeIds.length === 0) return;
-
-        // Pick one randomly
         const randomId = completedNodeIds[Math.floor(Math.random() * completedNodeIds.length)];
         const targetNode = state.mindMap.find(n => n.id === randomId);
-
         if (targetNode) {
             dispatch({ type: 'START_FEYNMAN', payload: targetNode });
         }
@@ -477,12 +465,9 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
     const submitFeynmanExplanation = async (explanation: string, audioBlob?: Blob) => {
         const targetNode = state.feynmanState?.targetNode;
         if (!targetNode) return;
-
         dispatch({ type: 'ANALYZING_FEYNMAN' });
-
         try {
             const content = state.nodeContents[targetNode.id]?.theory || state.sourceContent;
-            
             let audioBase64 = null;
             if (audioBlob) {
                 const reader = new FileReader();
@@ -494,7 +479,6 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                     reader.readAsDataURL(audioBlob);
                 });
             }
-
             const feedback = await evaluateFeynmanExplanation(targetNode.title, content, explanation, audioBase64);
             dispatch({ type: 'FEYNMAN_FEEDBACK_RECEIVED', payload: feedback });
         } catch (e) {
@@ -548,24 +532,14 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
     }, [state, dispatch]);
 
     const handleNodeNavigate = useCallback((nodeIdOrTitle: string) => {
-        // Trigger Feynman Challenge with probability (e.g., 20%) when navigating back or around
-        // But only if user has completed nodes
-        if (Math.random() < 0.2) { // 20% chance
-             triggerFeynmanChallenge();
-        }
-
+        if (Math.random() < 0.2) triggerFeynmanChallenge();
         let nodeId = nodeIdOrTitle;
         const nodeByTitle = state.mindMap.find(n => n.title.trim() === nodeIdOrTitle.trim());
         if (nodeByTitle) nodeId = nodeByTitle.id;
-        
-        // Ensure node exists
         const nodeExists = state.mindMap.some(n => n.id === nodeId);
-  
         if (nodeExists) {
             handleNodeSelect(nodeId);
-             
              if (window.innerWidth < 768 && state.isChatOpen) {
-                  // Close chat on mobile to see content
                   dispatch({ type: 'TOGGLE_CHAT' });
              }
         } else {
@@ -576,14 +550,11 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
     const handleTakeQuiz = useCallback((nodeId: string) => {
         const node = state.mindMap.find(n => n.id === nodeId);
         if (!node) return;
-        
         dispatch({ type: 'START_QUIZ', payload: nodeId });
-        
          let nodeContext = state.sourceContent;
          if (state.sourcePageContents && node.sourcePages.length > 0) {
               nodeContext = node.sourcePages.map(p => state.sourcePageContents![p-1]).join('\n');
          }
-  
         generateQuiz(node.title, nodeContext, state.sourceImages, (q) => dispatch({ type: 'QUIZ_QUESTION_STREAMED', payload: q }))
           .then(() => dispatch({ type: 'QUIZ_STREAM_END' }))
           .catch((err: any) => console.error(err));
@@ -593,15 +564,12 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         dispatch({ type: 'SUBMIT_QUIZ' });
         const node = state.mindMap.find(n => n.id === state.activeNodeId);
         if (!node || !state.activeQuiz) return;
-        
         try {
              let nodeContext = state.sourceContent;
              if (state.sourcePageContents && node.sourcePages.length > 0) {
                   nodeContext = node.sourcePages.map(p => state.sourcePageContents![p-1]).join('\n');
              }
-  
             const gradingResults = await gradeAndAnalyzeQuiz(state.activeQuiz.questions, answers, nodeContext, state.sourceImages);
-            
             const results: QuizResult[] = gradingResults.map((result: any) => {
                 const question = state.activeQuiz?.questions.find(q => q.id === result.questionId);
                 if (!question) throw new Error(`Question ${result.questionId} not found`);
@@ -613,12 +581,10 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                     analysis: result.analysis
                 };
             });
-  
             const totalScore = results.reduce((sum, r) => sum + r.score, 0);
             const maxScore = results.reduce((sum, r) => sum + r.question.points, 0);
             const percentage = maxScore > 0 ? (totalScore / maxScore) : 0;
             let newReward: Reward | null = null;
-  
             if (percentage >= 0.85) {
                 const nodeContentText = state.nodeContents[node.id]?.theory || state.sourceContent.substring(0, 1000); 
                 const rewardContent = await generateDeepAnalysis(node.title, nodeContentText);
@@ -632,9 +598,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                 };
                 dispatch({ type: 'UNLOCK_REWARD', payload: newReward });
             }
-  
             dispatch({ type: 'QUIZ_ANALYSIS_LOADED', payload: { results } });
-            
         } catch (err: any) {
             console.error("Error grading quiz:", err);
             dispatch({ type: 'SET_ERROR', payload: 'خطا در تصحیح آزمون. لطفاً اتصال اینترنت خود را بررسی کرده و دوباره تلاش کنید.' });
@@ -645,10 +609,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         if (!state.activeNodeId || !state.quizResults) return;
         const node = state.mindMap.find(n => n.id === state.activeNodeId);
         if (!node) return;
-  
         dispatch({ type: 'START_REMEDIAL_GENERATION' });
-  
-        // Extract specific weaknesses from the just-finished quiz
         const currentWeaknesses: Weakness[] = state.quizResults
             .filter(r => !r.isCorrect)
             .map(r => ({
@@ -656,12 +617,10 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                 incorrectAnswer: JSON.stringify(r.userAnswer),
                 correctAnswer: r.question.type === 'multiple-choice' ? r.question.options[r.question.correctAnswerIndex] : r.question.correctAnswer
             }));
-  
         const weaknessesToPass = currentWeaknesses.length > 0 ? currentWeaknesses : state.weaknesses;
-  
         try {
              const remedialNode = await generateRemedialNode(
-                node.id, // ID
+                node.id, 
                 node.title,
                 weaknessesToPass,
                 state.sourceContent,
@@ -677,25 +636,20 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
     const handlePreAssessmentSubmit = async (answers: Record<string, UserAnswer>) => {
         if (!state.preAssessment) return;
         dispatch({ type: 'SUBMIT_PRE_ASSESSMENT', payload: answers });
-  
         try {
             const analysis = await analyzePreAssessment(
                 state.preAssessment.questions,
                 answers,
                 state.sourceContent
             );
-  
             dispatch({ type: 'START_ADAPTING_PLAN' });
-  
             let difficultyMod = 0;
             if (analysis.recommendedLevel === 'مبتدی') difficultyMod = -0.2;
             if (analysis.recommendedLevel === 'پیشرفته') difficultyMod = 0.2;
-  
             const adaptedMindMap = state.mindMap.map(node => ({
                 ...node,
                 difficulty: Math.max(0.1, Math.min(0.9, node.difficulty + difficultyMod))
             }));
-  
             dispatch({ 
                 type: 'PLAN_ADAPTED', 
                 payload: { 
@@ -704,23 +658,19 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                     suggestedPath: state.suggestedPath 
                 } 
             });
-  
         } catch (error) {
             console.error("Pre-assessment analysis failed", error);
             dispatch({ type: 'SET_ERROR', payload: 'خطا در تحلیل پیش‌آزمون.' });
         }
     };
 
-    // --- Chat Actions ---
     const handleChatSend = useCallback(async (message: string) => {
         const userMsg: ChatMessage = { role: 'user', message };
         dispatch({ type: 'ADD_CHAT_MESSAGE', payload: userMsg });
         dispatch({ type: 'SET_CHAT_LOADING', payload: true });
-  
         try {
             let nodeTitle = null;
             let contextContent = state.sourceContent.substring(0, 1500);
-            
             if (state.activeNodeId) {
                 const node = state.mindMap.find(n => n.id === state.activeNodeId);
                 if (node) {
@@ -731,9 +681,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                     }
                 }
             }
-            
             const allNodeTitles = state.mindMap.map(n => n.title);
-  
             const responseText = await generateChatResponse(
                 state.chatHistory, 
                 message, 
@@ -744,7 +692,6 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                 state.chatPersona, 
                 allNodeTitles      
             );
-            
             const modelMsg: ChatMessage = { role: 'model', message: responseText };
             dispatch({ type: 'ADD_CHAT_MESSAGE', payload: modelMsg });
         } catch (error) {
@@ -762,7 +709,6 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
     const handleDebateInitiation = useCallback(async () => {
         let nodeTitle = "General";
         let nodeContent = "";
-        
         if (state.activeNodeId) {
             const node = state.mindMap.find(n => n.id === state.activeNodeId);
             if (node) nodeTitle = node.title;
@@ -770,7 +716,6 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                 nodeContent = state.nodeContents[state.activeNodeId].theory;
             }
         }
-    
         try {
             const msgText = await generateProactiveChatInitiation(
                 nodeTitle,
@@ -791,23 +736,16 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         }
     }, [state.activeNodeId, state.mindMap, state.nodeContents, state.sourceContent, state.isDebateMode, state.weaknesses, dispatch]);
 
-    // --- Podcast Actions ---
-    
-    // 1. Just toggle the UI mode. This should NOT generate anything yet.
     const togglePodcastMode = useCallback(() => {
         dispatch({ type: 'TOGGLE_PODCAST_MODE' });
     }, [dispatch]);
 
-    // 2. Actually generate the podcast (called from PodcastCreator UI)
     const startPodcastGeneration = useCallback(async (config: PodcastConfig) => {
-        // Toggle mode OFF so user goes back to normal app, while podcast generates in background
         dispatch({ type: 'TOGGLE_PODCAST_MODE' });
-
         dispatch({ 
             type: 'UPDATE_PODCAST_STATE', 
             payload: { status: 'generating_script', progressText: 'در حال نگارش سناریو پادکست...', audioUrl: null, isMinimized: false } 
         });
-  
         try {
             const validContents = config.selectedNodeIds
               .map(id => ({ node: state.mindMap.find(n => n.id === id), content: state.nodeContents[id] }))
@@ -816,27 +754,20 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                   title: item.node!.title,
                   text: `${item.content!.introduction}\n${item.content!.theory}\n${item.content!.conclusion}`
               }));
-  
           if (validContents.length === 0) {
                throw new Error("محتوای متنی یافت نشد.");
           }
-  
           const script = await generatePodcastScript(validContents, config.mode);
-  
           dispatch({ 
               type: 'UPDATE_PODCAST_STATE', 
               payload: { status: 'generating_audio', progressText: 'در حال ضبط استودیویی (هوش مصنوعی)...' } 
           });
-  
           const url = await generatePodcastAudio(script, config.speaker1, config.mode === 'dialogue' ? config.speaker2 : undefined, config.mode);
-  
           dispatch({ 
               type: 'UPDATE_PODCAST_STATE', 
               payload: { status: 'ready', audioUrl: url, progressText: 'آماده پخش' } 
           });
-  
           showNotification("پادکست شما آماده است!", "success");
-  
         } catch (error: any) {
             console.error("Podcast Generation Error", error);
             dispatch({ 
@@ -846,6 +777,52 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
             showNotification("تولید پادکست با خطا مواجه شد.", "error");
         }
     }, [state.mindMap, state.nodeContents, dispatch, showNotification]);
+
+    // --- SRS Actions ---
+    const handleGenerateFlashcards = async () => {
+        if (!state.activeNodeId) return;
+        const node = state.mindMap.find(n => n.id === state.activeNodeId);
+        const content = state.nodeContents[state.activeNodeId];
+        if (!node || !content) {
+            showNotification("ابتدا باید محتوای درس را مشاهده کنید.", 'error');
+            return;
+        }
+
+        showNotification("در حال تولید کارت‌های مرور هوشمند...", "success");
+        try {
+            const textContent = `${content.theory}\n${content.example}`;
+            const rawCards = await generateFlashcards(node.title, textContent);
+            
+            const newCards: Flashcard[] = rawCards.map(c => ({
+                id: Math.random().toString(36).substr(2, 9),
+                nodeId: node.id,
+                front: c.front,
+                back: c.back,
+                interval: 0,
+                repetition: 0,
+                easeFactor: 2.5,
+                nextReviewDate: new Date().toISOString()
+            }));
+
+            dispatch({ type: 'ADD_FLASHCARDS', payload: newCards });
+            showNotification(`${newCards.length} کارت مرور به جعبه لایتنر شما اضافه شد!`, "success");
+        } catch (e) {
+            console.error("Flashcard generation failed", e);
+            showNotification("خطا در تولید کارت‌های مرور.", 'error');
+        }
+    };
+
+    const handleReviewFlashcard = (cardId: string, grade: FlashcardGrade) => {
+        dispatch({ type: 'UPDATE_FLASHCARD_REVIEW', payload: { id: cardId, grade } });
+    };
+
+    const startFlashcardReview = () => {
+        dispatch({ type: 'START_FLASHCARD_REVIEW' });
+    };
+
+    const exitFlashcardReview = () => {
+        dispatch({ type: 'FINISH_FLASHCARD_REVIEW' });
+    };
 
     return {
         generatePlanInternal,
@@ -880,7 +857,11 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         handleFinalizeResources,
         handleUpdateResourceContent, 
         handleUpdateResourceInstructions, 
-        triggerFeynmanChallenge, // Trigger randomly or manually
-        submitFeynmanExplanation
+        triggerFeynmanChallenge, 
+        submitFeynmanExplanation,
+        handleGenerateFlashcards, // New
+        handleReviewFlashcard, // New
+        startFlashcardReview, // New
+        exitFlashcardReview // New
     };
 };
