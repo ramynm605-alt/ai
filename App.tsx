@@ -25,18 +25,20 @@ const PodcastPlayer = React.lazy(() => import('./components/PodcastPlayer'));
 const FeynmanMode = React.lazy(() => import('./components/FeynmanMode'));
 const FlashcardReview = React.lazy(() => import('./components/FlashcardReview'));
 
-const NotificationToast = ({ message, type = 'success', onClose }: { message: string, type?: 'success' | 'error', onClose: () => void }) => {
+const NotificationToast = ({ message, type = 'success', onClose }: { message: string, type?: 'success' | 'error' | 'info', onClose: () => void }) => {
     useEffect(() => {
-        const timer = setTimeout(onClose, 4000);
+        const timer = setTimeout(onClose, 5000);
         return () => clearTimeout(timer);
     }, [message, onClose]);
     const isError = type === 'error';
+    const isInfo = type === 'info';
+    
     return (
-        <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 z-[10000] bg-card border shadow-2xl rounded-xl px-4 py-3 flex items-center gap-3 animate-slide-up ${isError ? 'border-destructive/50' : 'border-border'}`}>
-            <div className={`p-1.5 rounded-full ${isError ? 'bg-destructive/10 text-destructive' : 'bg-green-500/10 text-green-500'}`}>
-                {isError ? <XCircle className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
+        <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 z-[10000] bg-card border shadow-2xl rounded-xl px-4 py-3 flex items-center gap-3 animate-slide-up ${isError ? 'border-destructive/50' : isInfo ? 'border-blue-500/50' : 'border-border'}`}>
+            <div className={`p-1.5 rounded-full ${isError ? 'bg-destructive/10 text-destructive' : isInfo ? 'bg-blue-500/10 text-blue-500' : 'bg-green-500/10 text-green-500'}`}>
+                {isError ? <XCircle className="w-5 h-5" /> : isInfo ? <MessageSquare className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
             </div>
-            <span className="text-sm font-bold text-foreground">{message}</span>
+            <span className="text-sm font-bold text-foreground max-w-[250px] truncate">{message}</span>
         </div>
     );
 }
@@ -45,7 +47,7 @@ const AppLayout = () => {
     const { state, dispatch } = useApp();
     const [showStartup, setShowStartup] = useState(true);
     const [isDebugOpen, setIsDebugOpen] = useState(false);
-    const [notification, setNotification] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+    const [notification, setNotification] = useState<{message: string, type: 'success' | 'error' | 'info'} | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isToolboxOpen, setIsToolboxOpen] = useState(true);
     const [logoClickCount, setLogoClickCount] = useState(0);
@@ -53,7 +55,7 @@ const AppLayout = () => {
     // New local state for Podcast flow
     const [showPodcastWizard, setShowPodcastWizard] = useState(false);
 
-    const showNotification = useCallback((msg: string, type: 'success' | 'error' = 'success') => {
+    const showNotification = useCallback((msg: string, type: 'success' | 'error' | 'info' = 'success') => {
         setNotification({ message: msg, type });
     }, []);
 

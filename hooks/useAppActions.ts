@@ -1,4 +1,3 @@
-
 import React, { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { AppStatus, ChatMessage, PodcastConfig, PodcastState, QuizResult, Reward, SavableState, SavedSession, UserAnswer, UserBehavior, UserProfile, Weakness, LearningPreferences, LearningResource, Flashcard, FlashcardGrade } from '../types';
@@ -7,10 +6,8 @@ import { generateChatResponse, generateDailyChallenge, generateDeepAnalysis, gen
 
 declare var pdfjsLib: any;
 
-export const useAppActions = (showNotification: (msg: string, type?: 'success' | 'error') => void) => {
+export const useAppActions = (showNotification: (msg: string, type?: 'success' | 'error' | 'info') => void) => {
     const { state, dispatch } = useApp();
-
-    // ... (handleCloudLoad, handleCloudSave, handleLogin, handleLogout, handleSaveSession, handleDeleteSession, handleLoadSession, handleExportUserData, handleImportUserData, processResource, addResource, handleUpdateResourceContent, handleUpdateResourceInstructions, handleRemoveResource, handleFileUpload, handleStartFromText, handleTopicStudy, handleUrlInput, handleFinalizeResources, handleWizardComplete, generatePlanInternal, triggerFeynmanChallenge, submitFeynmanExplanation, handleNodeSelect, handleNodeNavigate, handleTakeQuiz, handleQuizSubmit, handleGenerateRemedial, handlePreAssessmentSubmit, handleChatSend, handleExplainRequest, handleDebateInitiation, togglePodcastMode, startPodcastGeneration - NO CHANGES, KEPT) ...
 
     // --- Helpers for Cloud Sync ---
     const handleCloudLoad = useCallback(async (userId: string) => {
@@ -115,7 +112,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         };
         
         const totalNodes = state.mindMap.length;
-        const completedNodes = Object.values(state.userProgress).filter(p => p.status === 'completed').length;
+        const completedNodes = Object.values(state.userProgress).filter((p: any) => p.status === 'completed').length;
         const progress = totalNodes > 0 ? (completedNodes / totalNodes) * 100 : 0;
 
         let newSessions = [...state.savedSessions];
@@ -458,9 +455,10 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         const randomId = completedNodeIds[Math.floor(Math.random() * completedNodeIds.length)];
         const targetNode = state.mindMap.find(n => n.id === randomId);
         if (targetNode) {
+            showNotification(`مربی: لطفاً مبحث "${targetNode.title}" را برای من توضیح دهید!`, 'info');
             dispatch({ type: 'START_FEYNMAN', payload: targetNode });
         }
-    }, [state.userProgress, state.mindMap, dispatch]);
+    }, [state.userProgress, state.mindMap, dispatch, showNotification]);
 
     const submitFeynmanExplanation = async (explanation: string, audioBlob?: Blob) => {
         const targetNode = state.feynmanState?.targetNode;
@@ -723,6 +721,9 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                 state.isDebateMode,
                 state.weaknesses
             );
+            // Notify user about the debate start
+            showNotification(`پیام جدید از مربی: ${msgText.substring(0, 50)}...`, 'info');
+            
             dispatch({ 
                 type: 'TRIGGER_PROACTIVE_DEBATE', 
                 payload: { role: 'model', message: msgText }
@@ -734,7 +735,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                 payload: { role: 'model', message: "متاسفانه در شروع بحث مشکلی پیش آمد." }
             });
         }
-    }, [state.activeNodeId, state.mindMap, state.nodeContents, state.sourceContent, state.isDebateMode, state.weaknesses, dispatch]);
+    }, [state.activeNodeId, state.mindMap, state.nodeContents, state.sourceContent, state.isDebateMode, state.weaknesses, dispatch, showNotification]);
 
     const togglePodcastMode = useCallback(() => {
         dispatch({ type: 'TOGGLE_PODCAST_MODE' });
