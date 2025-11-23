@@ -234,7 +234,10 @@
         from { opacity: 0; transform: scale(0.95); }
         to { opacity: 1; transform: scale(1); }
       }
+      
+      /* SMOOTHER Flow Animation for SVG Lines */
       @keyframes flow {
+        from { stroke-dashoffset: 24; }
         to { stroke-dashoffset: 0; }
       }
       
@@ -300,9 +303,9 @@
         transition: stroke 0.4s ease, stroke-width 0.4s ease, opacity 0.4s;
       }
       .mindmap-line-flow {
-         stroke-dasharray: 12;
-         stroke-dashoffset: 100;
-         animation: flow 1.5s linear infinite;
+         stroke-dasharray: 12 12; /* Larger gaps for clearer movement */
+         stroke-dashoffset: 0;
+         animation: flow 1.5s linear infinite; /* Smooth linear loop */
          stroke-linecap: round;
       }
     </style>

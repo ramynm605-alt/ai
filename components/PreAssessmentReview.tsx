@@ -72,7 +72,7 @@ const PreAssessmentReview: React.FC<PreAssessmentReviewProps> = ({ analysis, onS
                                 </h3>
                                 <div className="flex flex-wrap gap-2">
                                     {analysis.strengthTags.length > 0 ? analysis.strengthTags.map((tag, i) => (
-                                        <span key={i} className="px-2 py-1 text-xs font-medium bg-white dark:bg-black/20 rounded border border-success/20 text-success-foreground/80">{tag}</span>
+                                        <span key={i} className="px-2 py-1 text-xs font-medium bg-emerald-100 dark:bg-emerald-500/10 rounded border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-300">{tag}</span>
                                     )) : <span className="text-xs text-muted-foreground">موردی یافت نشد</span>}
                                 </div>
                             </div>
@@ -85,7 +85,7 @@ const PreAssessmentReview: React.FC<PreAssessmentReviewProps> = ({ analysis, onS
                                 </h3>
                                 <div className="flex flex-wrap gap-2">
                                      {analysis.weaknessTags.length > 0 ? analysis.weaknessTags.map((tag, i) => (
-                                        <span key={i} className="px-2 py-1 text-xs font-medium bg-white dark:bg-black/20 rounded border border-destructive/20 text-destructive-foreground/80">{tag}</span>
+                                        <span key={i} className="px-2 py-1 text-xs font-medium bg-red-100 dark:bg-red-500/10 rounded border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-300">{tag}</span>
                                     )) : <span className="text-xs text-muted-foreground">موردی یافت نشد</span>}
                                 </div>
                             </div>

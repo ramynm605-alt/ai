@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { MindMapNode, VoiceName, PodcastConfig } from '../types';
-import { XCircle, Mic, Users, User, Play } from './icons';
+import { XCircle, Mic, Users, User, Play, ArrowLeft } from './icons';
 
 interface PodcastCreatorProps {
     selectedNodes: MindMapNode[];
@@ -42,7 +42,10 @@ const PodcastCreator: React.FC<PodcastCreatorProps> = ({ selectedNodes, onClose,
                         <Mic className="w-5 h-5 text-primary" />
                         پیکربندی پادکست
                     </h2>
-                    <button onClick={onClose}><XCircle className="w-6 h-6 text-muted-foreground hover:text-destructive" /></button>
+                    <button onClick={onClose} className="text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-1">
+                        <ArrowLeft className="w-4 h-4" />
+                        <span>بازگشت به انتخاب</span>
+                    </button>
                 </div>
 
                 <div className="p-6 flex-grow overflow-y-auto animate-slide-up">

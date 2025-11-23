@@ -17,30 +17,6 @@ interface MindMapProps {
     selectedNodeIds?: string[];
 }
 
-const formatPageNumbers = (pages: number[]): string => {
-    if (!pages || pages.length === 0) return '';
-    pages.sort((a, b) => a - b);
-    const ranges: (number | string)[] = [];
-    if (pages.length === 0) return '';
-    let start = pages[0];
-    for (let i = 1; i <= pages.length; i++) {
-        if (i === pages.length || pages[i] !== pages[i-1] + 1) {
-            const end = pages[i-1];
-            if (start === end) {
-                ranges.push(start);
-            } else if (end === start + 1) {
-                ranges.push(start, end);
-            } else {
-                ranges.push(`${start}-${end}`);
-            }
-            if (i < pages.length) {
-                start = pages[i];
-            }
-        }
-    }
-    return `ص ${ranges.join('، ')}`;
-};
-
 // Extracted component to prevent re-mounting and hover flicker
 const MindMapNodeItem = React.memo(({ 
     node, 
@@ -85,9 +61,6 @@ const MindMapNodeItem = React.memo(({
 }) => {
     const handleNodeClick = (e: React.MouseEvent) => {
         e.stopPropagation();
-        // In selection mode, we allow clicking locked nodes if needed, or restrict it
-        // Here we assume selection is allowed if not locked, or if it's just for content generation we might want only unlocked nodes.
-        // Let's stick to unlocking logic: user can select any node they have access to (unlocked).
         if (!isLocked || isSelectionMode) {
             onSelect(node.id);
         }
@@ -134,7 +107,7 @@ const MindMapNodeItem = React.memo(({
                     <div className="w-8 h-8 mb-2 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                         <Flag className="w-4 h-4" />
                     </div>
-                    <h3 className={`font-bold text-foreground ${isPortrait ? 'text-xs' : 'text-sm'}`}>{node.title}</h3>
+                    <h3 className={`font-bold text-foreground leading-snug line-clamp-2 ${isPortrait ? 'text-xs' : 'text-sm'}`}>{node.title}</h3>
                     {!isPortrait && <span className="mt-1 text-[9px] text-muted-foreground font-medium px-2 py-0.5 rounded-full bg-secondary">نقطه شروع</span>}
                 </div>
                 {status === 'completed' && (
@@ -169,7 +142,7 @@ const MindMapNodeItem = React.memo(({
                     <div className={`w-8 h-8 mb-2 rounded-full flex items-center justify-center ${status === 'completed' ? 'bg-amber-100 text-amber-600' : 'bg-emerald-500/10 text-emerald-600'}`}>
                         {status === 'completed' ? <Trophy className="w-4 h-4" /> : <Target className="w-4 h-4" />}
                     </div>
-                    <h3 className={`font-bold text-foreground ${isPortrait ? 'text-xs' : 'text-sm'}`}>{node.title}</h3>
+                    <h3 className={`font-bold text-foreground leading-snug line-clamp-2 ${isPortrait ? 'text-xs' : 'text-sm'}`}>{node.title}</h3>
                 </div>
                 {isSelected && (
                     <div className="absolute -top-2 -left-2 z-40 bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg">
@@ -180,7 +153,7 @@ const MindMapNodeItem = React.memo(({
         );
     }
 
-    // 3. Standard Node - Minimal, Card-based, Refined
+    // 3. Standard Node - Centered, Better Typography
     return (
         <div
             className={`mindmap-node group ${isVisible ? 'mindmap-node-visible' : ''} absolute select-none outline-none`}
@@ -190,7 +163,7 @@ const MindMapNodeItem = React.memo(({
             tabIndex={isLocked ? -1 : 0}
         >
              <div className={`
-                absolute inset-0 rounded-xl transition-all duration-300 overflow-hidden flex flex-col
+                absolute inset-0 rounded-xl transition-all duration-300 overflow-hidden flex flex-col items-center justify-center text-center
                 bg-card/95 backdrop-blur-sm border
                 ${isActive 
                     ? 'border-primary ring-1 ring-primary shadow-[0_4px_20px_-8px_rgba(var(--primary)/0.2)] transform scale-[1.02] z-50' 
@@ -203,36 +176,42 @@ const MindMapNodeItem = React.memo(({
                  {/* Minimal Status Strip (RTL placement: Right) */}
                  <div className={`absolute right-0 top-0 bottom-0 w-1 ${difficultyColor} opacity-80`} />
 
-                 <div className="flex-1 p-3 pl-4 pr-4 flex flex-col relative">
-                    {/* Header Section */}
-                    <div className="flex justify-between items-start gap-2">
-                        <h3 className={`
-                            font-medium leading-snug text-foreground/90
-                            ${isPortrait ? 'text-[11px]' : 'text-sm'}
-                            ${isLocked && !isSelectionMode ? 'text-muted-foreground' : ''}
-                        `} dir="rtl">
-                            {node.title}
-                        </h3>
-                        
-                        {/* Status Icons */}
-                        <div className="shrink-0 flex flex-col gap-1 items-center">
-                            {status === 'completed' && <CheckCircle className="w-4 h-4 text-emerald-500" />}
-                            {isLocked && <Lock className="w-3 h-3 text-muted-foreground/40" />}
-                        </div>
-                    </div>
+                 {/* Content Wrapper */}
+                 <div className="w-full h-full p-3 px-4 flex flex-col items-center justify-center relative">
                     
-                    {/* Footer Info */}
-                    <div className="mt-auto flex items-center justify-between pt-2 border-t border-border/30">
-                         {/* Page Numbers */}
-                         <span className="text-[9px] text-muted-foreground/70 font-mono tracking-tight h-3">
-                             {!isPortrait && node.sourcePages.length > 0 && formatPageNumbers(node.sourcePages)}
-                         </span>
+                    {/* Status Icons - Top Right Float */}
+                    <div className="absolute top-2 left-2 flex gap-1">
+                        {status === 'completed' && <CheckCircle className="w-4 h-4 text-emerald-500" />}
+                        {isLocked && <Lock className="w-3 h-3 text-muted-foreground/40" />}
+                    </div>
+
+                    {/* Title with Improved Typography */}
+                    <h3 
+                        className={`
+                            font-bold leading-relaxed text-foreground/90 w-full
+                            ${isPortrait ? 'text-xs line-clamp-3' : 'text-sm line-clamp-3'}
+                            ${isLocked && !isSelectionMode ? 'text-muted-foreground' : ''}
+                        `} 
+                        dir="rtl"
+                        title={node.title} // Tooltip for truncated text
+                    >
+                        {node.title}
+                    </h3>
+                    
+                    {/* Tags / Badges - Bottom */}
+                    <div className="absolute bottom-2 w-full flex items-center justify-center gap-2">
+                         {/* Page Numbers Badge */}
+                         {/* {!isPortrait && node.sourcePages.length > 0 && (
+                            <span className="text-[9px] text-muted-foreground/70 font-mono tracking-tight bg-secondary px-1.5 rounded-sm">
+                                ص {node.sourcePages[0]}
+                            </span>
+                         )} */}
                          
-                         {/* Node Type Badge */}
+                         {/* Remedial Badge */}
                          {(isRemedial || isAdaptive) && (
-                             <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] bg-purple-500/10 ml-auto">
+                             <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] bg-purple-500/10">
                                  <Sparkles className="w-2.5 h-2.5 text-purple-600" />
-                                 {!isPortrait && <span className="text-[8px] text-purple-600 font-semibold">تکملی</span>}
+                                 {!isPortrait && <span className="text-[8px] text-purple-600 font-semibold">تکمیلی</span>}
                              </div>
                          )}
                     </div>
