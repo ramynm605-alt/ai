@@ -226,7 +226,13 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
             const rawText = resource.content;
             const media = resource.metadata?.data ? { mimeType: resource.metadata.mimeType, data: resource.metadata.data } : null;
 
-            const analysis = await analyzeResourceContent(resource.title, rawText, media, resource.type);
+            const analysis = await analyzeResourceContent(
+                resource.title, 
+                rawText, 
+                media, 
+                resource.type,
+                resource.metadata // Pass metadata (which might contain isTopic: true)
+            );
             
             dispatch({ 
                 type: 'UPDATE_RESOURCE', 
@@ -365,14 +371,14 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         }
     };
   
-    const handleTopicStudy = (topicInput: string) => {
+    const handleTopicStudy = (topicInput: string, options: { depth: 'general' | 'deep', length: 'brief' | 'standard' | 'comprehensive' } = { depth: 'general', length: 'standard' }) => {
         if (topicInput.trim().length > 2) {
              addResource({
                 id: Math.random().toString(36).substr(2, 9),
                 type: 'text',
                 title: `موضوع: ${topicInput}`,
                 content: topicInput,
-                metadata: { isTopic: true }
+                metadata: { isTopic: true, ...options }
             });
         } else {
             showNotification('لطفاً یک موضوع معتبر وارد کنید.', 'error');

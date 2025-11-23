@@ -43,6 +43,10 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
     const [viewMode, setViewMode] = useState<ViewMode>('landing');
     const [globalInstructions, setGlobalInstructions] = useState('');
     
+    // Research Customization State
+    const [researchDepth, setResearchDepth] = useState<'general' | 'deep'>('deep');
+    const [researchLength, setResearchLength] = useState<'brief' | 'standard' | 'comprehensive'>('standard');
+    
     // Resource Review Modal State
     const [reviewResource, setReviewResource] = useState<LearningResource | null>(null);
     const [editedContent, setEditedContent] = useState('');
@@ -324,7 +328,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-lg text-foreground">کاوش موضوعی</h3>
-                                    <p className="text-xs text-muted-foreground">اضافه کردن موضوع به لیست منابع</p>
+                                    <p className="text-xs text-muted-foreground">تحقیق هوشمند و تولید محتوا توسط AI</p>
                                 </div>
                              </div>
                              <button 
@@ -336,7 +340,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                             </button>
                         </div>
                         
-                        <div className="relative mb-8">
+                        <div className="relative mb-6">
                             <input 
                                 type="text"
                                 className="w-full px-4 py-4 pr-12 text-lg bg-background border-2 border-border rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all placeholder:text-muted-foreground/50"
@@ -345,7 +349,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                                 onChange={(e) => setTopicInput(e.target.value)}
                                 onKeyPress={(e) => {
                                     if(e.key === 'Enter' && topicInput.trim()) {
-                                        actions.handleTopicStudy(topicInput);
+                                        actions.handleTopicStudy(topicInput, { depth: researchDepth, length: researchLength });
                                         setTopicInput('');
                                     }
                                 }}
@@ -355,16 +359,60 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                             </div>
                         </div>
 
+                        {/* Research Settings */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-muted-foreground">عمق تحقیق</label>
+                                <div className="flex bg-secondary/50 p-1 rounded-lg">
+                                    <button 
+                                        onClick={() => setResearchDepth('general')}
+                                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${researchDepth === 'general' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                    >
+                                        کلیات
+                                    </button>
+                                    <button 
+                                        onClick={() => setResearchDepth('deep')}
+                                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${researchDepth === 'deep' ? 'bg-background text-purple-600 shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                    >
+                                        عمیق و تحلیلی
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-muted-foreground">حجم محتوا</label>
+                                <div className="flex bg-secondary/50 p-1 rounded-lg">
+                                    <button 
+                                        onClick={() => setResearchLength('brief')}
+                                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${researchLength === 'brief' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                    >
+                                        خلاصه
+                                    </button>
+                                    <button 
+                                        onClick={() => setResearchLength('standard')}
+                                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${researchLength === 'standard' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                    >
+                                        استاندارد
+                                    </button>
+                                    <button 
+                                        onClick={() => setResearchLength('comprehensive')}
+                                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${researchLength === 'comprehensive' ? 'bg-background text-purple-600 shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                    >
+                                        جامع
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                         <div className="mt-auto">
                             <button 
                                 onClick={() => {
-                                    actions.handleTopicStudy(topicInput);
+                                    actions.handleTopicStudy(topicInput, { depth: researchDepth, length: researchLength });
                                     setTopicInput('');
                                 }}
                                 disabled={!topicInput.trim()}
                                 className="w-full py-4 flex items-center justify-center gap-2 bg-secondary text-foreground border border-border font-bold rounded-xl hover:bg-purple-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
                             >
-                                <span>افزودن موضوع به لیست</span>
+                                <span>شروع تحقیق و افزودن به منابع</span>
                                 <ArrowRight className="w-5 h-5 rotate-180" />
                             </button>
                         </div>
@@ -544,7 +592,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                                     </div>
                                     <h3 className="text-2xl font-bold mb-3">کاوش موضوعی</h3>
                                     <p className="text-muted-foreground text-sm">
-                                        فقط یک موضوع وارد کنید (مثل "اقتصاد خرد" یا "تاریخ ایران") تا هوش مصنوعی برایتان سرفصل بسازد.
+                                        فقط یک موضوع وارد کنید (مثل "اقتصاد خرد") تا هوش مصنوعی برایتان محتوا تولید کند.
                                     </p>
                                     <div className="mt-6 inline-flex items-center gap-2 text-purple-600 font-bold text-sm">
                                         <span>شروع کاوش</span>
@@ -677,7 +725,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                         />
                          <div className="absolute bottom-20 md:bottom-8 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-md px-4">
                              <div className="bg-card/90 backdrop-blur border border-border p-4 rounded-xl shadow-2xl text-center">
-                                 <h3 className="font-bold text-lg mb-2">نقشه یادگیری شما آماده است</h3>
+                                 <h3 className="font-bold text-lg mb-2">نقشه یادگیری آماده است</h3>
                                  <p className="text-sm text-muted-foreground mb-4">این ساختار بر اساس محتوای شما طراحی شده است. برای شخصی‌سازی بیشتر، ابتدا یک پیش‌آزمون کوتاه می‌دهیم.</p>
                                  <button 
                                     onClick={() => dispatch({ type: 'CONFIRM_PLAN', payload: { mindMap: state.mindMap } })}

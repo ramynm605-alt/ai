@@ -128,17 +128,74 @@ export async function analyzeResourceContent(
     title: string,
     rawText: string | null,
     media: { mimeType: string, data: string } | null,
-    resourceType: 'file' | 'link' | 'text'
+    resourceType: 'file' | 'link' | 'text',
+    metadata?: any
 ): Promise<{ extractedText: string; validation: ResourceValidation }> {
     return withRetry(async () => {
         let prompt = "";
         let parts: any[] = [];
         let config: any = { responseMimeType: "application/json" };
         const isMedia = !!media;
+        const isTopicResearch = metadata?.isTopic;
 
-        if (resourceType === 'link') {
+        // Common instruction for JSON escaping
+        const jsonFormatInstruction = `
+        IMPORTANT: Output valid JSON inside a code block.
+        - Ensure all double quotes inside string values are properly escaped (\\").
+        - Ensure newlines in text are escaped as \\n.
+        - Do NOT break the JSON structure.
+        `;
+
+        if (isTopicResearch) {
+             // ** TOPIC RESEARCH MODE **
+             // User wants to learn about a topic. We perform deep research using Google Search.
+             config = {
+                 tools: [{ googleSearch: {} }]
+             };
+
+             const depth = metadata?.depth || 'general';
+             const length = metadata?.length || 'standard';
+
+             let lengthPrompt = "approx 800-1200 words";
+             if (length === 'brief') lengthPrompt = "approx 400-600 words, concise overview";
+             if (length === 'comprehensive') lengthPrompt = "approx 2000-3000 words, extremely detailed and exhaustive";
+
+             let depthPrompt = "Focus on: Definition, History, Core Concepts.";
+             if (depth === 'deep') depthPrompt = "Focus on: Advanced Concepts, Critical Analysis, Contradicting Theories, and In-depth Case Studies.";
+
+             prompt = `
+             You are a Comprehensive Research Assistant for an educational platform.
+             The user wants to study the topic: "${title.replace('موضوع: ', '')}".
+             
+             Research Settings:
+             - Depth: ${depth} (${depthPrompt})
+             - Length: ${length} (${lengthPrompt})
+             
+             Tasks:
+             1. Use Google Search to find high-quality, accurate information matching these settings.
+             2. "extractedText": Compile a well-structured educational article in Persian based on your research.
+                - Organize it with clear headings (Introduction, Main Concepts, Examples, Conclusion).
+                - Ensure the content length matches the request: ${lengthPrompt}.
+                - Ensure the depth matches the request: ${depthPrompt}.
+             3. "validation": Assess the research quality.
+             
+             ${jsonFormatInstruction}
+             
+             Example JSON:
+             \`\`\`json
+             {
+                "isValid": boolean,
+                "qualityScore": number (0-100),
+                "issues": string[],
+                "summary": "Short summary of what was found.",
+                "extractedText": "The FULL RESEARCHED ARTICLE content in Persian (Markdown)..."
+             }
+             \`\`\`
+             `;
+             parts = [{ text: prompt }];
+
+        } else if (resourceType === 'link') {
              // For links, we use Google Search to find the content.
-             // When using tools, we MUST NOT set responseMimeType.
              config = {
                  tools: [{ googleSearch: {} }]
              };
@@ -157,7 +214,9 @@ export async function analyzeResourceContent(
              4. "extractedText": Compile a detailed educational text (at least 500 words if possible) based on the search results.
              5. "validation": Assess quality.
              
-             IMPORTANT: Output valid JSON inside a code block like this:
+             ${jsonFormatInstruction}
+             
+             Output JSON:
              \`\`\`json
              {
                 "isValid": boolean,
@@ -181,6 +240,8 @@ export async function analyzeResourceContent(
                - If it's an audio lecture, transcribe the main points.
             2. Assess the quality (Is it legible/audible? Is it educational?).
             
+            ${jsonFormatInstruction}
+
             Output JSON:
             {
                "isValid": boolean,
@@ -205,6 +266,8 @@ export async function analyzeResourceContent(
              2. Assess if it is sufficient for generating a lesson plan.
              3. Clean up the text if it has minor formatting issues (return the cleaned version in extractedText).
              
+             ${jsonFormatInstruction}
+
              Text Preview:
              ${rawText ? rawText.substring(0, 5000) : "No text provided"}...
              
@@ -228,8 +291,8 @@ export async function analyzeResourceContent(
 
         let textToParse = response.text || '{}';
         
-        // Robust extraction for Link mode where JSON is not enforced by API
-        if (resourceType === 'link') {
+        // Robust extraction for Link/Topic mode where JSON is not enforced by API when tools are used
+        if (resourceType === 'link' || isTopicResearch) {
             const jsonMatch = textToParse.match(/```json\s*([\s\S]*?)\s*```/) || textToParse.match(/```\s*([\s\S]*?)\s*```/);
             if (jsonMatch) {
                 textToParse = jsonMatch[1];
@@ -240,16 +303,54 @@ export async function analyzeResourceContent(
 
         let result;
         try {
-            result = JSON.parse(textToParse);
+            // Sanitize potentially bad control characters that aren't whitespace
+            const sanitized = textToParse.replace(/[\u0000-\u001F]+/g, (match) => {
+                if (match === '\n' || match === '\r' || match === '\t') return match;
+                return '';
+            });
+            result = JSON.parse(sanitized);
         } catch (e) {
-            console.error("JSON Parse Error", e, textToParse);
-            // Fallback for malformed JSON
+            console.warn("JSON Parse Error (First Attempt):", e);
+            
+            // FALLBACK: Try to extract via Regex if standard parsing fails.
+            // This handles cases where the LLM didn't escape internal quotes properly.
+            let extractedContent = textToParse;
+            let summary = "محتوا دریافت شد اما فرمت آن کامل نیست.";
+            let issues = ["خطا در فرمت خروجی هوش مصنوعی (Recovered)"];
+
+            // Try to find extractedText specifically
+            // Matches "extractedText": " ... " and captures content. 
+            // Uses [\s\S]* to match across newlines, and relies on the last closing quote before the object end.
+            const contentMatch = textToParse.match(/"extractedText"\s*:\s*"([\s\S]*)"\s*}/);
+            
+            if (contentMatch && contentMatch[1]) {
+                // If regex worked, we assume the content is mostly valid but maybe has bad escapes
+                extractedContent = contentMatch[1]
+                    .replace(/\\"/g, '"')  // Simple unescape for display
+                    .replace(/\\n/g, '\n')
+                    .replace(/\\t/g, '\t');
+            } else {
+                // If even regex fails, try to just clean the wrapper
+                // Assume the whole response is the object
+                if (extractedContent.trim().startsWith('{')) {
+                    const startKey = '"extractedText":';
+                    const idx = extractedContent.indexOf(startKey);
+                    if (idx !== -1) {
+                        extractedContent = extractedContent.substring(idx + startKey.length);
+                        // Remove leading quote and whitespace
+                        extractedContent = extractedContent.replace(/^\s*"/, '');
+                        // Remove trailing quote and brace
+                        extractedContent = extractedContent.replace(/"\s*}\s*$/, '');
+                    }
+                }
+            }
+
             result = {
                 isValid: true,
-                qualityScore: 50,
-                issues: ["خطا در فرمت خروجی هوش مصنوعی"],
-                summary: "محتوا دریافت شد اما فرمت آن کامل نیست.",
-                extractedText: textToParse // Treat raw response as text if JSON fails
+                qualityScore: 60, // Lower score due to parse error
+                issues: issues,
+                summary: summary,
+                extractedText: extractedContent
             };
         }
         
