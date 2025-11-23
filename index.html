@@ -33,6 +33,7 @@
         text-rendering: optimizeLegibility;
         overscroll-behavior: none; /* Prevent pull-to-refresh effects */
         touch-action: pan-x pan-y;
+        -webkit-tap-highlight-color: transparent;
       }
       
       /* Safe Area Support for Notched Phones */
@@ -45,8 +46,8 @@
 
       /* Custom Scrollbar */
       ::-webkit-scrollbar {
-        width: 6px; /* Thinner on mobile */
-        height: 6px;
+        width: 4px; /* Thinner on mobile */
+        height: 4px;
       }
       ::-webkit-scrollbar-track {
         background: transparent;
@@ -54,9 +55,6 @@
       ::-webkit-scrollbar-thumb {
         background: rgb(var(--muted-foreground) / 0.3);
         border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: rgb(var(--muted-foreground) / 0.5);
       }
       
       /* Theme Variables */
@@ -146,7 +144,7 @@
       button, a, [role="button"], input[type="checkbox"], select {
         transition-property: color, background-color, border-color, box-shadow, transform, opacity;
         transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-        transition-duration: 300ms;
+        transition-duration: 200ms; /* Faster for mobile */
       }
       button:active, a:active, [role="button"]:active {
         transform: scale(0.96);
@@ -174,15 +172,9 @@
              border: 1px solid rgba(var(--border) / 0.4);
              box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
         }
-        .stylish-textarea-wrapper {
-            position: relative; background: rgba(var(--card) / 0.4);
-            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-            border-radius: 16px; border: 1px solid rgb(var(--border) / 0.6);
-            transition: all 0.3s;
-        }
       }
 
-      /* PERFORMANCE OPTIMIZATIONS FOR MOBILE */
+      /* PERFORMANCE OPTIMIZATIONS FOR MOBILE (Android Friendly) */
       @media (max-width: 768px) {
         /* Disable expensive blur filters on mobile */
         .glass, .glass-strong, .glass-panel, .stylish-textarea-wrapper {
@@ -190,33 +182,31 @@
           -webkit-backdrop-filter: none !important;
           background: rgb(var(--card)) !important; /* Solid color */
           border: 1px solid rgba(var(--border) / 0.8);
-          box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
-        }
-        .stylish-textarea-wrapper {
-             border-radius: 12px;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
         }
         
         /* Disable heavy shadows on mobile nodes */
         .mindmap-node .absolute {
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1) !important;
         }
 
         /* Simplify animations */
         .animate-slide-up, .fade-in, .animate-zoom-in {
-             animation-duration: 0.2s !important;
+             animation-duration: 0.25s !important;
         }
         
         /* Text rendering optimization */
         p, span, h1, h2, h3 {
             text-rendering: auto;
         }
+        
+        /* Remove selection highlight to feel more app-like */
+        .mindmap-node {
+            -webkit-user-select: none;
+            user-select: none;
+        }
       }
 
-      .stylish-textarea-wrapper:focus-within {
-        border-color: rgb(var(--primary));
-        box-shadow: 0 0 0 4px rgb(var(--primary) / 0.15);
-      }
-     
       /* Animations */
       @keyframes fadeIn {
         from { opacity: 0; transform: translateY(10px); }
@@ -235,47 +225,33 @@
         to { opacity: 1; transform: scale(1); }
       }
       
-      /* SMOOTHER Flow Animation for SVG Lines */
+      /* Flow Animation */
       @keyframes flow {
         from { stroke-dashoffset: 24; }
         to { stroke-dashoffset: 0; }
       }
       
       .fade-in { animation: fadeIn 0.6s ease-out forwards; }
-      .fade-out { animation: fadeOut 0.4s ease-in forwards; }
       .animate-slide-up { animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
       .animate-zoom-in { animation: zoomIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
       
       /* Markdown Styles */
       .markdown-content { line-height: 1.8; overflow-wrap: break-word; }
       .markdown-content p { margin-bottom: 0.75em; }
-      .markdown-content p:last-child { margin-bottom: 0; }
-      .markdown-content h1, .markdown-content h2, .markdown-content h3, .markdown-content h4 {
+      .markdown-content h1, .markdown-content h2, .markdown-content h3 {
           font-weight: 700; margin-top: 1.2em; margin-bottom: 0.5em;
-          color: rgb(var(--foreground)); line-height: 1.3;
+          color: rgb(var(--foreground));
       }
-      .markdown-content h1 { font-size: 1.5em; }
-      .markdown-content h2 { font-size: 1.25em; border-bottom: 1px solid rgb(var(--border) / 0.5); padding-bottom: 0.3em; }
-      .markdown-content h3 { font-size: 1.1em; }
       .markdown-content ul, .markdown-content ol { padding-right: 1.5em; margin-bottom: 1em; }
       .markdown-content ul { list-style-type: disc; }
-      .markdown-content ol { list-style-type: decimal; }
-      .markdown-content li { margin-bottom: 0.4em; }
       .markdown-content blockquote {
         border-right: 4px solid rgb(var(--primary)); margin: 1em 0; padding: 0.8em 1.2em;
         background-color: rgb(var(--primary) / 0.05); border-radius: 8px;
-        color: rgb(var(--muted-foreground)); font-style: italic;
       }
       .markdown-content code {
         background-color: rgb(var(--muted) / 0.5); padding: 0.2em 0.4em;
         border-radius: 6px; font-family: monospace; font-size: 0.9em;
       }
-      .markdown-content pre {
-        background-color: rgb(var(--card)); border: 1px solid rgb(var(--border));
-        padding: 1.2em; border-radius: 12px; overflow-x: auto; margin: 1.5em 0;
-        direction: ltr; text-align: left; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
-      }
-      .markdown-content strong { color: rgb(var(--primary)); font-weight: 700; }
 
       /* Mind Map Animations */
       .mindmap-node {
@@ -303,9 +279,9 @@
         transition: stroke 0.4s ease, stroke-width 0.4s ease, opacity 0.4s;
       }
       .mindmap-line-flow {
-         stroke-dasharray: 12 12; /* Larger gaps for clearer movement */
+         stroke-dasharray: 12 12; 
          stroke-dashoffset: 0;
-         animation: flow 1.5s linear infinite; /* Smooth linear loop */
+         animation: flow 1.5s linear infinite; 
          stroke-linecap: round;
       }
     </style>
