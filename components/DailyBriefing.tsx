@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Flame, Target, ArrowRight, CheckCircle } from './icons';
+import { Flame, Target, ArrowRight, CheckCircle, ClipboardList } from './icons';
 import { MindMapNode } from '../types';
 
 interface DailyBriefingProps {
@@ -9,9 +9,11 @@ interface DailyBriefingProps {
     nextNode: MindMapNode | null;
     onContinue: () => void;
     onDismiss: () => void;
+    dueFlashcardsCount?: number; // New
+    onStartReview?: () => void; // New
 }
 
-const DailyBriefing: React.FC<DailyBriefingProps> = ({ streak, challengeContent, nextNode, onContinue, onDismiss }) => {
+const DailyBriefing: React.FC<DailyBriefingProps> = ({ streak, challengeContent, nextNode, onContinue, onDismiss, dueFlashcardsCount = 0, onStartReview }) => {
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 fade-in">
             <div className="w-full max-w-lg overflow-hidden border shadow-2xl bg-card rounded-2xl border-border">
@@ -28,6 +30,26 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({ streak, challengeContent,
 
                 {/* Content */}
                 <div className="p-6 space-y-6">
+                    
+                    {/* Flashcards Due (Priority) */}
+                    {dueFlashcardsCount > 0 && onStartReview && (
+                        <div className="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-between">
+                            <div>
+                                <div className="flex items-center gap-2 text-yellow-600 font-bold mb-1">
+                                    <ClipboardList className="w-5 h-5" />
+                                    <span>مرور روزانه</span>
+                                </div>
+                                <p className="text-xs text-yellow-600/80">{dueFlashcardsCount} کارت برای مرور دارید.</p>
+                            </div>
+                            <button 
+                                onClick={onStartReview}
+                                className="px-4 py-2 bg-yellow-500 text-white text-sm font-bold rounded-lg hover:bg-yellow-600 transition-colors shadow-sm active:scale-95"
+                            >
+                                شروع مرور
+                            </button>
+                        </div>
+                    )}
+
                     {/* Daily Challenge Card */}
                     {challengeContent && (
                         <div className="p-4 border-l-4 rounded-r-lg bg-secondary/50 border-primary">

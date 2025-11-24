@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAppActions } from '../hooks/useAppActions';
 import { AppStatus, LearningResource } from '../types';
-import { FileText, Wand, FileQuestion, Shuffle, BrainCircuit, Upload, ArrowRight, ArrowLeft, Sparkles, Target, MessageSquare, XCircle, FileAudio, Youtube, Link, Globe, Music, Trash, CheckCircle, Info, Edit, Save } from './icons';
+import { FileText, Wand, FileQuestion, Shuffle, BrainCircuit, Upload, ArrowRight, ArrowLeft, Sparkles, Target, MessageSquare, XCircle, FileAudio, Youtube, Link, Globe, Music, Trash, CheckCircle, Info, Edit, Save, SlidersHorizontal } from './icons';
 import BoxLoader from './ui/box-loader';
 import MindMap from './MindMap';
 import NodeView from './NodeView';
@@ -31,20 +31,28 @@ interface MainContentProps {
     actions: ReturnType<typeof useAppActions>;
 }
 
-type InputTab = 'explore' | 'upload' | 'link' | 'text';
+type InputTab = 'explore' | 'upload' | 'text' | 'link';
 type ViewMode = 'landing' | 'action';
 
 const MainContent: React.FC<MainContentProps> = ({ actions }) => {
     const { state, dispatch } = useApp();
     const [textInput, setTextInput] = useState('');
     const [topicInput, setTopicInput] = useState('');
-    const [urlInput, setUrlInput] = useState('');
+    const [linkInput, setLinkInput] = useState('');
     const [activeTab, setActiveTab] = useState<InputTab>('upload');
     const [viewMode, setViewMode] = useState<ViewMode>('landing');
+    const [globalInstructions, setGlobalInstructions] = useState('');
+    
+    // Research Customization State
+    const [researchDepth, setResearchDepth] = useState<'general' | 'deep'>('deep');
+    const [researchLength, setResearchLength] = useState<'brief' | 'standard' | 'comprehensive'>('standard');
     
     // Resource Review Modal State
     const [reviewResource, setReviewResource] = useState<LearningResource | null>(null);
     const [editedContent, setEditedContent] = useState('');
+    
+    // Toggle instruction input per resource
+    const [expandedInstructionId, setExpandedInstructionId] = useState<string | null>(null);
     
     const fileInputRef = useRef<HTMLInputElement>(null);
     const hasStartedGeneration = useRef(false);
@@ -60,9 +68,6 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
     };
 
     const handleBackToLanding = () => {
-        if (state.resources.length > 0) {
-             // Maybe warn user or just go back? For now just go back.
-        }
         setViewMode('landing');
     };
 
@@ -111,53 +116,94 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                 </div>
                 <div className="space-y-3">
                     {state.resources.map((res, idx) => (
-                        <div 
-                            key={res.id} 
-                            onClick={() => handleOpenReview(res)}
-                            className={`flex items-center justify-between p-3 border rounded-xl transition-all cursor-pointer ${res.isProcessing ? 'bg-secondary/10 border-border opacity-70' : 'bg-secondary/30 border-border hover:border-primary/50 hover:bg-secondary/50'}`}
-                        >
-                            <div className="flex items-center gap-3 overflow-hidden">
-                                <div className="w-10 h-10 rounded-full bg-background flex items-center justify-center text-muted-foreground shrink-0 border border-border relative">
-                                    {res.isProcessing ? (
-                                        <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                                    ) : (
-                                        <>
-                                            {res.type === 'file' ? <FileText className="w-5 h-5" /> : 
-                                             res.type === 'link' ? <Link className="w-5 h-5" /> : 
-                                             <FileQuestion className="w-5 h-5" />}
-                                             
-                                             {/* Validation Badge */}
-                                             {res.validation && (
-                                                <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-background ${res.validation.isValid ? 'bg-success' : 'bg-orange-500'}`} />
-                                             )}
-                                        </>
-                                    )}
+                        <div key={res.id} className={`border rounded-xl transition-all ${res.isProcessing ? 'bg-secondary/10 border-border opacity-70' : 'bg-secondary/30 border-border hover:border-primary/30'}`}>
+                            <div 
+                                onClick={() => handleOpenReview(res)}
+                                className="flex items-center justify-between p-3 cursor-pointer"
+                            >
+                                <div className="flex items-center gap-3 overflow-hidden">
+                                    <div className="w-10 h-10 rounded-full bg-background flex items-center justify-center text-muted-foreground shrink-0 border border-border relative">
+                                        {res.isProcessing ? (
+                                            <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                                        ) : (
+                                            <>
+                                                {res.type === 'file' ? <FileText className="w-5 h-5" /> : 
+                                                 res.type === 'link' ? <Link className="w-5 h-5" /> :
+                                                 <FileQuestion className="w-5 h-5" />}
+                                                 
+                                                 {/* Validation Badge */}
+                                                 {res.validation && (
+                                                    <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-background ${res.validation.isValid ? 'bg-success' : 'bg-orange-500'}`} />
+                                                 )}
+                                            </>
+                                        )}
+                                    </div>
+                                    <div className="overflow-hidden text-right">
+                                        <span className="text-sm font-medium truncate block">{res.title}</span>
+                                        {!res.isProcessing && res.validation && (
+                                            <span className={`text-[10px] ${res.validation.isValid ? 'text-success' : 'text-orange-500'}`}>
+                                                {res.validation.isValid ? 'تایید شده' : 'نیاز به بررسی'} • {res.validation.qualityScore}% کیفیت
+                                            </span>
+                                        )}
+                                         {res.isProcessing && <span className="text-[10px] text-muted-foreground animate-pulse">در حال تحلیل هوشمند...</span>}
+                                    </div>
                                 </div>
-                                <div className="overflow-hidden text-right">
-                                    <span className="text-sm font-medium truncate block">{res.title}</span>
-                                    {!res.isProcessing && res.validation && (
-                                        <span className={`text-[10px] ${res.validation.isValid ? 'text-success' : 'text-orange-500'}`}>
-                                            {res.validation.isValid ? 'تایید شده' : 'نیاز به بررسی'} • {res.validation.qualityScore}% کیفیت
-                                        </span>
-                                    )}
-                                     {res.isProcessing && <span className="text-[10px] text-muted-foreground animate-pulse">در حال تحلیل هوشمند...</span>}
+                                <div className="flex items-center gap-1">
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setExpandedInstructionId(expandedInstructionId === res.id ? null : res.id);
+                                        }}
+                                        className={`p-2 rounded-lg transition-colors ${expandedInstructionId === res.id || res.instructions ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:bg-secondary'}`}
+                                        title="افزودن دستورالعمل خاص"
+                                    >
+                                        <Edit className="w-4 h-4" />
+                                    </button>
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            actions.handleRemoveResource(res.id);
+                                        }}
+                                        className="p-2 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-lg transition-colors"
+                                    >
+                                        <Trash className="w-4 h-4" />
+                                    </button>
                                 </div>
                             </div>
-                            <button 
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    actions.handleRemoveResource(res.id);
-                                }}
-                                className="p-2 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-lg transition-colors"
-                            >
-                                <Trash className="w-4 h-4" />
-                            </button>
+                            
+                            {/* Inline Instruction Input */}
+                            {(expandedInstructionId === res.id || (res.instructions && res.instructions.length > 0)) && (
+                                <div className="px-3 pb-3 animate-slide-up">
+                                    <div className="flex items-center gap-2 bg-background border border-border rounded-lg p-2 focus-within:ring-1 focus-within:ring-primary">
+                                        <SlidersHorizontal className="w-4 h-4 text-muted-foreground shrink-0" />
+                                        <input 
+                                            type="text" 
+                                            placeholder="دستورالعمل خاص برای این منبع (مثلاً: فقط فصل ۲ را بخوان)"
+                                            className="flex-grow bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none"
+                                            value={res.instructions || ''}
+                                            onChange={(e) => actions.handleUpdateResourceInstructions(res.id, e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     ))}
                 </div>
+
+                {/* Global Instructions */}
+                <div className="mt-6">
+                    <label className="block text-xs font-bold text-muted-foreground mb-2">دستورالعمل کلی برای ترکیب منابع (اختیاری)</label>
+                    <textarea 
+                        className="w-full p-3 rounded-xl bg-secondary/30 border border-border text-sm resize-none focus:ring-2 focus:ring-primary focus:border-transparent h-24 placeholder:text-muted-foreground/50"
+                        placeholder="مثلاً: لطفاً تعاریف را از منبع اول بردار و مثال‌ها را از منبع دوم..."
+                        value={globalInstructions}
+                        onChange={(e) => setGlobalInstructions(e.target.value)}
+                    />
+                </div>
+
                 <div className="mt-6">
                      <button 
-                        onClick={actions.handleFinalizeResources}
+                        onClick={() => actions.handleFinalizeResources(globalInstructions)}
                         disabled={state.resources.some(r => r.isProcessing)}
                         className="w-full py-4 bg-gradient-to-r from-primary to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none"
                     >
@@ -182,7 +228,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                          <div className="flex items-center gap-3 overflow-hidden">
                              <div className="w-10 h-10 rounded-lg bg-background flex items-center justify-center border border-border shrink-0">
                                 {reviewResource.type === 'file' ? <FileText className="w-6 h-6 text-primary" /> : 
-                                 reviewResource.type === 'link' ? <Link className="w-6 h-6 text-primary" /> : 
+                                 reviewResource.type === 'link' ? <Link className="w-6 h-6 text-primary" /> :
                                  <FileQuestion className="w-6 h-6 text-primary" />}
                              </div>
                              <div>
@@ -282,7 +328,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-lg text-foreground">کاوش موضوعی</h3>
-                                    <p className="text-xs text-muted-foreground">اضافه کردن موضوع به لیست منابع</p>
+                                    <p className="text-xs text-muted-foreground">تحقیق هوشمند و تولید محتوا توسط AI</p>
                                 </div>
                              </div>
                              <button 
@@ -294,7 +340,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                             </button>
                         </div>
                         
-                        <div className="relative mb-8">
+                        <div className="relative mb-6">
                             <input 
                                 type="text"
                                 className="w-full px-4 py-4 pr-12 text-lg bg-background border-2 border-border rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all placeholder:text-muted-foreground/50"
@@ -303,7 +349,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                                 onChange={(e) => setTopicInput(e.target.value)}
                                 onKeyPress={(e) => {
                                     if(e.key === 'Enter' && topicInput.trim()) {
-                                        actions.handleTopicStudy(topicInput);
+                                        actions.handleTopicStudy(topicInput, { depth: researchDepth, length: researchLength });
                                         setTopicInput('');
                                     }
                                 }}
@@ -313,16 +359,60 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                             </div>
                         </div>
 
+                        {/* Research Settings */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-muted-foreground">عمق تحقیق</label>
+                                <div className="flex bg-secondary/50 p-1 rounded-lg">
+                                    <button 
+                                        onClick={() => setResearchDepth('general')}
+                                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${researchDepth === 'general' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                    >
+                                        کلیات
+                                    </button>
+                                    <button 
+                                        onClick={() => setResearchDepth('deep')}
+                                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${researchDepth === 'deep' ? 'bg-background text-purple-600 shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                    >
+                                        عمیق و تحلیلی
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-muted-foreground">حجم محتوا</label>
+                                <div className="flex bg-secondary/50 p-1 rounded-lg">
+                                    <button 
+                                        onClick={() => setResearchLength('brief')}
+                                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${researchLength === 'brief' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                    >
+                                        خلاصه
+                                    </button>
+                                    <button 
+                                        onClick={() => setResearchLength('standard')}
+                                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${researchLength === 'standard' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                    >
+                                        استاندارد
+                                    </button>
+                                    <button 
+                                        onClick={() => setResearchLength('comprehensive')}
+                                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${researchLength === 'comprehensive' ? 'bg-background text-purple-600 shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                    >
+                                        جامع
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                         <div className="mt-auto">
                             <button 
                                 onClick={() => {
-                                    actions.handleTopicStudy(topicInput);
+                                    actions.handleTopicStudy(topicInput, { depth: researchDepth, length: researchLength });
                                     setTopicInput('');
                                 }}
                                 disabled={!topicInput.trim()}
                                 className="w-full py-4 flex items-center justify-center gap-2 bg-secondary text-foreground border border-border font-bold rounded-xl hover:bg-purple-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
                             >
-                                <span>افزودن موضوع به لیست</span>
+                                <span>شروع تحقیق و افزودن به منابع</span>
                                 <ArrowRight className="w-5 h-5 rotate-180" />
                             </button>
                         </div>
@@ -365,48 +455,6 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                     </div>
                 );
 
-            case 'link':
-                return (
-                     <div className="bg-card rounded-2xl p-6 border border-border shadow-sm flex flex-col animate-fade-in">
-                        <div className="flex items-center gap-3 mb-6">
-                             <div className="p-2 bg-red-500/10 rounded-lg text-red-600">
-                                <Youtube className="w-6 h-6" />
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-lg text-foreground">لینک و یوتیوب</h3>
-                                <p className="text-xs text-muted-foreground">تحلیل محتوای ویدیو یا وبسایت</p>
-                            </div>
-                        </div>
-
-                        <div className="relative mb-8">
-                            <input 
-                                type="text"
-                                className="w-full px-4 py-4 pr-12 text-lg bg-background border-2 border-border rounded-xl focus:border-red-500 focus:ring-4 focus:ring-red-500/10 transition-all placeholder:text-muted-foreground/50 text-left ltr"
-                                placeholder="https://youtube.com/..."
-                                value={urlInput}
-                                onChange={(e) => setUrlInput(e.target.value)}
-                            />
-                            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground">
-                                <Link className="w-6 h-6" />
-                            </div>
-                        </div>
-
-                        <div className="mt-auto">
-                            <button 
-                                onClick={() => {
-                                    actions.handleUrlInput(urlInput);
-                                    setUrlInput('');
-                                }}
-                                disabled={urlInput.length < 5}
-                                className="w-full py-4 flex items-center justify-center gap-2 bg-secondary text-foreground border border-border font-bold rounded-xl hover:bg-red-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
-                            >
-                                <span>افزودن لینک</span>
-                                <ArrowRight className="w-5 h-5 rotate-180" />
-                            </button>
-                        </div>
-                    </div>
-                );
-
             case 'text':
                 return (
                      <div className="bg-card rounded-2xl p-6 border border-border shadow-sm flex flex-col animate-fade-in">
@@ -434,6 +482,50 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                                 className="w-full py-4 flex items-center justify-center gap-2 bg-secondary text-foreground border border-border font-bold rounded-xl hover:bg-blue-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
                             >
                                 <span>افزودن متن</span>
+                                <ArrowRight className="w-5 h-5 rotate-180" />
+                            </button>
+                        </div>
+                    </div>
+                );
+            
+            case 'link':
+                return (
+                    <div className="bg-card rounded-2xl p-6 border border-border shadow-sm flex flex-col animate-fade-in">
+                        <div className="flex items-center gap-3 mb-4">
+                             <div className="p-2 bg-teal-500/10 rounded-lg text-teal-600">
+                                <Globe className="w-6 h-6" />
+                            </div>
+                            <h3 className="font-bold text-lg text-foreground">لینک وب‌سایت</h3>
+                        </div>
+                        
+                        <p className="text-sm text-muted-foreground mb-4">
+                            لینک مقاله یا صفحه وب مورد نظر خود را وارد کنید تا هوش مصنوعی محتوای آن را استخراج کند.
+                        </p>
+
+                        <div className="relative mb-6 flex-grow">
+                            <input 
+                                type="url"
+                                className="w-full px-4 py-4 pr-12 text-lg bg-background border-2 border-border rounded-xl focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 transition-all placeholder:text-muted-foreground/50 text-left ltr"
+                                placeholder="https://example.com/article..."
+                                value={linkInput}
+                                onChange={(e) => setLinkInput(e.target.value)}
+                                style={{ direction: 'ltr' }}
+                            />
+                            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground">
+                                <Link className="w-6 h-6" />
+                            </div>
+                        </div>
+
+                        <div className="mt-auto">
+                            <button 
+                                onClick={() => {
+                                    actions.handleUrlInput(linkInput);
+                                    setLinkInput('');
+                                }}
+                                disabled={linkInput.length < 5}
+                                className="w-full py-4 flex items-center justify-center gap-2 bg-secondary text-foreground border border-border font-bold rounded-xl hover:bg-teal-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                            >
+                                <span>افزودن لینک</span>
                                 <ArrowRight className="w-5 h-5 rotate-180" />
                             </button>
                         </div>
@@ -481,7 +573,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                                     </div>
                                     <h3 className="text-2xl font-bold mb-3">بارگذاری منابع</h3>
                                     <p className="text-muted-foreground text-sm">
-                                        ترکیب چندین منبع (تا ۵ عدد) از فایل‌های PDF، صوتی، ویدیو یوتیوب یا متن برای دقت بالاتر.
+                                        ترکیب چندین منبع (تا ۵ عدد) از فایل‌های PDF، صوتی یا متن برای دقت بالاتر.
                                     </p>
                                     <div className="mt-6 inline-flex items-center gap-2 text-primary font-bold text-sm">
                                         <span>مدیریت منابع</span>
@@ -500,7 +592,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                                     </div>
                                     <h3 className="text-2xl font-bold mb-3">کاوش موضوعی</h3>
                                     <p className="text-muted-foreground text-sm">
-                                        فقط یک موضوع وارد کنید (مثل "اقتصاد خرد" یا "تاریخ ایران") تا هوش مصنوعی برایتان سرفصل بسازد.
+                                        فقط یک موضوع وارد کنید (مثل "اقتصاد خرد") تا هوش مصنوعی برایتان محتوا تولید کند.
                                     </p>
                                     <div className="mt-6 inline-flex items-center gap-2 text-purple-600 font-bold text-sm">
                                         <span>شروع کاوش</span>
@@ -539,12 +631,12 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                                     <Upload className="w-5 h-5" />
                                     <span>آپلود فایل</span>
                                 </button>
-                                 <button 
+                                <button 
                                     onClick={() => setActiveTab('link')}
                                     className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 min-w-[100px] rounded-xl text-sm font-bold transition-all duration-300 ${activeTab === 'link' ? 'bg-background text-foreground shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
                                 >
-                                    <Globe className="w-5 h-5" />
-                                    <span>لینک</span>
+                                    <Link className="w-5 h-5" />
+                                    <span>لینک وب</span>
                                 </button>
                                  <button 
                                     onClick={() => setActiveTab('text')}
@@ -633,7 +725,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                         />
                          <div className="absolute bottom-20 md:bottom-8 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-md px-4">
                              <div className="bg-card/90 backdrop-blur border border-border p-4 rounded-xl shadow-2xl text-center">
-                                 <h3 className="font-bold text-lg mb-2">نقشه یادگیری شما آماده است</h3>
+                                 <h3 className="font-bold text-lg mb-2">نقشه یادگیری آماده است</h3>
                                  <p className="text-sm text-muted-foreground mb-4">این ساختار بر اساس محتوای شما طراحی شده است. برای شخصی‌سازی بیشتر، ابتدا یک پیش‌آزمون کوتاه می‌دهیم.</p>
                                  <button 
                                     onClick={() => dispatch({ type: 'CONFIRM_PLAN', payload: { mindMap: state.mindMap } })}

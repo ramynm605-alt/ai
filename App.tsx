@@ -2,9 +2,9 @@
 import React, { useState, useCallback, useEffect, Suspense } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { useAppActions } from './hooks/useAppActions';
-import { AppStatus, UserProfile } from './types';
+import { AppStatus, UserProfile, Flashcard } from './types';
 import { FirebaseService } from './services/firebaseService';
-import { Home, MessageSquare, Mic, User, SlidersHorizontal, ChevronLeft, ChevronRight, Brain, Save, Upload, CheckCircle, XCircle, Play, ArrowRight } from './components/icons';
+import { Home, MessageSquare, Mic, User, SlidersHorizontal, ChevronLeft, ChevronRight, Brain, Save, Upload, CheckCircle, XCircle, Play, ArrowRight, ClipboardList } from './components/icons';
 import BoxLoader from './components/ui/box-loader';
 import StartupScreen from './components/StartupScreen';
 import ParticleBackground from './components/ParticleBackground';
@@ -22,6 +22,8 @@ const UserPanel = React.lazy(() => import('./components/UserPanel'));
 const DebugPanel = React.lazy(() => import('./components/DebugPanel'));
 const PodcastCreator = React.lazy(() => import('./components/PodcastCreator'));
 const PodcastPlayer = React.lazy(() => import('./components/PodcastPlayer'));
+const FeynmanMode = React.lazy(() => import('./components/FeynmanMode'));
+const FlashcardReview = React.lazy(() => import('./components/FlashcardReview'));
 
 const NotificationToast = ({ message, type = 'success', onClose }: { message: string, type?: 'success' | 'error', onClose: () => void }) => {
     useEffect(() => {
@@ -118,6 +120,11 @@ const AppLayout = () => {
         dispatch({ type: 'SET_THEME', payload: newTheme });
     };
 
+    const getDueFlashcards = () => {
+        const now = new Date();
+        return state.flashcards.filter(c => new Date(c.nextReviewDate) <= now);
+    };
+
     const links = [
         {
             label: "خانه",
@@ -147,6 +154,18 @@ const AppLayout = () => {
                  } else {
                      actions.togglePodcastMode(); 
                  }
+            }
+        },
+        {
+            label: "مرور (لایتنر)",
+            href: "#",
+            icon: <div className="relative"><ClipboardList className="text-foreground h-5 w-5 flex-shrink-0" />{getDueFlashcards().length > 0 && <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></span>}</div>,
+            onClick: () => {
+                if (getDueFlashcards().length === 0) {
+                    showNotification('فعلاً کارتی برای مرور ندارید. آفرین!', 'success');
+                } else {
+                    actions.startFlashcardReview();
+                }
             }
         },
         {
@@ -204,6 +223,26 @@ const AppLayout = () => {
                         nextNode={state.mindMap.find(n => state.userProgress[n.id]?.status !== 'completed' && !n.locked) || null}
                         onContinue={() => dispatch({ type: 'DISMISS_BRIEFING' })}
                         onDismiss={() => dispatch({ type: 'DISMISS_BRIEFING' })}
+                        dueFlashcardsCount={getDueFlashcards().length}
+                        onStartReview={() => { dispatch({ type: 'DISMISS_BRIEFING' }); actions.startFlashcardReview(); }}
+                    />
+                )}
+
+                {/* FEYNMAN CHALLENGE MODE UI */}
+                {state.status === AppStatus.FEYNMAN_CHALLENGE && state.feynmanState && (
+                    <FeynmanMode 
+                        state={state.feynmanState}
+                        onSubmit={actions.submitFeynmanExplanation}
+                        onClose={() => dispatch({ type: 'CLOSE_FEYNMAN' })}
+                    />
+                )}
+
+                {/* SRS FLASHCARD REVIEW UI */}
+                {state.status === AppStatus.REVIEWING_FLASHCARDS && (
+                    <FlashcardReview 
+                        cards={getDueFlashcards()} 
+                        onGrade={actions.handleReviewFlashcard} 
+                        onFinish={actions.exitFlashcardReview}
                     />
                 )}
 

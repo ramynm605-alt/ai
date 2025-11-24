@@ -1,6 +1,7 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { MindMapNode, NodeContent, Reward } from '../types';
-import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle, BrainCircuit, Edit, Shuffle, Target, CheckCircle, ArrowLeft } from './icons';
+import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle, BrainCircuit, Edit, Shuffle, Target, CheckCircle, ArrowLeft, ClipboardList } from './icons';
 import { evaluateNodeInteraction } from '../services/geminiService';
 import BoxLoader from './ui/box-loader';
 
@@ -17,6 +18,7 @@ interface NodeViewProps {
     onCompleteIntro?: () => void;
     unlockedReward?: Reward;
     isStreaming?: boolean;
+    onGenerateFlashcards?: () => void; // New Prop
 }
 
 const HeroLoader: React.FC<{ text?: string }> = ({ text = "در حال طراحی درس برای شما..." }) => (
@@ -47,7 +49,7 @@ const Section: React.FC<{ title: string; content: string; delay: number }> = ({ 
     </div>
 );
 
-const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz, onNavigate, prevNode, nextNode, onExplainRequest, isIntroNode, onCompleteIntro, unlockedReward, isStreaming }) => {
+const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz, onNavigate, prevNode, nextNode, onExplainRequest, isIntroNode, onCompleteIntro, unlockedReward, isStreaming, onGenerateFlashcards }) => {
     const [selectionPopup, setSelectionPopup] = useState<{ x: number; y: number; text: string } | null>(null);
     const [reminderPopup, setReminderPopup] = useState<{ x: number; y: number; content: string } | null>(null);
     const [activeTab, setActiveTab] = useState<'content' | 'reward'>('content');
@@ -151,6 +153,17 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                      )}
 
                     <div className="flex items-center gap-2 md:gap-3 shrink-0">
+                        {onGenerateFlashcards && !isIntroNode && activeTab === 'content' && !isStreaming && (
+                            <button 
+                                onClick={onGenerateFlashcards}
+                                className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 transition-colors border border-yellow-500/20"
+                                title="ساخت فلش‌کارت مرور"
+                            >
+                                <ClipboardList className="w-4 h-4" />
+                                <span>مرور</span>
+                            </button>
+                        )}
+
                         {unlockedReward && (
                             <div className="flex items-center p-1 space-x-1 space-x-reverse rounded-lg bg-secondary/80 border border-border">
                                 <button onClick={() => setActiveTab('content')} className={`px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-bold rounded-md transition-all ${activeTab === 'content' ? 'bg-background shadow text-primary' : 'text-muted-foreground'}`}>درس</button>
@@ -200,7 +213,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                              {(content.example || (isStreaming && content.theory)) && (<div className="min-h-[100px]">{content.example && <Section title="مثال کاربردی" content={content.example} delay={200} />}</div>)}
                              {(content.connection || (isStreaming && content.example)) && (<div className="min-h-[100px]">{content.connection && <Section title="ارتباط با سایر مفاهیم" content={content.connection} delay={300} />}</div>)}
                              
-                             {/* Interactive Task Section (NEW) */}
+                             {/* Interactive Task Section */}
                              {(content.interactiveTask || (isStreaming && content.connection)) && (
                                 <div className="min-h-[100px] animate-slide-up" style={{ animationDelay: '400ms' }}>
                                      {content.interactiveTask ? (
@@ -259,13 +272,24 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                     )
                 ) : (
                     <div className="bg-purple-50/50 dark:bg-purple-900/10 p-6 md:p-8 rounded-3xl border border-purple-100 dark:border-purple-800 animate-slide-up shadow-xl">
-                        {/* Reward content logic same as before */}
                          <div className="node-content-section markdown-content leading-loose text-base md:text-lg text-card-foreground/90" dangerouslySetInnerHTML={{ __html: unlockedReward?.content || '' }} />
                     </div>
                 )}
                 
                 {activeTab === 'content' && !isStreaming && content.conclusion && (
                     <div className="w-full mt-8 md:mt-12 p-4 md:p-6 bg-card/50 border border-border/50 rounded-2xl animate-slide-up" style={{ animationDelay: '600ms' }}>
+                        
+                        {/* Mobile Flashcard Button */}
+                        {onGenerateFlashcards && !isIntroNode && (
+                            <button 
+                                onClick={onGenerateFlashcards}
+                                className="sm:hidden w-full flex items-center justify-center gap-2 mb-4 py-3 text-yellow-600 bg-yellow-500/10 border border-yellow-500/20 rounded-xl font-bold"
+                            >
+                                <ClipboardList className="w-5 h-5" />
+                                <span>افزودن کارت مرور برای این درس</span>
+                            </button>
+                        )}
+
                         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 md:gap-4">
                             {isIntroNode ? (
                                     <button onClick={() => onCompleteIntro ? onCompleteIntro() : onBack()} className="w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 font-bold text-white text-lg transition-all duration-300 rounded-2xl bg-gradient-to-r from-primary to-indigo-600 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-95">
