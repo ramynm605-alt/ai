@@ -1,10 +1,11 @@
 
+
 import React, { useState, useCallback, useEffect, Suspense, useRef } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { useAppActions } from './hooks/useAppActions';
 import { AppStatus, UserProfile, Flashcard } from './types';
 import { FirebaseService } from './services/firebaseService';
-import { Home, MessageSquare, Mic, User, SlidersHorizontal, ChevronLeft, ChevronRight, Brain, Save, Upload, CheckCircle, XCircle, Play, ArrowRight, ClipboardList, BrainCircuit, Sparkles } from './components/icons';
+import { Home, Bot, Headphones, User, SlidersHorizontal, ChevronLeft, ChevronRight, Brain, Save, Upload, CheckCircle, XCircle, Play, ArrowRight, Layers, BrainCircuit, Sparkles } from './components/icons';
 import BoxLoader from './components/ui/box-loader';
 import StartupScreen from './components/StartupScreen';
 import ParticleBackground from './components/ParticleBackground';
@@ -263,13 +264,13 @@ const AppLayout = () => {
         {
             label: "مربی هوشمند",
             href: "#",
-            icon: <MessageSquare className="text-foreground h-5 w-5 flex-shrink-0" />,
+            icon: <Bot className="text-foreground h-5 w-5 flex-shrink-0" />,
             onClick: () => dispatch({ type: 'TOGGLE_CHAT' })
         },
         {
             label: "ساخت پادکست",
             href: "#",
-            icon: <Mic className="text-foreground h-5 w-5 flex-shrink-0" />,
+            icon: <Headphones className="text-foreground h-5 w-5 flex-shrink-0" />,
             onClick: () => {
                  if (state.status !== AppStatus.LEARNING && state.status !== AppStatus.VIEWING_NODE) {
                      showNotification('لطفاً ابتدا وارد مسیر یادگیری شوید.', 'error');
@@ -281,7 +282,7 @@ const AppLayout = () => {
         {
             label: "مرور (لایتنر)",
             href: "#",
-            icon: <div className="relative"><ClipboardList className="text-foreground h-5 w-5 flex-shrink-0" />{getDueFlashcards().length > 0 && <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></span>}</div>,
+            icon: <div className="relative"><Layers className="text-foreground h-5 w-5 flex-shrink-0" />{getDueFlashcards().length > 0 && <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></span>}</div>,
             onClick: () => {
                 if (getDueFlashcards().length === 0) {
                     showNotification('فعلاً کارتی برای مرور ندارید. آفرین!', 'success');
@@ -395,7 +396,7 @@ const AppLayout = () => {
                                  <div className="glass-panel p-4 rounded-2xl flex items-center justify-between shadow-2xl border border-primary/20 bg-background/80 backdrop-blur-md">
                                       <div className="flex items-center gap-3">
                                           <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center text-primary animate-pulse">
-                                              <Mic className="w-5 h-5" />
+                                              <Headphones className="w-5 h-5" />
                                           </div>
                                           <div>
                                               <p className="text-sm font-bold">انتخاب محتوای پادکست</p>

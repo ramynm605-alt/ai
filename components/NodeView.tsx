@@ -1,7 +1,8 @@
 
+
 import React, { useState, useRef, useEffect } from 'react';
 import { MindMapNode, NodeContent, Reward } from '../types';
-import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle, BrainCircuit, Edit, Shuffle, Target, CheckCircle, ArrowLeft, ClipboardList, Mic, Flame, Gamepad } from './icons';
+import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle, BrainCircuit, Edit, Shuffle, Target, CheckCircle, ArrowLeft, ClipboardList, Mic, Flame, Gamepad, GraduationCap } from './icons';
 import { evaluateNodeInteraction } from '../services/geminiService';
 import WaveLoader from './ui/wave-loader';
 import BoxLoader from './ui/box-loader';
@@ -393,7 +394,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                             {isIntroNode ? (
                                     <button onClick={() => onCompleteIntro ? onCompleteIntro() : onBack()} className="w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 font-bold text-white text-lg transition-all duration-300 rounded-2xl bg-gradient-to-r from-primary to-indigo-600 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-95">
                                     <span>شروع یادگیری و مشاهده نقشه راه</span>
-                                    <ArrowRight className="w-6 h-6 transform rotate-180" />
+                                    <GraduationCap className="w-6 h-6" />
                                 </button>
                             ) : (
                                 <>

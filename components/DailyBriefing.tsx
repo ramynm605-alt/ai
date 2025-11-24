@@ -1,6 +1,7 @@
 
+
 import React from 'react';
-import { Flame, Target, ArrowRight, CheckCircle, ClipboardList } from './icons';
+import { Flame, Target, ArrowRight, CheckCircle, ClipboardList, Lightbulb } from './icons';
 import { MindMapNode } from '../types';
 
 interface DailyBriefingProps {
@@ -54,7 +55,7 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({ streak, challengeContent,
                     {challengeContent && (
                         <div className="p-4 border-l-4 rounded-r-lg bg-secondary/50 border-primary">
                             <div className="flex items-center gap-2 mb-2 text-primary">
-                                <Target className="w-5 h-5" />
+                                <Lightbulb className="w-5 h-5" />
                                 <h3 className="font-bold">چالش مرور سریع</h3>
                             </div>
                             <div className="text-sm leading-relaxed markdown-content text-card-foreground/90" dangerouslySetInnerHTML={{ __html: challengeContent }} />

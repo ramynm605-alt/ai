@@ -1,9 +1,10 @@
 
+
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAppActions } from '../hooks/useAppActions';
 import { AppStatus, LearningResource } from '../types';
-import { FileText, Wand, FileQuestion, Shuffle, BrainCircuit, Upload, ArrowRight, ArrowLeft, Sparkles, Target, MessageSquare, XCircle, FileAudio, Youtube, Link, Globe, Music, Trash, CheckCircle, Info, Edit, Save, SlidersHorizontal } from './icons';
+import { FileText, Wand, FileQuestion, Shuffle, Compass, Upload, ArrowRight, ArrowLeft, Sparkles, Target, MessageSquare, XCircle, FileAudio, Youtube, Link, Globe, Music, Trash, CheckCircle, Info, Edit, Save, SlidersHorizontal } from './icons';
 import BoxLoader from './ui/box-loader';
 import MindMap from './MindMap';
 import NodeView from './NodeView';
@@ -324,7 +325,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                         <div className="flex items-center justify-between gap-2 mb-6">
                              <div className="flex items-center gap-3">
                                 <div className="p-2 bg-purple-500/10 rounded-lg text-purple-600">
-                                    <BrainCircuit className="w-6 h-6" />
+                                    <Compass className="w-6 h-6" />
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-lg text-foreground">کاوش موضوعی</h3>
@@ -588,7 +589,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                                 >
                                     <div className="absolute inset-0 bg-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
                                     <div className="w-20 h-20 mx-auto bg-purple-500/10 rounded-full flex items-center justify-center text-purple-600 mb-6 group-hover:scale-110 transition-transform">
-                                        <BrainCircuit className="w-10 h-10" />
+                                        <Compass className="w-10 h-10" />
                                     </div>
                                     <h3 className="text-2xl font-bold mb-3">کاوش موضوعی</h3>
                                     <p className="text-muted-foreground text-sm">
@@ -649,7 +650,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                                     onClick={() => setActiveTab('explore')}
                                     className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 min-w-[100px] rounded-xl text-sm font-bold transition-all duration-300 ${activeTab === 'explore' ? 'bg-background text-foreground shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
                                 >
-                                    <BrainCircuit className="w-5 h-5" />
+                                    <Compass className="w-5 h-5" />
                                     <span>موضوع</span>
                                 </button>
                             </div>
@@ -796,7 +797,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                                     onGenerateFlashcards={actions.handleGenerateFlashcards}
                                     onTriggerFeynman={actions.triggerFeynmanChallenge} 
                                     onTriggerDebate={() => actions.handleCoachDebateStart(state.activeNodeId!)}
-                                    onStartScenario={actions.startScenario} // NEW: Connected scenario action
+                                    onStartScenario={actions.startScenario} 
                                 />
                             )}
 
