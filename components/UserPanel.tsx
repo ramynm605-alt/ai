@@ -266,10 +266,10 @@ const UserPanel: React.FC<UserPanelProps> = ({
                             </div>
 
                             {/* Cloud Sync Status - AUTOMATIC */}
-                            <div className={`p-4 border rounded-xl ${cloudStatus === 'success' ? 'bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800' : cloudStatus === 'error' ? 'bg-destructive/5 border-destructive/20' : 'bg-card border-border'}`}>
+                            <div className={`p-4 border rounded-xl ${cloudStatus === 'success' ? 'bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800' : 'bg-card border-border'}`}>
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
-                                        <div className={`p-2 rounded-full ${cloudStatus === 'success' ? 'bg-green-100 text-green-600' : cloudStatus === 'error' ? 'bg-destructive/10 text-destructive' : 'bg-secondary text-muted-foreground'}`}>
+                                        <div className={`p-2 rounded-full ${cloudStatus === 'success' ? 'bg-green-100 text-green-600' : 'bg-secondary text-muted-foreground'}`}>
                                             {cloudStatus === 'syncing' ? (
                                                 <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin text-blue-500" />
                                             ) : (
@@ -281,11 +281,7 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                             <p className="text-xs text-muted-foreground">
                                                 {cloudStatus === 'success' 
                                                     ? `آخرین ذخیره خودکار: ${lastSyncTime ? new Date(lastSyncTime).toLocaleTimeString('fa-IR') : 'همین الان'}` 
-                                                    : cloudStatus === 'error' 
-                                                        ? 'خطا در اتصال به سرور (ذخیره محلی فعال است)' 
-                                                        : cloudStatus === 'syncing' 
-                                                            ? 'در حال برقراری ارتباط...' 
-                                                            : 'بیکار (ذخیره محلی فعال است)'}
+                                                    : cloudStatus === 'error' ? 'خطا در اتصال به سرور' : 'در حال برقراری ارتباط...'}
                                             </p>
                                         </div>
                                     </div>

@@ -23,44 +23,41 @@ let db: any = null;
 
 export const FirebaseService = {
     initialize() {
-        // Safety check for missing SDK
-        if (typeof firebase === 'undefined') {
-            console.warn("Firebase SDK not loaded");
-            return false;
-        }
-
-        try {
-            // Initialize only if not already initialized
-            if (!firebase.apps.length) {
+        if (typeof firebase !== 'undefined' && !firebase.apps.length) {
+            try {
+                // Check if config is still the placeholder
+                if (firebaseConfig.apiKey === "YOUR_API_KEY") {
+                    console.warn("Firebase config is missing! Please update services/firebaseService.ts");
+                    return false;
+                }
                 firebase.initializeApp(firebaseConfig);
-            }
-
-            // Initialize Firestore if not already set
-            if (!db && firebase.firestore) {
                 db = firebase.firestore();
                 
-                // Enable Offline Persistence safely
-                if (typeof db.enablePersistence === 'function') {
-                    db.enablePersistence({ synchronizeTabs: true })
-                        .catch((err: any) => {
-                            if (err.code == 'failed-precondition') {
-                                console.warn("Firestore persistence failed: Multiple tabs open.");
-                            } else if (err.code == 'unimplemented') {
-                                 console.warn("Firestore persistence not supported by browser.");
-                            }
-                        });
-                }
+                // Enable Offline Persistence
+                // This allows the app to work with unstable internet and sync later
+                db.enablePersistence({ synchronizeTabs: true })
+                    .catch((err: any) => {
+                        if (err.code == 'failed-precondition') {
+                            console.warn("Firestore persistence failed: Multiple tabs open.");
+                        } else if (err.code == 'unimplemented') {
+                             console.warn("Firestore persistence not supported by browser.");
+                        }
+                    });
+
+                return true;
+            } catch (e) {
+                console.error("Firebase Init Error:", e);
+                return false;
             }
-            
-            return !!db;
-        } catch (e) {
-            console.error("Firebase Init Error:", e);
-            return false;
+        } else if (typeof firebase !== 'undefined' && firebase.apps.length) {
+            db = firebase.firestore();
+            return true;
         }
+        return false;
     },
 
     async saveUserData(userId: string, data: any) {
-        if (!this.initialize() || !db) return false;
+        if (!this.initialize() || !db) return null;
         try {
             // We use the 'merge' option to update fields without overwriting everything if structure changes
             await db.collection('users').doc(userId).set(data, { merge: true });

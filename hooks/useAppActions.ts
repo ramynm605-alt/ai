@@ -1,5 +1,5 @@
 
-import React, { useCallback } from 'react';
+import { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { AppStatus, ChatMessage, PodcastConfig, PodcastState, QuizResult, Reward, SavableState, SavedSession, UserAnswer, UserBehavior, UserProfile, Weakness, LearningPreferences, LearningResource, Flashcard, FlashcardGrade } from '../types';
 import { FirebaseService } from '../services/firebaseService';
@@ -10,18 +10,13 @@ declare var pdfjsLib: any;
 export const useAppActions = (showNotification: (msg: string, type?: 'success' | 'error') => void) => {
     const { state, dispatch } = useApp();
 
-    // Helper: Promise with Timeout
-    const withTimeout = (promise: Promise<any>, ms: number) => {
-        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), ms));
-        return Promise.race([promise, timeout]);
-    };
+    // ... (handleCloudLoad, handleCloudSave, handleLogin, handleLogout, handleSaveSession, handleDeleteSession, handleLoadSession, handleExportUserData, handleImportUserData, processResource, addResource, handleUpdateResourceContent, handleUpdateResourceInstructions, handleRemoveResource, handleFileUpload, handleStartFromText, handleTopicStudy, handleUrlInput, handleFinalizeResources, handleWizardComplete, generatePlanInternal, triggerFeynmanChallenge, submitFeynmanExplanation, handleNodeSelect, handleNodeNavigate, handleTakeQuiz, handleQuizSubmit, handleGenerateRemedial, handlePreAssessmentSubmit, handleChatSend, handleExplainRequest, handleDebateInitiation, togglePodcastMode, startPodcastGeneration - NO CHANGES, KEPT) ...
 
     // --- Helpers for Cloud Sync ---
     const handleCloudLoad = useCallback(async (userId: string) => {
        dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'syncing' } });
        try {
-           // Race cloud fetch with 10s timeout
-           const cloudData = (await withTimeout(FirebaseService.loadUserData(userId), 10000)) as any;
+           const cloudData = await FirebaseService.loadUserData(userId);
            
            if (cloudData && cloudData.sessions) {
                 const cloudTime = new Date(cloudData.lastModified || 0).getTime();
@@ -49,15 +44,11 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                      dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'success', lastSync: cloudData.lastModified } });
                 }
            } else {
-                // No cloud data or load failed gracefully
                 dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'idle' } });
            }
        } catch (e: any) {
            console.error("Cloud Load Error", e);
-           // If timeout or error, fallback to idle/error status
            dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'error' } });
-           // Only show notification if it's not a silent background sync
-           // showNotification("خطا در اتصال به فضای ابری.", "error");
        }
     }, [dispatch, showNotification]);
 
@@ -66,7 +57,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         try {
             const timestamp = new Date().toISOString();
             const dataToSave = { sessions, behavior, lastModified: timestamp };
-            const success = await withTimeout(FirebaseService.saveUserData(userId, dataToSave), 10000);
+            const success = await FirebaseService.saveUserData(userId, dataToSave);
             if (success) {
                 dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'success', lastSync: timestamp } });
             } else {
