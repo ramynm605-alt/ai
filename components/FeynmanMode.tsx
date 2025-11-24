@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FeynmanState } from '../types';
 import { Mic, ArrowLeft, CheckCircle, XCircle, Brain } from './icons';
-import BoxLoader from './ui/box-loader';
+import WaveLoader from './ui/wave-loader';
 
 interface FeynmanModeProps {
     state: FeynmanState;
@@ -108,7 +108,7 @@ const FeynmanMode: React.FC<FeynmanModeProps> = ({ state, onSubmit, onClose }) =
                     
                     {state.isAnalyzing ? (
                         <div className="text-center space-y-4">
-                            <BoxLoader size={80} color="rgb(249, 115, 22)" />
+                            <WaveLoader className="h-16 scale-150" color="rgb(249, 115, 22)" />
                             <p className="text-orange-600 animate-pulse font-medium">درحال گوش دادن و تحلیل توضیحات شما...</p>
                         </div>
                     ) : state.feedback ? (

@@ -2,7 +2,7 @@
 import React from 'react';
 import { PodcastState } from '../types';
 import { Mic, Play, Download, XCircle, Maximize, Minimize, CheckCircle } from './icons';
-import BoxLoader from './ui/box-loader';
+import WaveLoader from './ui/wave-loader';
 
 interface PodcastPlayerProps {
     state: PodcastState;
@@ -59,7 +59,7 @@ const PodcastPlayer: React.FC<PodcastPlayerProps> = ({ state, onMinimize, onClos
             <div className="p-4">
                 {(state.status === 'generating_script' || state.status === 'generating_audio') && (
                     <div className="flex flex-col items-center justify-center py-4 space-y-4">
-                        <BoxLoader size={50} />
+                        <WaveLoader className="h-12 text-primary" />
                         <p className="text-xs text-center text-muted-foreground animate-pulse">{state.progressText}</p>
                     </div>
                 )}

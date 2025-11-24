@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { ScenarioState } from '../types';
 import { Gamepad, Target, XCircle, ArrowRight, User, BrainCircuit, CheckCircle, Flame } from './icons';
-import BoxLoader from './ui/box-loader';
+import OrbitLoader from './ui/orbit-loader';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface ScenarioSimulatorProps {
@@ -23,7 +23,7 @@ const ScenarioSimulator: React.FC<ScenarioSimulatorProps> = ({ state, onDecision
                 </div>
                 <h2 className="text-2xl font-black tracking-tight mb-2">اتاق فرمان شبیه‌سازی</h2>
                 <p className="text-zinc-400 text-sm mb-8">در حال بارگذاری سناریوی: <span className="text-indigo-300">{targetNode.title}</span></p>
-                <BoxLoader size={60} color="#818cf8" />
+                <OrbitLoader size={100} color="#818cf8" />
             </div>
         );
     }
@@ -99,9 +99,9 @@ const ScenarioSimulator: React.FC<ScenarioSimulatorProps> = ({ state, onDecision
                             </div>
 
                             {isEvaluating && (
-                                <div className="flex items-center justify-center gap-3 text-indigo-400 py-4 animate-pulse">
-                                    <BrainCircuit className="w-5 h-5" />
-                                    <span>هوش مصنوعی در حال شبیه‌سازی پیامدها...</span>
+                                <div className="flex flex-col items-center justify-center gap-4 text-indigo-400 py-4">
+                                    <OrbitLoader size={40} color="#818cf8" />
+                                    <span className="animate-pulse">هوش مصنوعی در حال شبیه‌سازی پیامدها...</span>
                                 </div>
                             )}
                         </motion.div>

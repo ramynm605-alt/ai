@@ -2,6 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { generatePracticeResponse } from '../services/geminiService';
 import BoxLoader from './ui/box-loader';
+import WaveLoader from './ui/wave-loader';
 import { MessageSquare, SlidersHorizontal, CheckCircle, Calculator } from './icons';
 import MathKeyboard from './MathKeyboard';
 
@@ -180,7 +181,7 @@ const PracticeZone: React.FC = () => {
                     {error && <p className="text-sm text-destructive">{error}</p>}
                     
                     <button type="submit" disabled={isLoading} className="flex items-center justify-center w-full px-4 py-3 font-semibold text-white transition-colors rounded-xl bg-primary hover:bg-primary-hover disabled:bg-primary/70 min-h-[48px] shadow-lg shadow-primary/20">
-                        {isLoading ? <BoxLoader size={24} /> : 'شروع تمرین هوشمند'}
+                        {isLoading ? <WaveLoader color="white" className="h-6" /> : 'شروع تمرین هوشمند'}
                     </button>
                 </form>
             </div>
