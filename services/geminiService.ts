@@ -25,10 +25,44 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Pr
     }
 }
 
-// Helper to clean JSON string from markdown code blocks
+// Helper to clean JSON string from markdown code blocks and other noise
 function cleanJsonString(str: string): string {
     let cleaned = str.trim();
-    return cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+    
+    // Generic markdown block removal
+    cleaned = cleaned.replace(/^```[a-z]*\s*/i, '').replace(/\s*```$/, '');
+
+    // Robust Extraction: Find the first '{' or '[' and the last '}' or ']'
+    const firstOpen = cleaned.indexOf('{');
+    const firstArray = cleaned.indexOf('[');
+    let start = -1;
+    
+    // Determine start index (whichever comes first and exists)
+    if (firstOpen !== -1 && (firstArray === -1 || firstOpen < firstArray)) {
+        start = firstOpen;
+    } else if (firstArray !== -1) {
+        start = firstArray;
+    }
+
+    if (start !== -1) {
+        const lastClose = cleaned.lastIndexOf('}');
+        const lastArray = cleaned.lastIndexOf(']');
+        let end = -1;
+        
+        // Determine end index (whichever comes last and exists)
+        if (lastClose !== -1 && (lastArray === -1 || lastClose > lastArray)) {
+            end = lastClose;
+        } else if (lastArray !== -1) {
+            end = lastArray;
+        }
+        
+        // Extract the JSON substring if valid start/end found
+        if (end !== -1 && end >= start) {
+            cleaned = cleaned.substring(start, end + 1);
+        }
+    }
+
+    return cleaned;
 }
 
 // Helper to escape regex characters
@@ -236,12 +270,8 @@ export async function analyzeResourceContent(
         });
 
         let textToParse = response.text || '{}';
-        if (resourceType === 'link' || isTopicResearch) {
-            const jsonMatch = textToParse.match(/```json\s*([\s\S]*?)\s*```/) || textToParse.match(/```\s*([\s\S]*?)\s*```/);
-            if (jsonMatch) textToParse = jsonMatch[1];
-        } else {
-            textToParse = cleanJsonString(textToParse);
-        }
+        // Use our robust cleaner
+        textToParse = cleanJsonString(textToParse);
 
         let result;
         try {
@@ -308,23 +338,35 @@ export async function generateLearningPlan(content: string, pageContents: string
                 const e = buffer.indexOf('[MIND_MAP_END]', s);
                 if (s !== -1 && e !== -1) {
                     const jsonStr = cleanJsonString(buffer.substring(s + 16, e));
-                    const json = JSON.parse(jsonStr);
-                    let mindMap = flattenMindMap(json.mindMap || json); 
-                    if (mindMap.length > 0) mindMap[0].parentId = null;
-                    onMindMapGenerated(mindMap, json.suggestedPath || []);
-                    mindMapGenerated = true;
-                    buffer = buffer.substring(e + 14);
+                    try {
+                        const json = JSON.parse(jsonStr);
+                        let mindMap = flattenMindMap(json.mindMap || json); 
+                        if (mindMap.length > 0) mindMap[0].parentId = null;
+                        onMindMapGenerated(mindMap, json.suggestedPath || []);
+                        mindMapGenerated = true;
+                        buffer = buffer.substring(e + 14);
+                    } catch (e) {
+                        console.error("Error parsing mind map JSON", e);
+                        // Keep buffer if parsing failed, maybe incomplete?
+                        // But here we assume block is complete.
+                    }
                 }
             }
             
              let s, e;
             while ((s = buffer.indexOf('[QUESTION_START]')) !== -1 && (e = buffer.indexOf('[QUESTION_END]', s)) !== -1) {
                 const jsonStr = cleanJsonString(buffer.substring(s + 16, e));
-                const q = JSON.parse(jsonStr);
-                if (!q.id) q.id = Math.random().toString();
-                questions.push(q);
-                onQuestionStream(q);
-                buffer = buffer.substring(e + 14);
+                try {
+                    const q = JSON.parse(jsonStr);
+                    if (!q.id) q.id = Math.random().toString();
+                    questions.push(q);
+                    onQuestionStream(q);
+                    buffer = buffer.substring(e + 14);
+                } catch (e) {
+                    console.error("Error parsing question JSON", e);
+                    // Skip bad block
+                    buffer = buffer.substring(e + 14);
+                }
             }
         }
         return { questions };
@@ -387,28 +429,37 @@ export async function generateNodeContent(nodeTitle: string, fullContent: string
         let fullText = "";
         for await (const chunk of response) {
             fullText += chunk.text;
-            // Simple heuristic streaming update: rough JSON parsing
-            // In a real app, use a streaming JSON parser.
-            try {
-                // Attempt to parse partial JSON if it looks complete enough, 
-                // or just pass the raw text if we were just streaming text.
-                // Since we requested JSON, streaming partial JSON is hard.
-                // We will just accumulate here for the final result, 
-                // but for "streaming" feel, we might fake it or use a simpler format.
-                // For now, we just wait for completion for robust JSON, 
-                // OR we could ask for specific sections in chunks.
-                // Let's just accumulate for safety in this demo to avoid JSON errors.
-            } catch (e) {}
+            // Optional: Try parsing partial content for streaming display
+            // We don't fully parse here to avoid errors, but we could clean strings if needed.
         }
         
         const jsonStr = cleanJsonString(fullText);
         let content;
         try {
             content = JSON.parse(jsonStr);
+            
+            // Convert Markdown to HTML for highlighting and bolding
+            const parseMarkdown = async (text: string) => {
+                if (!text) return "";
+                try {
+                    // marked.parse returns string or Promise<string>. We await it to be safe.
+                    return await marked.parse(text);
+                } catch(e) {
+                    return text;
+                }
+            };
+
+            content.introduction = await parseMarkdown(content.introduction);
+            content.theory = await parseMarkdown(content.theory);
+            content.example = await parseMarkdown(content.example);
+            content.connection = await parseMarkdown(content.connection);
+            content.conclusion = await parseMarkdown(content.conclusion);
+            
         } catch(e) {
             // Fallback if JSON fails
+            const htmlText = await marked.parse(fullText) as string;
             content = {
-                introduction: fullText,
+                introduction: htmlText,
                 theory: "",
                 example: "",
                 connection: "",
@@ -428,13 +479,15 @@ export async function evaluateNodeInteraction(nodeTitle: string, learningObjecti
         Evaluate user response for task: "${task}" in node "${nodeTitle}".
         User Response: "${userResponse}"
         
-        Provide helpful feedback in Persian.
+        Provide helpful feedback in Persian using Markdown.
         `;
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
             contents: { parts: [{ text: prompt }] }
         });
-        return response.text || "Feedback unavailable.";
+        
+        const text = response.text || "Feedback unavailable.";
+        return await marked.parse(text) as string;
     });
 }
 
@@ -490,11 +543,16 @@ export async function generateQuiz(topic: string, content: string, images: any[]
             let s, e;
             while ((s = buffer.indexOf('[QUESTION_START]')) !== -1 && (e = buffer.indexOf('[QUESTION_END]', s)) !== -1) {
                 const jsonStr = cleanJsonString(buffer.substring(s + 16, e));
-                const q = JSON.parse(jsonStr);
-                if (!q.id) q.id = Math.random().toString();
-                questions.push(q);
-                onQuestionStream(q);
-                buffer = buffer.substring(e + 14);
+                try {
+                    const q = JSON.parse(jsonStr);
+                    if (!q.id) q.id = Math.random().toString();
+                    questions.push(q);
+                    onQuestionStream(q);
+                    buffer = buffer.substring(e + 14);
+                } catch (e) {
+                    console.error("Error parsing question JSON", e);
+                    buffer = buffer.substring(e + 14);
+                }
             }
         }
         return { questions };
