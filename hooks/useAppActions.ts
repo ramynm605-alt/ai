@@ -1,5 +1,4 @@
-
-import { useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { AppStatus, ChatMessage, PodcastConfig, PodcastState, QuizResult, Reward, SavableState, SavedSession, UserAnswer, UserBehavior, UserProfile, Weakness, LearningPreferences, LearningResource, Flashcard, FlashcardGrade } from '../types';
 import { FirebaseService } from '../services/firebaseService';
@@ -16,7 +15,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
     const handleCloudLoad = useCallback(async (userId: string) => {
        dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'syncing' } });
        try {
-           const cloudData = await FirebaseService.loadUserData(userId);
+           const cloudData = (await FirebaseService.loadUserData(userId)) as any;
            
            if (cloudData && cloudData.sessions) {
                 const cloudTime = new Date(cloudData.lastModified || 0).getTime();
