@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { MindMapNode, NodeContent, Reward } from '../types';
-import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle, BrainCircuit, Edit, Shuffle, Target, CheckCircle, ArrowLeft, ClipboardList } from './icons';
+import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle, BrainCircuit, Edit, Shuffle, Target, CheckCircle, ArrowLeft, ClipboardList, Mic, Flame } from './icons';
 import { evaluateNodeInteraction } from '../services/geminiService';
 import BoxLoader from './ui/box-loader';
 
@@ -18,7 +18,9 @@ interface NodeViewProps {
     onCompleteIntro?: () => void;
     unlockedReward?: Reward;
     isStreaming?: boolean;
-    onGenerateFlashcards?: () => void; // New Prop
+    onGenerateFlashcards?: () => void;
+    onTriggerFeynman?: () => void; // New
+    onTriggerDebate?: () => void; // New
 }
 
 const HeroLoader: React.FC<{ text?: string }> = ({ text = "در حال طراحی درس برای شما..." }) => (
@@ -49,16 +51,76 @@ const Section: React.FC<{ title: string; content: string; delay: number }> = ({ 
     </div>
 );
 
-const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz, onNavigate, prevNode, nextNode, onExplainRequest, isIntroNode, onCompleteIntro, unlockedReward, isStreaming, onGenerateFlashcards }) => {
+const CoachBubble: React.FC<{ type: 'feynman' | 'debate', onClick: () => void, onClose: () => void }> = ({ type, onClick, onClose }) => {
+    const isFeynman = type === 'feynman';
+    return (
+        <div className="fixed bottom-20 md:bottom-8 right-4 md:right-8 z-[100] animate-slide-up flex items-end gap-2">
+            <div className="relative group">
+                <button 
+                    onClick={onClose}
+                    className="absolute -top-2 -left-2 bg-secondary hover:bg-destructive text-muted-foreground hover:text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-all z-10 shadow-sm"
+                >
+                    <XCircle className="w-3 h-3" />
+                </button>
+                
+                <button 
+                    onClick={onClick}
+                    className={`flex items-center gap-3 p-4 rounded-2xl shadow-2xl border transition-transform hover:scale-105 active:scale-95 cursor-pointer ${isFeynman ? 'bg-orange-500 text-white border-orange-400' : 'bg-indigo-600 text-white border-indigo-500'}`}
+                >
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isFeynman ? 'bg-white/20' : 'bg-white/20'}`}>
+                        {isFeynman ? <Mic className="w-5 h-5" /> : <Flame className="w-5 h-5 animate-pulse" />}
+                    </div>
+                    <div className="text-right">
+                        <p className="text-[10px] opacity-80 font-bold mb-0.5">{isFeynman ? 'چالش مربی' : 'بحث آزاد'}</p>
+                        <p className="text-xs font-bold">
+                            {isFeynman ? 'میتونی اینو برام توضیح بدی؟ 🤔' : 'من با این قسمت مخالفم! نظرت چیه؟ 🤨'}
+                        </p>
+                    </div>
+                </button>
+            </div>
+        </div>
+    );
+};
+
+const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz, onNavigate, prevNode, nextNode, onExplainRequest, isIntroNode, onCompleteIntro, unlockedReward, isStreaming, onGenerateFlashcards, onTriggerFeynman, onTriggerDebate }) => {
     const [selectionPopup, setSelectionPopup] = useState<{ x: number; y: number; text: string } | null>(null);
     const [reminderPopup, setReminderPopup] = useState<{ x: number; y: number; content: string } | null>(null);
     const [activeTab, setActiveTab] = useState<'content' | 'reward'>('content');
+    
+    // Interactive Coach State
+    const [coachNotification, setCoachNotification] = useState<'feynman' | 'debate' | null>(null);
+    
     const viewRef = useRef<HTMLDivElement>(null);
 
     // Interactive Task State
     const [taskInput, setTaskInput] = useState('');
     const [taskFeedback, setTaskFeedback] = useState<string | null>(null);
     const [isEvaluatingTask, setIsEvaluatingTask] = useState(false);
+
+    // Trigger Coach Notification Timer
+    useEffect(() => {
+        if (isStreaming || isIntroNode) return;
+        
+        // Random time between 30s and 60s
+        const delay = Math.floor(Math.random() * (60000 - 30000 + 1) + 30000);
+        
+        const timer = setTimeout(() => {
+            // Randomly choose type: 60% Feynman, 40% Debate
+            const type = Math.random() > 0.4 ? 'feynman' : 'debate';
+            setCoachNotification(type);
+        }, delay);
+
+        return () => clearTimeout(timer);
+    }, [node.id, isStreaming, isIntroNode]);
+
+    const handleCoachClick = () => {
+        if (coachNotification === 'feynman' && onTriggerFeynman) {
+            onTriggerFeynman();
+        } else if (coachNotification === 'debate' && onTriggerDebate) {
+            onTriggerDebate();
+        }
+        setCoachNotification(null);
+    };
 
     const handleTaskSubmit = async () => {
         if (!taskInput.trim() || !content.interactiveTask) return;
@@ -114,8 +176,6 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [selectionPopup, reminderPopup]);
 
-    // ... (Reminder Popup logic retained) ...
-
     const isEmpty = !content.introduction && !content.theory && !content.example && !isStreaming;
 
     return (
@@ -132,6 +192,15 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                     <MessageSquare className="w-4 h-4" />
                     <span className="text-sm font-bold whitespace-nowrap">پرسش از مربی</span>
                 </div>
+            )}
+
+            {/* Coach Notification Bubble */}
+            {coachNotification && (
+                <CoachBubble 
+                    type={coachNotification} 
+                    onClick={handleCoachClick} 
+                    onClose={() => setCoachNotification(null)} 
+                />
             )}
 
             {/* Hero Header */}

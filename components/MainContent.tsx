@@ -793,6 +793,9 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                                     onCompleteIntro={() => dispatch({ type: 'COMPLETE_INTRO_NODE' })}
                                     unlockedReward={state.rewards.find(r => r.relatedNodeId === state.activeNodeId)}
                                     isStreaming={!!state.streamingNodeContent}
+                                    onGenerateFlashcards={actions.handleGenerateFlashcards}
+                                    onTriggerFeynman={actions.triggerFeynmanChallenge} // Connected
+                                    onTriggerDebate={() => actions.handleCoachDebateStart(state.activeNodeId!)} // Connected
                                 />
                             )}
 

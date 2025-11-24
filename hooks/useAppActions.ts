@@ -3,7 +3,7 @@ import React, { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { AppStatus, ChatMessage, PodcastConfig, PodcastState, QuizResult, Reward, SavableState, SavedSession, UserAnswer, UserBehavior, UserProfile, Weakness, LearningPreferences, LearningResource, Flashcard, FlashcardGrade } from '../types';
 import { FirebaseService } from '../services/firebaseService';
-import { generateChatResponse, generateDailyChallenge, generateDeepAnalysis, generateLearningPlan, generateNodeContent, generatePodcastAudio, generatePodcastScript, generateProactiveChatInitiation, generateQuiz, generateRemedialNode, gradeAndAnalyzeQuiz, analyzePreAssessment, analyzeResourceContent, evaluateFeynmanExplanation, generateFlashcards } from '../services/geminiService';
+import { generateChatResponse, generateDailyChallenge, generateDeepAnalysis, generateLearningPlan, generateNodeContent, generatePodcastAudio, generatePodcastScript, generateProactiveChatInitiation, generateQuiz, generateRemedialNode, gradeAndAnalyzeQuiz, analyzePreAssessment, analyzeResourceContent, evaluateFeynmanExplanation, generateFlashcards, generateCoachQuestion } from '../services/geminiService';
 
 declare var pdfjsLib: any;
 
@@ -464,14 +464,24 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
     }, [state.sourceContent, state.sourcePageContents, state.sourceImages, state.preferences, state.currentUser, dispatch, handleSaveSession]);
 
     const triggerFeynmanChallenge = useCallback(() => {
-        const completedNodeIds = Object.keys(state.userProgress).filter(id => state.userProgress[id].status === 'completed');
-        if (completedNodeIds.length === 0) return;
-        const randomId = completedNodeIds[Math.floor(Math.random() * completedNodeIds.length)];
-        const targetNode = state.mindMap.find(n => n.id === randomId);
+        // If already viewing a node, prioritize current node
+        let targetNode = null;
+        if (state.activeNodeId) {
+            targetNode = state.mindMap.find(n => n.id === state.activeNodeId);
+        }
+        
+        // Fallback to random completed node
+        if (!targetNode) {
+            const completedNodeIds = Object.keys(state.userProgress).filter(id => state.userProgress[id].status === 'completed');
+            if (completedNodeIds.length === 0) return;
+            const randomId = completedNodeIds[Math.floor(Math.random() * completedNodeIds.length)];
+            targetNode = state.mindMap.find(n => n.id === randomId);
+        }
+
         if (targetNode) {
             dispatch({ type: 'START_FEYNMAN', payload: targetNode });
         }
-    }, [state.userProgress, state.mindMap, dispatch]);
+    }, [state.userProgress, state.mindMap, state.activeNodeId, dispatch]);
 
     const submitFeynmanExplanation = async (explanation: string, audioBlob?: Blob) => {
         const targetNode = state.feynmanState?.targetNode;
@@ -747,6 +757,34 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         }
     }, [state.activeNodeId, state.mindMap, state.nodeContents, state.sourceContent, state.isDebateMode, state.weaknesses, dispatch]);
 
+    // Interactive Coach: Triggered by the NodeView bubble to start a debate/questioning session
+    const handleCoachDebateStart = useCallback(async (nodeId: string) => {
+        if (!state.isChatOpen) dispatch({ type: 'TOGGLE_CHAT' });
+        if (!state.isDebateMode) dispatch({ type: 'TOGGLE_DEBATE_MODE' });
+        dispatch({ type: 'SET_CHAT_LOADING', payload: true });
+
+        const node = state.mindMap.find(n => n.id === nodeId);
+        if (!node) return;
+        
+        const content = state.nodeContents[nodeId]?.theory || state.sourceContent.substring(0, 1000);
+
+        try {
+            const question = await generateCoachQuestion(node.title, content);
+            dispatch({ 
+                type: 'TRIGGER_PROACTIVE_DEBATE', 
+                payload: { role: 'model', message: question }
+            });
+        } catch (e) {
+            console.error("Coach debate gen failed", e);
+            dispatch({ 
+                type: 'ADD_CHAT_MESSAGE', 
+                payload: { role: 'model', message: "می‌خواستم سوالی بپرسم اما فراموش کردم! بیایید ادامه دهیم." }
+            });
+        } finally {
+            dispatch({ type: 'SET_CHAT_LOADING', payload: false });
+        }
+    }, [state.isChatOpen, state.isDebateMode, state.mindMap, state.nodeContents, state.sourceContent, dispatch]);
+
     const togglePodcastMode = useCallback(() => {
         dispatch({ type: 'TOGGLE_PODCAST_MODE' });
     }, [dispatch]);
@@ -876,6 +914,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         handleChatSend,
         handleExplainRequest,
         handleDebateInitiation,
+        handleCoachDebateStart, // New
         togglePodcastMode,
         startPodcastGeneration,
         handleRemoveResource,
@@ -888,7 +927,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         handleReviewFlashcard, 
         startFlashcardReview, 
         exitFlashcardReview,
-        checkDailyStatus, // New
-        generateDailyContent // New
+        checkDailyStatus,
+        generateDailyContent
     };
 };

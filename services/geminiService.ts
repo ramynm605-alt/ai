@@ -663,6 +663,22 @@ export async function generateProactiveChatInitiation(nodeTitle: string, nodeCon
     });
 }
 
+// NEW: Generate a quick intervention question for the coach bubble
+export async function generateCoachQuestion(nodeTitle: string, nodeContent: string): Promise<string> {
+    return withRetry(async () => {
+        const prompt = `
+        You are a proactive tutor observing a student reading about "${nodeTitle}".
+        Content Context: ${nodeContent.substring(0, 1000)}
+        
+        Task: Generate a short, provocative, and engaging question (max 20 words) to challenge the student or initiate a debate about this specific topic.
+        Language: Persian (Farsi).
+        Tone: Curious, slightly challenging, or Socratic.
+        `;
+        const r = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: { parts: [{ text: prompt }] } });
+        return r.text?.trim() || 'نظرت درباره این موضوع چیه؟';
+    });
+}
+
 export async function generatePodcastScript(contents: any, mode: 'monologue' | 'dialogue'): Promise<string> {
     return withRetry(async () => {
         let prompt = "";
