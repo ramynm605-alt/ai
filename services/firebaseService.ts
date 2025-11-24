@@ -23,6 +23,10 @@ let db: any = null;
 
 export const FirebaseService = {
     initialize() {
+        if (typeof firebase === 'undefined') {
+            console.warn("Firebase SDK not loaded");
+            return false;
+        }
         if (typeof firebase !== 'undefined' && !firebase.apps.length) {
             try {
                 // Check if config is still the placeholder
