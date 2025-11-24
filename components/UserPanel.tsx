@@ -1,7 +1,8 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, SavedSession } from '../types';
-import { User, LogOut, History, BrainCircuit, Trash, Save, CheckCircle, ArrowRight, XCircle, Shield, ClipboardList, ChevronDown, Upload } from './icons';
+import { User, LogOut, History, BrainCircuit, Trash, Save, CheckCircle, ArrowRight, XCircle, Shield, ClipboardList, ChevronDown, Upload, RefreshCw } from './icons';
 
 interface UserPanelProps {
     isOpen: boolean;
@@ -290,12 +291,28 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                         </div>
                                     </div>
                                     
-                                    {cloudStatus === 'success' && (
-                                        <div className="px-3 py-1 text-xs font-bold text-green-700 bg-green-100 rounded-full flex items-center gap-1">
-                                            <CheckCircle className="w-3 h-3" />
-                                            <span className="hidden sm:inline">فعال</span>
-                                        </div>
-                                    )}
+                                    <div className="flex items-center gap-2">
+                                        {cloudStatus !== 'syncing' && (
+                                            <button 
+                                                onClick={onEnableCloudSync}
+                                                className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all flex items-center gap-1 ${
+                                                    cloudStatus === 'error' 
+                                                    ? 'border-destructive/30 text-destructive hover:bg-destructive/10' 
+                                                    : 'border-border text-muted-foreground hover:text-foreground hover:bg-secondary'
+                                                }`}
+                                            >
+                                                <RefreshCw className="w-3 h-3" />
+                                                <span>{cloudStatus === 'error' ? 'تلاش مجدد' : 'بروزرسانی'}</span>
+                                            </button>
+                                        )}
+
+                                        {cloudStatus === 'success' && (
+                                            <div className="px-3 py-1 text-xs font-bold text-green-700 bg-green-100 rounded-full flex items-center gap-1">
+                                                <CheckCircle className="w-3 h-3" />
+                                                <span className="hidden sm:inline">فعال</span>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                             
