@@ -18,7 +18,7 @@ interface NodeViewProps {
     onCompleteIntro?: () => void;
     unlockedReward?: Reward;
     isStreaming?: boolean;
-    onGenerateFlashcards?: () => void;
+    onGenerateFlashcards?: () => void; // New Prop
 }
 
 const HeroLoader: React.FC<{ text?: string }> = ({ text = "در حال طراحی درس برای شما..." }) => (
@@ -51,9 +51,11 @@ const Section: React.FC<{ title: string; content: string; delay: number }> = ({ 
 
 const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz, onNavigate, prevNode, nextNode, onExplainRequest, isIntroNode, onCompleteIntro, unlockedReward, isStreaming, onGenerateFlashcards }) => {
     const [selectionPopup, setSelectionPopup] = useState<{ x: number; y: number; text: string } | null>(null);
+    const [reminderPopup, setReminderPopup] = useState<{ x: number; y: number; content: string } | null>(null);
     const [activeTab, setActiveTab] = useState<'content' | 'reward'>('content');
     const viewRef = useRef<HTMLDivElement>(null);
 
+    // Interactive Task State
     const [taskInput, setTaskInput] = useState('');
     const [taskFeedback, setTaskFeedback] = useState<string | null>(null);
     const [isEvaluatingTask, setIsEvaluatingTask] = useState(false);
@@ -84,6 +86,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
             try {
                 const range = selection.getRangeAt(0);
                 const rect = range.getBoundingClientRect();
+                setReminderPopup(null); 
                 let x = rect.left + rect.width / 2;
                 let y = rect.top - 10;
                 if (x < 50) x = 50;
@@ -105,10 +108,13 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
     useEffect(() => {
         const handleClickOutside = () => {
             if (selectionPopup) setSelectionPopup(null);
+            if (reminderPopup) setReminderPopup(null);
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [selectionPopup]);
+    }, [selectionPopup, reminderPopup]);
+
+    // ... (Reminder Popup logic retained) ...
 
     const isEmpty = !content.introduction && !content.theory && !content.example && !isStreaming;
 
@@ -128,17 +134,17 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                 </div>
             )}
 
-            {/* Hero Header - Optimized for Mobile */}
-            <div className="sticky top-0 z-40 bg-background/85 backdrop-blur border-b border-border/50 shadow-sm transition-all">
-                <div className="max-w-5xl mx-auto px-3 h-16 flex items-center justify-between gap-2">
-                     <div className="flex items-center gap-2 flex-1 overflow-hidden">
-                        <button onClick={onBack} className="p-2.5 rounded-xl hover:bg-accent transition-colors group shrink-0 border border-transparent hover:border-border active:scale-95">
-                            <ArrowRight className="w-5 h-5 text-muted-foreground group-hover:text-primary" />
+            {/* Hero Header */}
+            <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-lg border-b border-border/50 shadow-sm">
+                <div className="max-w-5xl mx-auto px-4 h-14 md:h-16 flex items-center justify-between gap-4">
+                     <div className="flex items-center gap-2 md:gap-3 flex-1 overflow-hidden">
+                        <button onClick={onBack} className="p-2 rounded-full hover:bg-accent transition-colors group shrink-0">
+                            <ArrowRight className="w-5 h-5 md:w-6 md:h-6 text-muted-foreground group-hover:text-primary" />
                         </button>
                         <h2 className="text-sm sm:text-xl font-bold truncate leading-tight">{activeTab === 'content' ? node.title : unlockedReward?.title}</h2>
                      </div>
                      
-                     {/* Skill Badge */}
+                     {/* Skill Badge in Header */}
                      {!isIntroNode && node.targetSkill && (
                          <div className="hidden sm:flex items-center gap-1 px-2 py-1 bg-primary/10 rounded-md text-xs font-medium text-primary">
                              <Target className="w-3 h-3" />
@@ -146,7 +152,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                          </div>
                      )}
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2 md:gap-3 shrink-0">
                         {onGenerateFlashcards && !isIntroNode && activeTab === 'content' && !isStreaming && (
                             <button 
                                 onClick={onGenerateFlashcards}
@@ -160,23 +166,23 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
 
                         {unlockedReward && (
                             <div className="flex items-center p-1 space-x-1 space-x-reverse rounded-lg bg-secondary/80 border border-border">
-                                <button onClick={() => setActiveTab('content')} className={`px-2.5 py-1.5 text-[10px] font-bold rounded-md transition-all ${activeTab === 'content' ? 'bg-background shadow text-primary' : 'text-muted-foreground'}`}>درس</button>
-                                <button onClick={() => setActiveTab('reward')} className={`flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-md transition-all ${activeTab === 'reward' ? 'bg-purple-100 text-purple-700' : 'text-muted-foreground'}`}>
-                                    <Diamond className="w-3 h-3" />
+                                <button onClick={() => setActiveTab('content')} className={`px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-bold rounded-md transition-all ${activeTab === 'content' ? 'bg-background shadow text-primary' : 'text-muted-foreground'}`}>درس</button>
+                                <button onClick={() => setActiveTab('reward')} className={`flex items-center gap-1.5 px-2 md:px-3 py-1 md:py-1.5 text-[10px] md:text-xs font-bold rounded-md transition-all ${activeTab === 'reward' ? 'bg-purple-100 text-purple-700' : 'text-muted-foreground'}`}>
+                                    <Diamond className="w-3 h-3 md:w-3.5 md:h-3.5" />
                                     <span className="hidden sm:inline">تحلیل</span>
                                 </button>
                             </div>
                         )}
-                         <button onClick={onBack} className="sm:hidden p-2.5 rounded-xl hover:bg-destructive/10 active:scale-95"><XCircle className="w-5 h-5 text-muted-foreground hover:text-destructive" /></button>
+                         <button onClick={onBack} className="sm:hidden p-2"><XCircle className="w-5 h-5 text-muted-foreground" /></button>
                     </div>
                 </div>
             </div>
 
             {/* Main Content */}
             <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 md:py-10 pb-32">
-                {/* Title Area */}
+                {/* Title Area with Objective */}
                 <div className="text-center mb-8 md:mb-12 animate-slide-up">
-                     <h1 className="text-2xl md:text-5xl font-black leading-tight text-transparent bg-clip-text bg-gradient-to-r from-primary to-indigo-600 mb-3 md:mb-4">
+                     <h1 className="text-2xl md:text-5xl font-black leading-tight text-transparent bg-clip-text bg-gradient-to-r from-primary to-indigo-600 mb-2 md:mb-4">
                         {activeTab === 'content' ? node.title : unlockedReward?.title}
                      </h1>
                      {activeTab === 'content' && node.learningObjective && (
@@ -229,7 +235,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                                                      <button 
                                                          onClick={handleTaskSubmit}
                                                          disabled={isEvaluatingTask || !taskInput.trim()}
-                                                         className="w-full sm:w-auto px-6 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover disabled:opacity-50 flex items-center justify-center gap-2 transition-all active:scale-95"
+                                                         className="w-full sm:w-auto px-6 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover disabled:opacity-50 flex items-center justify-center gap-2 transition-all"
                                                      >
                                                          {isEvaluatingTask ? (
                                                              <>
@@ -277,7 +283,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                         {onGenerateFlashcards && !isIntroNode && (
                             <button 
                                 onClick={onGenerateFlashcards}
-                                className="sm:hidden w-full flex items-center justify-center gap-2 mb-4 py-3 text-yellow-600 bg-yellow-500/10 border border-yellow-500/20 rounded-xl font-bold active:scale-95 transition-transform"
+                                className="sm:hidden w-full flex items-center justify-center gap-2 mb-4 py-3 text-yellow-600 bg-yellow-500/10 border border-yellow-500/20 rounded-xl font-bold"
                             >
                                 <ClipboardList className="w-5 h-5" />
                                 <span>افزودن کارت مرور برای این درس</span>
@@ -292,12 +298,12 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                                 </button>
                             ) : (
                                 <>
-                                    <button onClick={() => prevNode && onNavigate(prevNode.id)} disabled={!prevNode} className="w-full sm:w-auto px-6 py-3 font-semibold transition-all duration-200 rounded-xl text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 active:scale-95">درس قبلی</button>
+                                    <button onClick={() => prevNode && onNavigate(prevNode.id)} disabled={!prevNode} className="w-full sm:w-auto px-6 py-3 font-semibold transition-all duration-200 rounded-xl text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50">درس قبلی</button>
                                     <button onClick={onStartQuiz} className="w-full sm:w-auto flex-grow max-w-md px-8 py-4 font-bold text-lg text-white transition-all duration-300 rounded-2xl bg-gradient-to-r from-primary to-indigo-600 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2">
                                         <span>آماده‌ام، برویم برای آزمون!</span>
                                         <ArrowRight className="w-5 h-5 transform rotate-180" />
                                     </button>
-                                    <button onClick={() => nextNode && onNavigate(nextNode.id)} disabled={!nextNode || nextNode.locked} className="w-full sm:w-auto px-6 py-3 font-semibold transition-all duration-200 rounded-xl text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50 active:scale-95">درس بعدی</button>
+                                    <button onClick={() => nextNode && onNavigate(nextNode.id)} disabled={!nextNode || nextNode.locked} className="w-full sm:w-auto px-6 py-3 font-semibold transition-all duration-200 rounded-xl text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50">درس بعدی</button>
                                 </>
                             )}
                         </div>

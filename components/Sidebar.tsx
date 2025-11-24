@@ -35,19 +35,17 @@ export const useSidebar = () => {
   return context;
 };
 
-interface SidebarProviderProps {
-  children?: React.ReactNode;
-  open?: boolean;
-  setOpen?: React.Dispatch<React.SetStateAction<boolean>>;
-  animate?: boolean;
-}
-
 export const SidebarProvider = ({
   children,
   open: openProp,
   setOpen: setOpenProp,
   animate = true,
-}: SidebarProviderProps) => {
+}: {
+  children: React.ReactNode;
+  open?: boolean;
+  setOpen?: React.Dispatch<React.SetStateAction<boolean>>;
+  animate?: boolean;
+}) => {
   const [openState, setOpenState] = useState(false);
 
   const open = openProp !== undefined ? openProp : openState;
@@ -60,19 +58,17 @@ export const SidebarProvider = ({
   );
 };
 
-interface SidebarProps {
-  children?: React.ReactNode;
-  open?: boolean;
-  setOpen?: React.Dispatch<React.SetStateAction<boolean>>;
-  animate?: boolean;
-}
-
 export const Sidebar = ({
   children,
   open,
   setOpen,
   animate,
-}: SidebarProps) => {
+}: {
+  children: React.ReactNode;
+  open?: boolean;
+  setOpen?: React.Dispatch<React.SetStateAction<boolean>>;
+  animate?: boolean;
+}) => {
   return (
     <SidebarProvider open={open} setOpen={setOpen} animate={animate}>
       {children}

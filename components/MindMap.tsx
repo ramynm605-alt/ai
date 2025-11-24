@@ -12,6 +12,7 @@ interface MindMapProps {
     theme: 'light' | 'balanced' | 'dark';
     activeNodeId: string | null;
     showSuggestedPath: boolean;
+    // New Props for Selection Mode
     isSelectionMode?: boolean;
     selectedNodeIds?: string[];
 }
@@ -25,8 +26,8 @@ const MindMapNodeItem = React.memo(({
     isSuggestedAndIncomplete, 
     suggestedIndex, 
     isActive, 
-    isSelected, 
-    isSelectionMode, 
+    isSelected, // New Prop
+    isSelectionMode, // New Prop
     isRemedial, 
     isAdaptive,
     isIntro, 
@@ -65,10 +66,11 @@ const MindMapNodeItem = React.memo(({
         }
     };
 
-    let difficultyColor = 'bg-blue-500';
+    // Elegant color palette for difficulty/type indicators
+    let difficultyColor = 'bg-blue-500'; // Default/Medium
     if (isRemedial || isAdaptive) difficultyColor = 'bg-purple-500';
-    else if (node.difficulty < 0.4) difficultyColor = 'bg-emerald-500';
-    else if (node.difficulty > 0.7) difficultyColor = 'bg-rose-500';
+    else if (node.difficulty < 0.4) difficultyColor = 'bg-emerald-500'; // Easy
+    else if (node.difficulty > 0.7) difficultyColor = 'bg-rose-500';    // Hard
 
     const baseStyle = {
         left: node.x,
@@ -77,16 +79,17 @@ const MindMapNodeItem = React.memo(({
         height: height,
         transitionDelay: `${index * 30}ms`,
         zIndex: isActive || isSelected ? 50 : (isLocked ? 10 : 20),
-        touchAction: 'manipulation', // Critical for Android
+        touchAction: 'manipulation',
     };
     
+    // Selection visuals
     const selectionClass = isSelectionMode 
         ? isSelected 
             ? 'ring-4 ring-primary scale-105 border-primary' 
             : 'opacity-60 grayscale hover:opacity-100 hover:grayscale-0 hover:scale-105' 
         : '';
 
-    // 1. Introduction Node
+    // 1. Introduction Node - Minimal & Clean
     if (isIntro) {
         return (
             <div
@@ -121,7 +124,7 @@ const MindMapNodeItem = React.memo(({
         );
     }
 
-    // 2. Conclusion Node
+    // 2. Conclusion Node - Minimal & Clean
     if (isConclusion) {
          return (
             <div
@@ -150,7 +153,7 @@ const MindMapNodeItem = React.memo(({
         );
     }
 
-    // 3. Standard Node
+    // 3. Standard Node - Centered, Better Typography
     return (
         <div
             className={`mindmap-node group ${isVisible ? 'mindmap-node-visible' : ''} absolute select-none outline-none`}
@@ -161,27 +164,28 @@ const MindMapNodeItem = React.memo(({
         >
              <div className={`
                 absolute inset-0 rounded-xl transition-all duration-300 overflow-hidden flex flex-col items-center justify-center text-center
-                bg-card border
+                bg-card/95 backdrop-blur-sm border
                 ${isActive 
                     ? 'border-primary ring-1 ring-primary shadow-[0_4px_20px_-8px_rgba(var(--primary)/0.2)] transform scale-[1.02] z-50' 
-                    : 'border-border/60'
+                    : 'border-border/60 hover:border-border hover:shadow-md'
                 }
                 ${status === 'failed' ? 'border-destructive/30 bg-destructive/5' : ''}
                 ${isLocked && !isSelectionMode ? 'opacity-60 grayscale-[0.8] pointer-events-none' : ''}
                 ${selectionClass}
             `}>
-                 {/* Minimal Status Strip */}
+                 {/* Minimal Status Strip (RTL placement: Right) */}
                  <div className={`absolute right-0 top-0 bottom-0 w-1 ${difficultyColor} opacity-80`} />
 
+                 {/* Content Wrapper */}
                  <div className="w-full h-full p-3 px-4 flex flex-col items-center justify-center relative">
                     
-                    {/* Status Icons */}
+                    {/* Status Icons - Top Right Float */}
                     <div className="absolute top-2 left-2 flex gap-1">
                         {status === 'completed' && <CheckCircle className="w-4 h-4 text-emerald-500" />}
                         {isLocked && <Lock className="w-3 h-3 text-muted-foreground/40" />}
                     </div>
 
-                    {/* Title */}
+                    {/* Title with Improved Typography */}
                     <h3 
                         className={`
                             font-bold leading-relaxed text-foreground/90 w-full
@@ -189,13 +193,21 @@ const MindMapNodeItem = React.memo(({
                             ${isLocked && !isSelectionMode ? 'text-muted-foreground' : ''}
                         `} 
                         dir="rtl"
-                        title={node.title} 
+                        title={node.title} // Tooltip for truncated text
                     >
                         {node.title}
                     </h3>
                     
-                    {/* Tags */}
+                    {/* Tags / Badges - Bottom */}
                     <div className="absolute bottom-2 w-full flex items-center justify-center gap-2">
+                         {/* Page Numbers Badge */}
+                         {/* {!isPortrait && node.sourcePages.length > 0 && (
+                            <span className="text-[9px] text-muted-foreground/70 font-mono tracking-tight bg-secondary px-1.5 rounded-sm">
+                                ص {node.sourcePages[0]}
+                            </span>
+                         )} */}
+                         
+                         {/* Remedial Badge */}
                          {(isRemedial || isAdaptive) && (
                              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] bg-purple-500/10">
                                  <Sparkles className="w-2.5 h-2.5 text-purple-600" />
@@ -238,42 +250,27 @@ const MindMap: React.FC<MindMapProps> = ({
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
     const [isVisible, setIsVisible] = useState(false);
-    // Track if we've centered initially to avoid jumps
-    const hasCenteredRef = useRef(false); 
+    const hasCenteredRef = useRef(false);
 
     useEffect(() => {
         const timer = setTimeout(() => setIsVisible(true), 150);
         return () => clearTimeout(timer);
     }, []);
 
-    // Android Optimization: 
-    // ResizeObserver usually triggers when address bar hides/shows (height changes).
-    // This causes jittery re-layouts. We only want to trigger layout recalc on WIDTH changes (orientation)
-    // or significant height changes.
     useEffect(() => {
         let timeoutId: any;
         const resizeObserver = new ResizeObserver(entries => {
             if (entries[0]) {
                 const { width, height } = entries[0].contentRect;
-                
-                // Debounce slightly
                 clearTimeout(timeoutId);
                 timeoutId = setTimeout(() => {
-                    setContainerSize(prev => {
-                        const widthChanged = Math.abs(prev.width - width) > 10;
-                        const heightChangedSignificant = Math.abs(prev.height - height) > 150; // Ignore address bar
-                        
-                        // Initial load needs both
-                        if (prev.width === 0) return { width, height };
-
-                        if (widthChanged || heightChangedSignificant) {
-                            return { width, height };
-                        }
-                        return prev;
-                    });
-                }, 150);
+                    if (Math.abs(prev.width - width) < 10 && Math.abs(prev.height - height) < 80) return prev;
+                    setContainerSize({ width, height });
+                }, 200);
             }
         });
+        // Helper to fix prev usage inside callback
+        let prev = { width: 0, height: 0 }; 
         
         if (containerRef.current) resizeObserver.observe(containerRef.current);
         return () => {
@@ -289,11 +286,11 @@ const MindMap: React.FC<MindMapProps> = ({
 
         const isMobile = containerSize.width < 768;
         
-        // Optimization: Larger nodes on mobile for better touch
-        const R_NODE_WIDTH = isMobile ? 160 : 200; // Wider on mobile
-        const R_NODE_HEIGHT = isMobile ? 100 : 100; // Taller on mobile
-        const R_H_GAP = isMobile ? 25 : 60; 
-        const R_V_GAP = isMobile ? 60 : 100; 
+        // Compact, minimal dimensions
+        const R_NODE_WIDTH = isMobile ? 140 : 200;
+        const R_NODE_HEIGHT = isMobile ? 80 : 100;
+        const R_H_GAP = isMobile ? 20 : 60; 
+        const R_V_GAP = isMobile ? 50 : 100; 
 
         type NodeWithChildren = MindMapNodeType & { children: NodeWithChildren[], level: number, x: number, y: number };
         const nodeMap = new Map<string, NodeWithChildren>(nodes.map(n => [n.id, { ...n, children: [], level: 0, x: 0, y: 0 }]));
@@ -338,9 +335,7 @@ const MindMap: React.FC<MindMapProps> = ({
         
         const positionedNodesList: NodeWithChildren[] = [];
         const lines: { x1: number, y1: number, x2: number, y2: number, parentId: string, childId: string, type?: 'normal' | 'conclusion' }[] = [];
-        
-        // More padding on mobile to allow scrolling past edges
-        const PADDING = isMobile ? 100 : 120;
+        const PADDING = isMobile ? 60 : 120;
         
         let currentLeafX = 0;
         const layoutVerticalNode = (node: NodeWithChildren) => {
@@ -374,7 +369,7 @@ const MindMap: React.FC<MindMapProps> = ({
             const cNode = nodeMap.get(conclusionNodeId)!;
             const treeCenter = (minX + maxX) / 2;
             cNode.x = treeCenter; 
-            cNode.y = maxY + R_V_GAP * 1.2; 
+            cNode.y = maxY + R_V_GAP * 1.2; // Less gap for conclusion
             positionedNodesList.push(cNode);
             minX = Math.min(minX, cNode.x);
             maxX = Math.max(maxX, cNode.x);
@@ -429,13 +424,12 @@ const MindMap: React.FC<MindMapProps> = ({
 
         return { positionedNodes: positionedNodesList, lines, width: finalWidth, height: finalHeight, isPortrait: isMobile, nodeWidth: R_NODE_WIDTH, nodeHeight: R_NODE_HEIGHT };
 
-    }, [nodes, containerSize.width]); // removed containerSize height dependency for calculation
+    }, [nodes, containerSize]);
 
     useEffect(() => {
         hasCenteredRef.current = false;
     }, [isPortrait]);
 
-    // Initial Center
     useLayoutEffect(() => {
         if (positionedNodes.length > 0 && containerRef.current && !hasCenteredRef.current && width > 0) {
              const root = positionedNodes.find(n => n.parentId === null) || positionedNodes[0];
@@ -448,19 +442,6 @@ const MindMap: React.FC<MindMapProps> = ({
              }
         }
     }, [positionedNodes.length, width, nodeWidth, nodeHeight]);
-
-    // Auto-scroll to Active Node (Crucial for Android experience)
-    useEffect(() => {
-        if (activeNodeId && containerRef.current && positionedNodes.length > 0) {
-            const activeNode = positionedNodes.find(n => n.id === activeNodeId);
-            if (activeNode) {
-                const container = containerRef.current;
-                const scrollX = activeNode.x - (container.clientWidth / 2) + (nodeWidth / 2);
-                const scrollY = activeNode.y - (container.clientHeight / 2) + (nodeHeight / 2);
-                container.scrollTo({ left: scrollX, top: scrollY, behavior: 'smooth' });
-            }
-        }
-    }, [activeNodeId, positionedNodes, nodeWidth, nodeHeight]);
 
     const centerOnRoot = () => {
         if (positionedNodes.length > 0 && containerRef.current) {
@@ -478,12 +459,12 @@ const MindMap: React.FC<MindMapProps> = ({
     const selectedSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
 
     return (
-        <div ref={containerRef} className="relative w-full h-full overflow-auto bg-background/5 touch-pan-x touch-pan-y overscroll-none" style={{ direction: 'ltr', WebkitOverflowScrolling: 'touch' }}>
+        <div ref={containerRef} className="relative w-full h-full overflow-auto bg-background/5 touch-pan-x touch-pan-y" style={{ direction: 'ltr' }}>
             <button onClick={centerOnRoot} className="absolute z-50 p-3 transition-transform rounded-full shadow-md bottom-24 md:bottom-6 left-4 md:left-6 bg-card text-primary border border-border hover:bg-secondary hover:scale-110 active:scale-95">
                <Target className="w-5 h-5" />
             </button>
 
-            <div className="relative mx-auto transition-opacity duration-500 ease-out" style={{ width: Math.max(width, containerSize.width), height: Math.max(height, containerSize.height), opacity: isVisible ? 1 : 0 }}>
+            <div className="relative mx-auto transition-all duration-500 ease-out" style={{ width: Math.max(width, containerSize.width), height: Math.max(height, containerSize.height) }}>
                 <svg className="absolute top-0 left-0 pointer-events-none" style={{ width: '100%', height: '100%', overflow: 'visible' }} shapeRendering="geometricPrecision">
                     <defs>
                         <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
@@ -502,6 +483,7 @@ const MindMap: React.FC<MindMapProps> = ({
                          const isConclusionLine = line.type === 'conclusion';
                          const isSelectionInvolved = isSelectionMode && (selectedSet.has(line.parentId) || selectedSet.has(line.childId));
 
+                         // Thinner, simpler bezier
                          const cpY = (line.y2 - line.y1) * 0.5;
                          const path = `M${line.x1},${line.y1} C${line.x1},${line.y1 + cpY} ${line.x2},${line.y2 - cpY} ${line.x2},${line.y2}`;
                          
@@ -513,7 +495,8 @@ const MindMap: React.FC<MindMapProps> = ({
                                     stroke={isConclusionLine ? "rgb(var(--success))" : "rgb(var(--border))"}
                                     strokeWidth={isActive || isSelectionInvolved ? 2 : 1.5}
                                     strokeOpacity={isActive || isSelectionInvolved ? 1 : 0.3}
-                                    className="mindmap-line"
+                                    className={`mindmap-line ${isVisible ? 'opacity-100' : 'opacity-0'}`}
+                                    style={{ transitionDelay: `${i * 5}ms` }}
                                     markerEnd={isConclusionLine ? "url(#arrow-conclusion)" : (isActive ? "url(#arrow-active)" : "url(#arrow)")}
                                 />
                                 {(isActive || (isSuggested && !isSelectionMode)) && !isConclusionLine && (
