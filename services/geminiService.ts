@@ -685,6 +685,9 @@ export async function generatePodcastScript(contents: any, mode: 'monologue' | '
         if (mode === 'dialogue') {
             prompt = `Write a podcast dialogue script in Persian between a Host (named Host) and a Guest (named Guest).
             Topic: ${JSON.stringify(contents)}.
+            IMPORTANT: Create a unique, creative name for the podcast episode (e.g., "Mind Journey", "Deep Dive: [Topic]"). 
+            Do NOT use generic placeholders like "Podcast Name". 
+            Start immediately with the Intro using the creative name.
             Format:
             Host: ...
             Guest: ...
@@ -692,6 +695,9 @@ export async function generatePodcastScript(contents: any, mode: 'monologue' | '
         } else {
             prompt = `Write a podcast monologue script in Persian.
             Topic: ${JSON.stringify(contents)}.
+            IMPORTANT: Create a unique, creative name for the podcast episode (e.g., "Mind Journey", "Deep Dive: [Topic]"). 
+            Do NOT use generic placeholders like "Podcast Name". 
+            Start immediately with the Intro using the creative name.
             Format: Just the spoken text.
             Keep it engaging and educational.`;
         }
@@ -769,7 +775,7 @@ const flashcardSchema = {
         type: Type.OBJECT,
         properties: {
             front: { type: Type.STRING, description: "The question or concept to recall." },
-            back: { type: Type.STRING, description: "The answer or explanation." }
+            back: { type: Type.STRING, description: "The answer or explanation. MUST BE FILLED." }
         },
         required: ["front", "back"]
     }

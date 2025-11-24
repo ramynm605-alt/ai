@@ -846,7 +846,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                 id: Math.random().toString(36).substr(2, 9),
                 nodeId: node.id,
                 front: c.front || "سوال نامشخص",
-                back: c.back || "پاسخی برای این کارت تولید نشد.",
+                back: c.back || "پاسخ در دسترس نیست", // Fallback if AI returns empty
                 interval: 0,
                 repetition: 0,
                 easeFactor: 2.5,

@@ -461,7 +461,6 @@ function appReducer(state: AppState, action: any): AppState {
     case 'SET_CHAT_LOADING':
         return { ...state, isChatLoading: action.payload };
     case 'TRIGGER_PROACTIVE_DEBATE':
-        if (state.isChatOpen) return state;
         return { ...state, isChatOpen: true, chatHistory: [...state.chatHistory, action.payload] };
     case 'SET_ERROR':
       return { ...state, error: action.payload, status: AppStatus.ERROR, loadingMessage: null };
