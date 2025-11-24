@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Flashcard, FlashcardGrade, MindMapNode } from '../types';
-import { XCircle, Sparkles, BrainCircuit, CheckCircle, ArrowRight, Keyboard, Target } from './icons';
+import { XCircle, Sparkles, BrainCircuit, CheckCircle, ArrowRight, Keyboard, Target, Info } from './icons';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface FlashcardReviewProps {
@@ -15,6 +15,7 @@ const FlashcardReview: React.FC<FlashcardReviewProps> = ({ cards, mindMap, onGra
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isFlipped, setIsFlipped] = useState(false);
     const [direction, setDirection] = useState(0); // For slide animation
+    const [showHelp, setShowHelp] = useState(false); // SRS Guide Modal State
 
     const currentCard = cards[currentIndex];
 
@@ -38,6 +39,7 @@ const FlashcardReview: React.FC<FlashcardReviewProps> = ({ cards, mindMap, onGra
     // Keyboard Shortcuts
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            if (showHelp) return; // Disable shortcuts when modal is open
             if (!currentCard) return;
 
             if (e.code === 'Space' || e.key === 'Enter') {
@@ -56,7 +58,7 @@ const FlashcardReview: React.FC<FlashcardReviewProps> = ({ cards, mindMap, onGra
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isFlipped, currentCard, currentIndex]);
+    }, [isFlipped, currentCard, currentIndex, showHelp]);
 
     const handleGrade = useCallback((grade: FlashcardGrade) => {
         if (!currentCard) return;
@@ -113,6 +115,72 @@ const FlashcardReview: React.FC<FlashcardReviewProps> = ({ cards, mindMap, onGra
     return (
         <div className="fixed inset-0 z-[300] bg-background/95 backdrop-blur-xl flex flex-col overflow-hidden">
             
+            {/* SRS Guide Modal */}
+            <AnimatePresence>
+                {showHelp && (
+                    <motion.div 
+                        initial={{ opacity: 0 }} 
+                        animate={{ opacity: 1 }} 
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[400] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+                        onClick={() => setShowHelp(false)}
+                    >
+                        <motion.div 
+                            initial={{ scale: 0.9, y: 20 }}
+                            animate={{ scale: 1, y: 0 }}
+                            exit={{ scale: 0.9, y: 20 }}
+                            className="bg-card border border-border w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="p-6 border-b border-border bg-primary/5">
+                                <h3 className="text-lg font-bold flex items-center gap-2">
+                                    <Info className="w-5 h-5 text-primary" />
+                                    راهنمای سیستم مرور هوشمند
+                                </h3>
+                            </div>
+                            <div className="p-6 space-y-4">
+                                <div className="flex items-start gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-destructive flex items-center justify-center text-white font-bold shrink-0">1</div>
+                                    <div>
+                                        <span className="font-bold text-destructive block">فراموشی (Again)</span>
+                                        <p className="text-xs text-muted-foreground leading-relaxed">پاسخ را اصلاً نمی‌دانستم. کارت ریست می‌شود و فردا دوباره پرسیده می‌شود.</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-start gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-orange-500 flex items-center justify-center text-white font-bold shrink-0">2</div>
+                                    <div>
+                                        <span className="font-bold text-orange-500 block">سخت (Hard)</span>
+                                        <p className="text-xs text-muted-foreground leading-relaxed">پاسخ را با مکث و دشواری یادم آمد. فاصله مرور بعدی کوتاه خواهد بود.</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-start gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center text-white font-bold shrink-0">3</div>
+                                    <div>
+                                        <span className="font-bold text-blue-500 block">خوب (Good)</span>
+                                        <p className="text-xs text-muted-foreground leading-relaxed">پاسخ را درست و با سرعت مناسب دادم. فاصله زمانی استاندارد اعمال می‌شود.</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-start gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-success flex items-center justify-center text-white font-bold shrink-0">4</div>
+                                    <div>
+                                        <span className="font-bold text-success block">آسان (Easy)</span>
+                                        <p className="text-xs text-muted-foreground leading-relaxed">پاسخ بسیار بدیهی بود. کارت برای مدت طولانی‌تری پنهان می‌شود.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="p-4 bg-secondary/30 text-center">
+                                <button 
+                                    onClick={() => setShowHelp(false)}
+                                    className="px-6 py-2 bg-primary text-white font-bold rounded-lg hover:bg-primary-hover active:scale-95 transition-transform"
+                                >
+                                    متوجه شدم
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* Header */}
             <div className="p-4 md:p-6 flex items-center justify-between z-10">
                 <div className="flex items-center gap-3 bg-card/50 px-4 py-2 rounded-full border border-border/50 backdrop-blur-md">
@@ -127,6 +195,13 @@ const FlashcardReview: React.FC<FlashcardReviewProps> = ({ cards, mindMap, onGra
                         <Keyboard className="w-4 h-4" />
                         <span>Space: چرخش | 1-4: نمره</span>
                     </div>
+                    <button 
+                        onClick={() => setShowHelp(true)} 
+                        className="p-2 rounded-full hover:bg-secondary/80 text-muted-foreground hover:text-primary transition-colors"
+                        title="راهنما"
+                    >
+                        <Info className="w-6 h-6" />
+                    </button>
                     <button onClick={onFinish} className="p-2 rounded-full hover:bg-destructive/10 hover:text-destructive transition-colors">
                         <XCircle className="w-6 h-6" />
                     </button>
