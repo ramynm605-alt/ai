@@ -176,22 +176,17 @@
 
       /* PERFORMANCE OPTIMIZATIONS FOR MOBILE (Android Friendly) */
       @media (max-width: 768px) {
-        /* Disable expensive blur filters on mobile - CRITICAL FOR SCROLL PERFORMANCE */
-        .glass, .glass-strong, .glass-panel, .stylish-textarea-wrapper, .backdrop-blur, .backdrop-blur-md, .backdrop-blur-sm, .backdrop-blur-lg {
+        /* Disable expensive blur filters on mobile */
+        .glass, .glass-strong, .glass-panel, .stylish-textarea-wrapper {
           backdrop-filter: none !important;
           -webkit-backdrop-filter: none !important;
-          background-color: rgb(var(--card)) !important; /* Solid color fallback */
+          background: rgb(var(--card)) !important; /* Solid color */
           border: 1px solid rgba(var(--border) / 0.8);
-          box-shadow: none !important;
-        }
-        
-        /* Make NodeView background completely solid on mobile to avoid overdraw */
-        .node-view-container {
-            background-color: rgb(var(--background)) !important;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
         }
         
         /* Disable heavy shadows on mobile nodes */
-        .mindmap-node .absolute, .shadow-2xl, .shadow-xl, .shadow-lg {
+        .mindmap-node .absolute {
             box-shadow: 0 1px 2px rgba(0,0,0,0.1) !important;
         }
 
@@ -201,8 +196,8 @@
         }
         
         /* Text rendering optimization */
-        p, span, h1, h2, h3, .markdown-content {
-            text-rendering: optimizeSpeed;
+        p, span, h1, h2, h3 {
+            text-rendering: auto;
         }
         
         /* Remove selection highlight to feel more app-like */

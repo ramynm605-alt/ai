@@ -1,3 +1,4 @@
+
 import React, { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { AppStatus, ChatMessage, PodcastConfig, PodcastState, QuizResult, Reward, SavableState, SavedSession, UserAnswer, UserBehavior, UserProfile, Weakness, LearningPreferences, LearningResource, Flashcard, FlashcardGrade } from '../types';
@@ -6,14 +7,16 @@ import { generateChatResponse, generateDailyChallenge, generateDeepAnalysis, gen
 
 declare var pdfjsLib: any;
 
-export const useAppActions = (showNotification: (msg: string, type?: 'success' | 'error' | 'info') => void) => {
+export const useAppActions = (showNotification: (msg: string, type?: 'success' | 'error') => void) => {
     const { state, dispatch } = useApp();
+
+    // ... (handleCloudLoad, handleCloudSave, handleLogin, handleLogout, handleSaveSession, handleDeleteSession, handleLoadSession, handleExportUserData, handleImportUserData, processResource, addResource, handleUpdateResourceContent, handleUpdateResourceInstructions, handleRemoveResource, handleFileUpload, handleStartFromText, handleTopicStudy, handleUrlInput, handleFinalizeResources, handleWizardComplete, generatePlanInternal, triggerFeynmanChallenge, submitFeynmanExplanation, handleNodeSelect, handleNodeNavigate, handleTakeQuiz, handleQuizSubmit, handleGenerateRemedial, handlePreAssessmentSubmit, handleChatSend, handleExplainRequest, handleDebateInitiation, togglePodcastMode, startPodcastGeneration - NO CHANGES, KEPT) ...
 
     // --- Helpers for Cloud Sync ---
     const handleCloudLoad = useCallback(async (userId: string) => {
        dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'syncing' } });
        try {
-           const cloudData: any = await FirebaseService.loadUserData(userId);
+           const cloudData = await FirebaseService.loadUserData(userId);
            
            if (cloudData && cloudData.sessions) {
                 const cloudTime = new Date(cloudData.lastModified || 0).getTime();
@@ -112,7 +115,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         };
         
         const totalNodes = state.mindMap.length;
-        const completedNodes = Object.values(state.userProgress).filter((p: any) => p.status === 'completed').length;
+        const completedNodes = Object.values(state.userProgress).filter(p => p.status === 'completed').length;
         const progress = totalNodes > 0 ? (completedNodes / totalNodes) * 100 : 0;
 
         let newSessions = [...state.savedSessions];
@@ -455,10 +458,9 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         const randomId = completedNodeIds[Math.floor(Math.random() * completedNodeIds.length)];
         const targetNode = state.mindMap.find(n => n.id === randomId);
         if (targetNode) {
-            showNotification(`مربی: لطفاً مبحث "${targetNode.title}" را برای من توضیح دهید!`, 'info');
             dispatch({ type: 'START_FEYNMAN', payload: targetNode });
         }
-    }, [state.userProgress, state.mindMap, dispatch, showNotification]);
+    }, [state.userProgress, state.mindMap, dispatch]);
 
     const submitFeynmanExplanation = async (explanation: string, audioBlob?: Blob) => {
         const targetNode = state.feynmanState?.targetNode;
@@ -479,7 +481,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
             }
             const feedback = await evaluateFeynmanExplanation(targetNode.title, content, explanation, audioBase64);
             dispatch({ type: 'FEYNMAN_FEEDBACK_RECEIVED', payload: feedback });
-        } catch (e: any) {
+        } catch (e) {
             console.error("Feynman Analysis Error", e);
             showNotification("خطا در تحلیل توضیح شما", 'error');
             dispatch({ type: 'CLOSE_FEYNMAN' });
@@ -625,7 +627,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                 state.sourceImages
             );
             dispatch({ type: 'ADD_REMEDIAL_NODE', payload: { remedialNode, originalNodeId: node.id } });
-        } catch (e: any) {
+        } catch (e) {
              dispatch({ type: 'SET_ERROR', payload: 'خطا در تولید درس تقویتی.' });
              dispatch({ type: 'CANCEL_REMEDIAL_GENERATION' });
         }
@@ -656,7 +658,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                     suggestedPath: state.suggestedPath 
                 } 
             });
-        } catch (error: any) {
+        } catch (error) {
             console.error("Pre-assessment analysis failed", error);
             dispatch({ type: 'SET_ERROR', payload: 'خطا در تحلیل پیش‌آزمون.' });
         }
@@ -692,7 +694,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
             );
             const modelMsg: ChatMessage = { role: 'model', message: responseText };
             dispatch({ type: 'ADD_CHAT_MESSAGE', payload: modelMsg });
-        } catch (error: any) {
+        } catch (error) {
             dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'model', message: "متاسفانه ارتباط با سرور برقرار نشد." } });
         } finally {
             dispatch({ type: 'SET_CHAT_LOADING', payload: false });
@@ -721,21 +723,18 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
                 state.isDebateMode,
                 state.weaknesses
             );
-            // Notify user about the debate start
-            showNotification(`پیام جدید از مربی: ${msgText.substring(0, 50)}...`, 'info');
-            
             dispatch({ 
                 type: 'TRIGGER_PROACTIVE_DEBATE', 
                 payload: { role: 'model', message: msgText }
             });
-        } catch(e: any) {
+        } catch(e) {
             console.error("Failed to initiate debate manually", e);
             dispatch({ 
                 type: 'ADD_CHAT_MESSAGE', 
                 payload: { role: 'model', message: "متاسفانه در شروع بحث مشکلی پیش آمد." }
             });
         }
-    }, [state.activeNodeId, state.mindMap, state.nodeContents, state.sourceContent, state.isDebateMode, state.weaknesses, dispatch, showNotification]);
+    }, [state.activeNodeId, state.mindMap, state.nodeContents, state.sourceContent, state.isDebateMode, state.weaknesses, dispatch]);
 
     const togglePodcastMode = useCallback(() => {
         dispatch({ type: 'TOGGLE_PODCAST_MODE' });
@@ -807,7 +806,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
 
             dispatch({ type: 'ADD_FLASHCARDS', payload: newCards });
             showNotification(`${newCards.length} کارت مرور به جعبه لایتنر شما اضافه شد!`, "success");
-        } catch (e: any) {
+        } catch (e) {
             console.error("Flashcard generation failed", e);
             showNotification("خطا در تولید کارت‌های مرور.", 'error');
         }
