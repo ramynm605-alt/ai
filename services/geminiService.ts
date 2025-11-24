@@ -79,6 +79,9 @@ function cleanJsonString(str: string): string {
     // Generic markdown block removal
     cleaned = cleaned.replace(/^```[a-z]*\s*/i, '').replace(/\s*```$/, '');
 
+    // Remove any trailing commas before closing braces (common AI error)
+    cleaned = cleaned.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
+
     // Robust Extraction: Find the first '{' or '[' and the last '}' or ']'
     const firstOpen = cleaned.indexOf('{');
     const firstArray = cleaned.indexOf('[');
@@ -420,6 +423,11 @@ export async function generateLearningPlan(content: string, pageContents: string
         Format:
         1. [MIND_MAP_START] JSON [MIND_MAP_END]
         2. [QUESTION_START] JSON [QUESTION_END] (x5)
+
+        CRITICAL: DO NOT put markdown ticks (\`\`\`json) INSIDE the tags. Just the raw JSON string.
+
+        Question JSON Schema (Strict):
+        For 'multiple-choice': { "type": "multiple-choice", "question": "...", "options": ["A","B","C","D"], "correctAnswerIndex": 0, "difficulty": "متوسط", "points": 10 }
         
         Content: ${pageContentForPrompt.substring(0, 30000)}
         `;
@@ -626,9 +634,40 @@ export async function generateRemedialNode(originalNodeId: string, parentTitle: 
 export async function generateQuiz(topic: string, content: string, images: any[], onQuestionStream: any): Promise<Quiz> {
     return withRetry(async () => {
         const prompt = `
-        Generate 3 multiple choice and 1 short answer question for "${topic}".
-        Ensure all math equations are in LaTeX format ($...$).
-        Format: [QUESTION_START] JSON [QUESTION_END]
+        Generate 4 questions for the topic: "${topic}".
+        Content Context: ${content.substring(0, 3000)}
+
+        Task: Create 3 "multiple-choice" questions and 1 "short-answer" question.
+
+        CRITICAL OUTPUT FORMAT:
+        Stream each question one by one. Wrap each JSON object with [QUESTION_START] and [QUESTION_END].
+        DO NOT use markdown code blocks (like \`\`\`json). Just output the raw tags and raw JSON.
+
+        Schema for 'multiple-choice':
+        [QUESTION_START]
+        {
+            "type": "multiple-choice",
+            "question": "...",
+            "options": ["A", "B", "C", "D"],
+            "correctAnswerIndex": 0,
+            "difficulty": "متوسط",
+            "points": 10
+        }
+        [QUESTION_END]
+
+        Schema for 'short-answer':
+        [QUESTION_START]
+        {
+            "type": "short-answer",
+            "question": "...",
+            "correctAnswer": "...",
+            "difficulty": "سخت",
+            "points": 20
+        }
+        [QUESTION_END]
+
+        Language: Persian (Farsi).
+        Use LaTeX for math ($...$).
         `;
         const stream = await ai.models.generateContentStream({
             model: "gemini-2.5-flash",
@@ -973,6 +1012,8 @@ export async function generateScenario(nodeTitle: string, content: string): Prom
 
         Language: Persian (Farsi).
         
+        IMPORTANT: Return PURE JSON. No markdown ticks (\`\`\`json). 
+        
         Output JSON:
         {
             "role": "Title (e.g. مدیر پروژه)",
@@ -1013,6 +1054,8 @@ export async function evaluateScenarioDecision(scenario: Scenario, decisionId: s
         3. Level: 'positive', 'neutral', or 'negative'.
 
         Language: Persian (Farsi).
+        
+        IMPORTANT: Return PURE JSON.
         
         Output JSON:
         {

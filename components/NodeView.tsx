@@ -239,7 +239,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                                 {onStartScenario && (
                                     <button 
                                         onClick={onStartScenario}
-                                        className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-500/10 text-indigo-600 hover:bg-indigo-500/20 transition-colors border border-indigo-500/20"
+                                        className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-gradient-to-r from-indigo-500 to-purple-500 text-white hover:shadow-lg hover:shadow-indigo-500/30 transition-all border border-white/10 animate-pulse-slow"
                                         title="شبیه‌سازی موقعیت"
                                     >
                                         <Gamepad className="w-4 h-4" />
@@ -379,7 +379,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                                 {onStartScenario && (
                                     <button 
                                         onClick={onStartScenario}
-                                        className="w-full flex items-center justify-center gap-2 py-3 text-indigo-600 bg-indigo-500/10 border border-indigo-500/20 rounded-xl font-bold"
+                                        className="w-full flex items-center justify-center gap-2 py-3 text-white bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl font-bold shadow-lg hover:shadow-purple-500/30 active:scale-95 transition-all"
                                     >
                                         <Gamepad className="w-5 h-5" />
                                         <span>شبیه‌سازی سناریو</span>
