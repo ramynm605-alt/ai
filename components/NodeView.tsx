@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { MindMapNode, NodeContent, Reward } from '../types';
-import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle, BrainCircuit, Edit, Shuffle, Target, CheckCircle, ArrowLeft, ClipboardList, Mic, Flame } from './icons';
+import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle, BrainCircuit, Edit, Shuffle, Target, CheckCircle, ArrowLeft, ClipboardList, Mic, Flame, Gamepad } from './icons';
 import { evaluateNodeInteraction } from '../services/geminiService';
 import BoxLoader from './ui/box-loader';
 
@@ -21,6 +21,7 @@ interface NodeViewProps {
     onGenerateFlashcards?: () => void;
     onTriggerFeynman?: () => void; // New
     onTriggerDebate?: () => void; // New
+    onStartScenario?: () => void; // New
 }
 
 const HeroLoader: React.FC<{ text?: string }> = ({ text = "در حال طراحی درس برای شما..." }) => (
@@ -82,7 +83,7 @@ const CoachBubble: React.FC<{ type: 'feynman' | 'debate', onClick: () => void, o
     );
 };
 
-const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz, onNavigate, prevNode, nextNode, onExplainRequest, isIntroNode, onCompleteIntro, unlockedReward, isStreaming, onGenerateFlashcards, onTriggerFeynman, onTriggerDebate }) => {
+const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz, onNavigate, prevNode, nextNode, onExplainRequest, isIntroNode, onCompleteIntro, unlockedReward, isStreaming, onGenerateFlashcards, onTriggerFeynman, onTriggerDebate, onStartScenario }) => {
     const [selectionPopup, setSelectionPopup] = useState<{ x: number; y: number; text: string } | null>(null);
     const [reminderPopup, setReminderPopup] = useState<{ x: number; y: number; content: string } | null>(null);
     const [activeTab, setActiveTab] = useState<'content' | 'reward'>('content');
@@ -222,15 +223,30 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                      )}
 
                     <div className="flex items-center gap-2 md:gap-3 shrink-0">
-                        {onGenerateFlashcards && !isIntroNode && activeTab === 'content' && !isStreaming && (
-                            <button 
-                                onClick={onGenerateFlashcards}
-                                className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 transition-colors border border-yellow-500/20"
-                                title="ساخت فلش‌کارت مرور"
-                            >
-                                <ClipboardList className="w-4 h-4" />
-                                <span>مرور</span>
-                            </button>
+                        {/* Action Buttons Group */}
+                        {activeTab === 'content' && !isStreaming && !isIntroNode && (
+                            <div className="flex gap-2">
+                                {onGenerateFlashcards && (
+                                    <button 
+                                        onClick={onGenerateFlashcards}
+                                        className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 transition-colors border border-yellow-500/20"
+                                        title="ساخت فلش‌کارت مرور"
+                                    >
+                                        <ClipboardList className="w-4 h-4" />
+                                        <span>مرور</span>
+                                    </button>
+                                )}
+                                {onStartScenario && (
+                                    <button 
+                                        onClick={onStartScenario}
+                                        className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-500/10 text-indigo-600 hover:bg-indigo-500/20 transition-colors border border-indigo-500/20"
+                                        title="شبیه‌سازی موقعیت"
+                                    >
+                                        <Gamepad className="w-4 h-4" />
+                                        <span>شبیه‌سازی</span>
+                                    </button>
+                                )}
+                            </div>
                         )}
 
                         {unlockedReward && (
@@ -348,15 +364,28 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                 {activeTab === 'content' && !isStreaming && content.conclusion && (
                     <div className="w-full mt-8 md:mt-12 p-4 md:p-6 bg-card/50 border border-border/50 rounded-2xl animate-slide-up" style={{ animationDelay: '600ms' }}>
                         
-                        {/* Mobile Flashcard Button */}
-                        {onGenerateFlashcards && !isIntroNode && (
-                            <button 
-                                onClick={onGenerateFlashcards}
-                                className="sm:hidden w-full flex items-center justify-center gap-2 mb-4 py-3 text-yellow-600 bg-yellow-500/10 border border-yellow-500/20 rounded-xl font-bold"
-                            >
-                                <ClipboardList className="w-5 h-5" />
-                                <span>افزودن کارت مرور برای این درس</span>
-                            </button>
+                        {/* Mobile Action Buttons */}
+                        {!isIntroNode && (
+                            <div className="sm:hidden grid grid-cols-1 gap-3 mb-4">
+                                {onGenerateFlashcards && (
+                                    <button 
+                                        onClick={onGenerateFlashcards}
+                                        className="w-full flex items-center justify-center gap-2 py-3 text-yellow-600 bg-yellow-500/10 border border-yellow-500/20 rounded-xl font-bold"
+                                    >
+                                        <ClipboardList className="w-5 h-5" />
+                                        <span>افزودن کارت مرور</span>
+                                    </button>
+                                )}
+                                {onStartScenario && (
+                                    <button 
+                                        onClick={onStartScenario}
+                                        className="w-full flex items-center justify-center gap-2 py-3 text-indigo-600 bg-indigo-500/10 border border-indigo-500/20 rounded-xl font-bold"
+                                    >
+                                        <Gamepad className="w-5 h-5" />
+                                        <span>شبیه‌سازی سناریو</span>
+                                    </button>
+                                )}
+                            </div>
                         )}
 
                         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 md:gap-4">

@@ -24,6 +24,7 @@ const PodcastCreator = React.lazy(() => import('./components/PodcastCreator'));
 const PodcastPlayer = React.lazy(() => import('./components/PodcastPlayer'));
 const FeynmanMode = React.lazy(() => import('./components/FeynmanMode'));
 const FlashcardReview = React.lazy(() => import('./components/FlashcardReview'));
+const ScenarioSimulator = React.lazy(() => import('./components/ScenarioSimulator'));
 
 const NotificationToast = ({ message, type = 'success', onClose }: { message: string, type?: 'success' | 'error' | 'coach', onClose: () => void }) => {
     useEffect(() => {
@@ -357,6 +358,15 @@ const AppLayout = () => {
                         state={state.feynmanState}
                         onSubmit={actions.submitFeynmanExplanation}
                         onClose={() => dispatch({ type: 'CLOSE_FEYNMAN' })}
+                    />
+                )}
+
+                {/* SCENARIO SIMULATOR UI */}
+                {state.status === AppStatus.SCENARIO_SIMULATOR && state.scenarioState && (
+                    <ScenarioSimulator
+                        state={state.scenarioState}
+                        onDecision={actions.handleScenarioDecision}
+                        onClose={() => dispatch({ type: 'CLOSE_SCENARIO' })}
                     />
                 )}
 

@@ -127,6 +127,7 @@ export interface MindMapNode {
     PODCAST_CREATION = 'PODCAST_CREATION', // New status for podcast UI
     FEYNMAN_CHALLENGE = 'FEYNMAN_CHALLENGE', // New status for Reverse Teaching
     REVIEWING_FLASHCARDS = 'REVIEWING_FLASHCARDS', // New Status for SRS
+    SCENARIO_SIMULATOR = 'SCENARIO_SIMULATOR', // New Status for Role-play
   }
 
   export type UserAnswer = string | number;
@@ -239,6 +240,32 @@ export interface MindMapNode {
       isAnalyzing: boolean;
   }
 
+  // --- NEW TYPES FOR SCENARIO SIMULATOR ---
+  export interface ScenarioOption {
+      id: string;
+      text: string;
+  }
+
+  export interface Scenario {
+      role: string;
+      context: string; // The story/situation
+      options: ScenarioOption[];
+  }
+
+  export interface ScenarioOutcome {
+      narrative: string; // What happened next
+      analysis: string; // Why it happened (educational link)
+      consequenceLevel: 'positive' | 'neutral' | 'negative';
+  }
+
+  export interface ScenarioState {
+      targetNode: MindMapNode;
+      currentScenario: Scenario | null;
+      outcome: ScenarioOutcome | null;
+      isGenerating: boolean;
+      isEvaluating: boolean;
+  }
+
   export interface AppState {
     theme: 'light' | 'balanced' | 'dark';
     status: AppStatus;
@@ -288,6 +315,8 @@ export interface MindMapNode {
     podcastState: PodcastState; 
     // Feynman State
     feynmanState: FeynmanState | null;
+    // Scenario Simulator State
+    scenarioState: ScenarioState | null;
   }
 
   export interface SavableState {

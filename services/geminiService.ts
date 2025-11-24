@@ -1,7 +1,6 @@
 
-
 import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, GradingResult, PreAssessmentAnalysis, ChatMessage, Weakness, ChatPersona, VoiceName, ResourceValidation, Flashcard } from '../types';
+import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, GradingResult, PreAssessmentAnalysis, ChatMessage, Weakness, ChatPersona, VoiceName, ResourceValidation, Flashcard, Scenario, ScenarioOutcome } from '../types';
 import { marked } from 'marked';
 import katex from 'katex';
 
@@ -258,6 +257,7 @@ const getPreferenceInstructions = (preferences: LearningPreferences): string => 
     return instructions;
 };
 
+// ... (analyzeResourceContent, generateLearningPlan, etc. remain unchanged) ...
 export async function analyzeResourceContent(
     title: string,
     rawText: string | null,
@@ -373,7 +373,6 @@ export async function analyzeResourceContent(
         });
 
         let textToParse = response.text || '{}';
-        // Use our robust cleaner
         textToParse = cleanJsonString(textToParse);
 
         let result;
@@ -450,8 +449,6 @@ export async function generateLearningPlan(content: string, pageContents: string
                         buffer = buffer.substring(e + 14);
                     } catch (e) {
                         console.error("Error parsing mind map JSON", e);
-                        // Keep buffer if parsing failed, maybe incomplete?
-                        // But here we assume block is complete.
                     }
                 }
             }
@@ -467,7 +464,6 @@ export async function generateLearningPlan(content: string, pageContents: string
                     buffer = buffer.substring(e + 14);
                 } catch (e) {
                     console.error("Error parsing question JSON", e);
-                    // Skip bad block
                     buffer = buffer.substring(e + 14);
                 }
             }
@@ -536,20 +532,15 @@ export async function generateNodeContent(nodeTitle: string, fullContent: string
         let fullText = "";
         for await (const chunk of response) {
             fullText += chunk.text;
-            // Optional: Try parsing partial content for streaming display
-            // We don't fully parse here to avoid errors, but we could clean strings if needed.
         }
         
         const jsonStr = cleanJsonString(fullText);
         let content;
         try {
             content = JSON.parse(jsonStr);
-            
-            // Convert Markdown to HTML for highlighting and bolding
             const parseMarkdown = async (text: string) => {
                 if (!text) return "";
                 try {
-                    // marked.parse returns string or Promise<string>. We await it to be safe.
                     return await marked.parse(text);
                 } catch(e) {
                     return text;
@@ -563,7 +554,6 @@ export async function generateNodeContent(nodeTitle: string, fullContent: string
             content.conclusion = await parseMarkdown(content.conclusion);
             
         } catch(e) {
-            // Fallback if JSON fails
             const htmlText = await marked.parse(fullText) as string;
             content = {
                 introduction: htmlText,
@@ -605,7 +595,7 @@ export async function evaluateFeynmanExplanation(nodeTitle: string, nodeContent:
             { text: `User is explaining "${nodeTitle}" in their own words (Feynman Technique). \nReference Content: ${nodeContent.substring(0, 2000)} \n\nEvaluate their explanation. Identify misconceptions or missing key points. Be encouraging. Use LaTeX for math.` }
         ];
         if (audioData) {
-            parts.push({ inlineData: { mimeType: 'audio/webm', data: audioData } }); // Assuming webm from MediaRecorder
+            parts.push({ inlineData: { mimeType: 'audio/webm', data: audioData } }); 
         } else {
             parts.push({ text: `User Explanation: ${userExplanation}` });
         }
@@ -723,7 +713,6 @@ export async function generateProactiveChatInitiation(nodeTitle: string, nodeCon
     });
 }
 
-// NEW: Generate a quick intervention question for the coach bubble
 export async function generateCoachQuestion(nodeTitle: string, nodeContent: string): Promise<string> {
     return withRetry(async () => {
         const prompt = `
@@ -800,7 +789,6 @@ export async function generatePodcastAudio(script: string, speaker1: VoiceName, 
     return withRetry(async () => {
         // REAL IMPLEMENTATION
         try {
-            // If the script is very long, we should truncate it for this demo as audio gen has limits
             const truncatedScript = script.substring(0, 2000); 
 
             let speechConfig: any;
@@ -838,8 +826,6 @@ export async function generatePodcastAudio(script: string, speaker1: VoiceName, 
             const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
             
             if (base64Audio) {
-                // The API returns raw PCM audio (usually 24kHz 1-channel).
-                // We need to wrap it in a WAV header to make it playable in browsers.
                 const rawAudioBytes = base64ToUint8Array(base64Audio);
                 const wavHeader = createWavHeader(rawAudioBytes.length, 24000, 1, 16); // Assuming 24kHz, Mono, 16-bit
                 
@@ -968,5 +954,80 @@ export async function generateDailyChallenge(): Promise<string> {
         
         const text = response.text || "چالش امروز آماده نیست.";
         return marked.parse(text) as string;
+    });
+}
+
+// --- Scenario Simulator Functions ---
+
+export async function generateScenario(nodeTitle: string, content: string): Promise<Scenario> {
+    return withRetry(async () => {
+        const prompt = `
+        You are a Scenario Designer for an educational role-playing game.
+        Topic: "${nodeTitle}"
+        Content: ${content.substring(0, 2000)}...
+
+        Task: Create an immersive decision-making scenario.
+        1. Assign a Role (e.g., CEO, Historian, Scientist).
+        2. Describe a specific Crisis or Challenge related to the topic.
+        3. Provide 3 distinct Options. One should be optimal based on the content, others might have trade-offs or be common misconceptions.
+
+        Language: Persian (Farsi).
+        
+        Output JSON:
+        {
+            "role": "Title (e.g. مدیر پروژه)",
+            "context": "Story/Situation description (approx 50 words).",
+            "options": [
+                { "id": "A", "text": "Action 1" },
+                { "id": "B", "text": "Action 2" },
+                { "id": "C", "text": "Action 3" }
+            ]
+        }
+        `;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: { parts: [{ text: prompt }] },
+            config: { responseMimeType: "application/json" }
+        });
+
+        const json = JSON.parse(cleanJsonString(response.text || '{}'));
+        if (!json.options) throw new Error("Invalid scenario format");
+        return json;
+    });
+}
+
+export async function evaluateScenarioDecision(scenario: Scenario, decisionId: string, content: string): Promise<ScenarioOutcome> {
+    return withRetry(async () => {
+        const selectedOption = scenario.options.find(o => o.id === decisionId)?.text || "Unknown";
+        
+        const prompt = `
+        The user is playing a simulation about "${scenario.role}".
+        Situation: ${scenario.context}
+        User Choice: "${selectedOption}"
+        Reference Content: ${content.substring(0, 2000)}
+
+        Task: Simulate the consequence of this decision.
+        1. Narrative: What happens next? (Positive or negative outcome).
+        2. Analysis: Explain WHY based on the educational content.
+        3. Level: 'positive', 'neutral', or 'negative'.
+
+        Language: Persian (Farsi).
+        
+        Output JSON:
+        {
+            "narrative": "Story of what happened...",
+            "analysis": "Educational explanation...",
+            "consequenceLevel": "positive" | "neutral" | "negative"
+        }
+        `;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: { parts: [{ text: prompt }] },
+            config: { responseMimeType: "application/json" }
+        });
+
+        return JSON.parse(cleanJsonString(response.text || '{}'));
     });
 }

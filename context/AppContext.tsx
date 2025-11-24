@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { AppState, AppStatus, ChatMessage, MindMapNode, NodeProgress, PodcastConfig, PodcastState, Quiz, QuizResult, Reward, SavedSession, UserBehavior, UserProfile, Weakness, LearningPreferences, PreAssessmentAnalysis, NodeContent, UserAnswer, FeynmanState, Flashcard, FlashcardGrade } from '../types';
+import { AppState, AppStatus, ChatMessage, MindMapNode, NodeProgress, PodcastConfig, PodcastState, Quiz, QuizResult, Reward, SavedSession, UserBehavior, UserProfile, Weakness, LearningPreferences, PreAssessmentAnalysis, NodeContent, UserAnswer, FeynmanState, Flashcard, FlashcardGrade, ScenarioState } from '../types';
 
 // --- Default Behavior & Initial State ---
 const DEFAULT_BEHAVIOR: UserBehavior = {
@@ -71,6 +71,7 @@ const initialState: AppState = {
       isMinimized: false
   },
   feynmanState: null,
+  scenarioState: null,
 };
 
 // --- Helper: SM-2 Algorithm for SRS ---
@@ -500,6 +501,37 @@ function appReducer(state: AppState, action: any): AppState {
         return { ...state, feynmanState: { ...state.feynmanState!, isAnalyzing: false, feedback: action.payload } };
     case 'CLOSE_FEYNMAN':
         return { ...state, status: AppStatus.LEARNING, feynmanState: null };
+
+    // --- SCENARIO SIMULATOR ACTIONS ---
+    case 'START_SCENARIO':
+        return { 
+            ...state, 
+            status: AppStatus.SCENARIO_SIMULATOR,
+            scenarioState: {
+                targetNode: action.payload,
+                currentScenario: null,
+                outcome: null,
+                isGenerating: true,
+                isEvaluating: false
+            }
+        };
+    case 'SCENARIO_LOADED':
+        return { 
+            ...state, 
+            scenarioState: { ...state.scenarioState!, currentScenario: action.payload, isGenerating: false } 
+        };
+    case 'MAKE_DECISION':
+        return { 
+            ...state, 
+            scenarioState: { ...state.scenarioState!, isEvaluating: true } 
+        };
+    case 'DECISION_RESULT_LOADED':
+        return { 
+            ...state, 
+            scenarioState: { ...state.scenarioState!, isEvaluating: false, outcome: action.payload } 
+        };
+    case 'CLOSE_SCENARIO':
+        return { ...state, status: AppStatus.VIEWING_NODE, scenarioState: null };
 
     // --- SRS Actions ---
     case 'ADD_FLASHCARDS': {

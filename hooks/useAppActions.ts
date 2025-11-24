@@ -1,9 +1,9 @@
 
 import React, { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { AppStatus, ChatMessage, PodcastConfig, PodcastState, QuizResult, Reward, SavableState, SavedSession, UserAnswer, UserBehavior, UserProfile, Weakness, LearningPreferences, LearningResource, Flashcard, FlashcardGrade, NodeProgress } from '../types';
+import { AppStatus, ChatMessage, PodcastConfig, PodcastState, QuizResult, Reward, SavableState, SavedSession, UserAnswer, UserBehavior, UserProfile, Weakness, LearningPreferences, LearningResource, Flashcard, FlashcardGrade, NodeProgress, Scenario } from '../types';
 import { FirebaseService } from '../services/firebaseService';
-import { generateChatResponse, generateDailyChallenge, generateDeepAnalysis, generateLearningPlan, generateNodeContent, generatePodcastAudio, generatePodcastScript, generateProactiveChatInitiation, generateQuiz, generateRemedialNode, gradeAndAnalyzeQuiz, analyzePreAssessment, analyzeResourceContent, evaluateFeynmanExplanation, generateFlashcards, generateCoachQuestion } from '../services/geminiService';
+import { generateChatResponse, generateDailyChallenge, generateDeepAnalysis, generateLearningPlan, generateNodeContent, generatePodcastAudio, generatePodcastScript, generateProactiveChatInitiation, generateQuiz, generateRemedialNode, gradeAndAnalyzeQuiz, analyzePreAssessment, analyzeResourceContent, evaluateFeynmanExplanation, generateFlashcards, generateCoachQuestion, generateScenario, evaluateScenarioDecision } from '../services/geminiService';
 
 declare var pdfjsLib: any;
 
@@ -509,6 +509,42 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         }
     };
 
+    // --- Scenario Simulator Actions ---
+    const startScenario = async () => {
+        const nodeId = state.activeNodeId;
+        if (!nodeId) return;
+        const node = state.mindMap.find(n => n.id === nodeId);
+        if (!node) return;
+
+        const content = state.nodeContents[nodeId]?.theory || state.sourceContent.substring(0, 2000);
+        dispatch({ type: 'START_SCENARIO', payload: node });
+
+        try {
+            const scenario = await generateScenario(node.title, content);
+            dispatch({ type: 'SCENARIO_LOADED', payload: scenario });
+        } catch (e) {
+            console.error("Scenario Gen Error", e);
+            showNotification("خطا در ایجاد سناریو", 'error');
+            dispatch({ type: 'CLOSE_SCENARIO' });
+        }
+    };
+
+    const handleScenarioDecision = async (decisionId: string) => {
+        if (!state.scenarioState || !state.scenarioState.currentScenario) return;
+        
+        dispatch({ type: 'MAKE_DECISION' });
+        
+        const content = state.nodeContents[state.scenarioState.targetNode.id]?.theory || state.sourceContent.substring(0, 2000);
+        
+        try {
+            const outcome = await evaluateScenarioDecision(state.scenarioState.currentScenario, decisionId, content);
+            dispatch({ type: 'DECISION_RESULT_LOADED', payload: outcome });
+        } catch (e) {
+            console.error("Scenario Eval Error", e);
+            showNotification("خطا در تحلیل تصمیم", 'error');
+        }
+    };
+
     const handleNodeSelect = useCallback((nodeId: string) => {
          if (state.isPodcastMode) {
              dispatch({ type: 'TOGGLE_PODCAST_NODE_SELECTION', payload: nodeId });
@@ -931,6 +967,8 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         handleReviewFlashcard, 
         startFlashcardReview, 
         exitFlashcardReview,
+        startScenario,
+        handleScenarioDecision,
         checkDailyStatus,
         generateDailyContent
     };
