@@ -794,8 +794,9 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                                     unlockedReward={state.rewards.find(r => r.relatedNodeId === state.activeNodeId)}
                                     isStreaming={!!state.streamingNodeContent}
                                     onGenerateFlashcards={actions.handleGenerateFlashcards}
-                                    onTriggerFeynman={actions.triggerFeynmanChallenge} // Connected
-                                    onTriggerDebate={() => actions.handleCoachDebateStart(state.activeNodeId!)} // Connected
+                                    onTriggerFeynman={actions.triggerFeynmanChallenge} 
+                                    onTriggerDebate={() => actions.handleCoachDebateStart(state.activeNodeId!)}
+                                    onStartScenario={actions.startScenario} // NEW: Connected scenario action
                                 />
                             )}
 
