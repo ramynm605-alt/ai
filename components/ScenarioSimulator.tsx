@@ -16,7 +16,7 @@ const ScenarioSimulator: React.FC<ScenarioSimulatorProps> = ({ state, onDecision
 
     if (isGenerating || !currentScenario) {
         return (
-            <div className="fixed inset-0 z-[400] bg-zinc-950 flex flex-col items-center justify-center p-6 text-white">
+            <div className="fixed inset-0 z-[400] bg-zinc-950 flex flex-col items-center justify-center p-6 text-white font-vazir">
                 <div className="mb-8 relative">
                     <div className="absolute inset-0 bg-indigo-500/20 blur-3xl rounded-full animate-pulse" />
                     <Gamepad className="w-20 h-20 text-indigo-400 relative z-10" />
@@ -29,7 +29,7 @@ const ScenarioSimulator: React.FC<ScenarioSimulatorProps> = ({ state, onDecision
     }
 
     return (
-        <div className="fixed inset-0 z-[400] bg-zinc-950 text-zinc-100 overflow-hidden font-mono">
+        <div className="fixed inset-0 z-[400] bg-zinc-950 text-zinc-100 overflow-hidden font-vazir">
             {/* Background Grid */}
             <div className="absolute inset-0 bg-[linear-gradient(to_right,#4f4f4f2e_1px,transparent_1px),linear-gradient(to_bottom,#4f4f4f2e_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_80%_50%_at_50%_50%,#000_70%,transparent_100%)] pointer-events-none" />
 
@@ -71,7 +71,7 @@ const ScenarioSimulator: React.FC<ScenarioSimulatorProps> = ({ state, onDecision
                                     <Target className="w-8 h-8 text-indigo-400 shrink-0 mt-1 animate-pulse" />
                                     <div>
                                         <h3 className="text-xl md:text-2xl font-bold mb-4 text-white">وضعیت اضطراری</h3>
-                                        <p className="text-base md:text-lg leading-loose text-zinc-300">
+                                        <p className="text-base md:text-lg leading-loose text-zinc-300 text-justify">
                                             {currentScenario.context}
                                         </p>
                                     </div>
@@ -87,10 +87,10 @@ const ScenarioSimulator: React.FC<ScenarioSimulatorProps> = ({ state, onDecision
                                         disabled={isEvaluating}
                                         className="relative group p-6 bg-zinc-900/50 border border-zinc-800 hover:border-indigo-500/50 rounded-xl text-right transition-all hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed flex flex-col h-full"
                                     >
-                                        <div className="absolute top-4 left-4 text-zinc-600 text-4xl font-black opacity-20 group-hover:text-indigo-500 group-hover:opacity-40 transition-colors">
+                                        <div className="absolute top-4 left-4 text-zinc-600 text-4xl font-black opacity-20 group-hover:text-indigo-500 group-hover:opacity-40 transition-colors font-sans">
                                             {idx + 1}
                                         </div>
-                                        <p className="text-sm md:text-base text-zinc-200 font-medium z-10">{option.text}</p>
+                                        <p className="text-sm md:text-base text-zinc-200 font-medium z-10 leading-relaxed">{option.text}</p>
                                         <div className="mt-auto pt-4 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity text-indigo-400 text-xs font-bold uppercase tracking-wider">
                                             انتخاب مسیر <ArrowRight className="w-3 h-3 inline-block mr-1 rotate-180" />
                                         </div>
@@ -138,14 +138,14 @@ const ScenarioSimulator: React.FC<ScenarioSimulatorProps> = ({ state, onDecision
                             <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl text-right w-full">
                                 <div className="mb-6">
                                     <div className="text-xs text-zinc-500 uppercase font-bold mb-2 tracking-wider">گزارش میدانی</div>
-                                    <p className="text-zinc-100 leading-relaxed">{outcome.narrative}</p>
+                                    <p className="text-zinc-100 leading-loose text-justify">{outcome.narrative}</p>
                                 </div>
                                 <div className="border-t border-zinc-800 pt-6">
                                     <div className="text-xs text-indigo-400 uppercase font-bold mb-2 tracking-wider flex items-center gap-2">
                                         <BrainCircuit className="w-4 h-4" />
                                         تحلیل آموزشی
                                     </div>
-                                    <p className="text-zinc-400 text-sm leading-relaxed">{outcome.analysis}</p>
+                                    <p className="text-zinc-400 text-sm leading-loose text-justify">{outcome.analysis}</p>
                                 </div>
                             </div>
 
