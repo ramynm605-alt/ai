@@ -194,12 +194,17 @@ export const FileQuestion: React.FC<React.SVGProps<SVGSVGElement>> = (props) => 
 
 export const Brain: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-        <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v0A2.5 2.5 0 0 1 9.5 7h-3A2.5 2.5 0 0 1 4 4.5v0A2.5 2.5 0 0 1 6.5 2Z"/>
-        <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v0A2.5 2.5 0 0 0 14.5 7h3A2.5 2.5 0 0 0 20 4.5v0A2.5 2.5 0 0 0 17.5 2Z"/>
-        <path d="M4.2 7.5A2.5 2.5 0 0 0 6.5 10h.06a2.5 2.5 0 0 1 2.4 2.06C9.2 14.3 8.3 16.5 7.2 18c-2.3 3-5.2 4.5-5.2 4.5"/>
-        <path d="M19.8 7.5A2.5 2.5 0 0 1 17.5 10h-.06a2.5 2.5 0 0 0-2.4 2.06c-.3 2.2.6 4.4 1.7 6 2.3 3 5.2 4.5 5.2 4.5"/>
-        <path d="M12 10a2.5 2.5 0 0 0-2.5 2.5v.06a2.5 2.5 0 0 1-2.06 2.4C5.2 15.2 3 17.3 3 20"/>
-        <path d="M12 10a2.5 2.5 0 0 1 2.5 2.5v.06a2.5 2.5 0 0 0 2.06 2.4c2.3.3 4.5 2.4 4.5 5"/>
+        <path d="M12 6c-4 0-7 2-7 6 0 2.5 1.5 4.5 4 5.5C9.5 18.5 11 19.5 12 21c1-1.5 2.5-2.5 3-3.5 2.5-1 4-3 4-5.5 0-4-3-6-7-6Z" opacity="0.2"/>
+        <path d="M12 6c-2 0-4 1-4 3s2 4 4 4 4-2 4-4-2-3-4-3Z"/>
+        <path d="M12 2v4"/>
+        <path d="M12 22v-1"/>
+        <path d="M4 12H2"/>
+        <path d="M22 12h-2"/>
+        <circle cx="12" cy="13" r="3" />
+        <path d="M9 9l-3-3"/>
+        <path d="M15 9l3-3"/>
+        <path d="M9 15l-2 2"/>
+        <path d="M15 15l2 2"/>
     </svg>
 );
 
