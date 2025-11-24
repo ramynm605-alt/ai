@@ -21,7 +21,6 @@ export interface LearningResource {
     metadata?: any; // For page numbers or specific file info
     validation?: ResourceValidation; // New: AI Analysis result
     isProcessing?: boolean; // New: To show loading spinner per resource
-    instructions?: string; // New: Specific instructions for this resource
 }
 
 export interface MindMapNode {
@@ -44,7 +43,7 @@ export interface MindMapNode {
   export interface BaseQuestion {
     id: string;
     question: string;
-    difficulty: 'آسان' | 'متوسط' | 'سخت' | 'بسیار سخت' | 'چالش‌برانگیز';
+    difficulty: 'آسان' | 'متوسط' | 'سخت';
     points: number;
     type: QuestionType;
     concept?: string; // New: The specific concept/dimension this question tests
@@ -125,8 +124,6 @@ export interface MindMapNode {
     ERROR = 'ERROR',
     GENERATING_REMEDIAL = 'GENERATING_REMEDIAL',
     PODCAST_CREATION = 'PODCAST_CREATION', // New status for podcast UI
-    FEYNMAN_CHALLENGE = 'FEYNMAN_CHALLENGE', // New status for Reverse Teaching
-    REVIEWING_FLASHCARDS = 'REVIEWING_FLASHCARDS', // New Status for SRS
   }
 
   export type UserAnswer = string | number;
@@ -181,20 +178,6 @@ export interface MindMapNode {
       joinDate: string;
   }
 
-  // --- SRS Types ---
-  export interface Flashcard {
-      id: string;
-      nodeId: string;
-      front: string; // Question / Concept
-      back: string;  // Answer / Definition
-      interval: number; // Days
-      repetition: number;
-      easeFactor: number;
-      nextReviewDate: string; // ISO Date
-  }
-
-  export type FlashcardGrade = 1 | 2 | 3 | 4; // 1: Again, 2: Hard, 3: Good, 4: Easy
-
   export interface SavedSession {
       id: string;
       userId: string;
@@ -232,13 +215,6 @@ export interface MindMapNode {
       isMinimized: boolean;
   }
 
-  // --- NEW TYPES FOR FEYNMAN CHALLENGE ---
-  export interface FeynmanState {
-      targetNode: MindMapNode;
-      feedback: string | null;
-      isAnalyzing: boolean;
-  }
-
   export interface AppState {
     theme: 'light' | 'balanced' | 'dark';
     status: AppStatus;
@@ -271,7 +247,6 @@ export interface MindMapNode {
     chatHistory: ChatMessage[];
     behavior: UserBehavior;
     rewards: Reward[];
-    flashcards: Flashcard[]; // New SRS
     showDailyBriefing: boolean;
     dailyChallengeContent: string | null;
     currentUser: UserProfile | null;
@@ -285,9 +260,7 @@ export interface MindMapNode {
     // Podcast State
     podcastConfig: PodcastConfig | null;
     isPodcastMode: boolean;
-    podcastState: PodcastState; 
-    // Feynman State
-    feynmanState: FeynmanState | null;
+    podcastState: PodcastState; // New: Tracks background generation
   }
 
   export interface SavableState {
@@ -305,6 +278,5 @@ export interface MindMapNode {
     weaknesses: Weakness[];
     behavior: UserBehavior;
     rewards: Reward[];
-    chatHistory: ChatMessage[]; 
-    flashcards: Flashcard[]; // Save cards
+    chatHistory: ChatMessage[]; // New: Save chat history per session
   }
