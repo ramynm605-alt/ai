@@ -126,11 +126,11 @@ const FlashcardReview: React.FC<FlashcardReviewProps> = ({ cards, onGrade, onFin
             </div>
 
             {/* Main Card Area */}
-            <div className="flex-grow flex flex-col items-center justify-center p-4 md:p-8 relative perspective-1000">
+            <div className="flex-grow flex flex-col items-center justify-center p-4 md:p-8 relative [perspective:1000px]">
                 
-                <div className="relative w-full max-w-xl aspect-[4/5] md:aspect-[16/10] perspective-1000">
+                <div className="relative w-full max-w-xl aspect-[4/5] md:aspect-[16/10]">
                     <motion.div
-                        className="w-full h-full relative transform-style-3d cursor-pointer"
+                        className="w-full h-full relative [transform-style:preserve-3d] cursor-pointer"
                         initial={false}
                         animate={{ rotateY: isFlipped ? 180 : 0 }}
                         transition={{ duration: 0.6, type: "spring", stiffness: 260, damping: 20 }}
@@ -138,8 +138,7 @@ const FlashcardReview: React.FC<FlashcardReviewProps> = ({ cards, onGrade, onFin
                     >
                         {/* FRONT FACE */}
                         <div 
-                            className="absolute inset-0 backface-hidden w-full h-full bg-card border-2 border-border/60 rounded-[2rem] shadow-2xl flex flex-col items-center justify-center p-8 text-center z-20"
-                            style={{ backfaceVisibility: 'hidden' }}
+                            className="absolute inset-0 [backface-visibility:hidden] w-full h-full bg-card border-2 border-border/60 rounded-[2rem] shadow-2xl flex flex-col items-center justify-center p-8 text-center z-20"
                         >
                             <div className="flex-grow flex flex-col items-center justify-center w-full">
                                 <span className="inline-block px-3 py-1 rounded-full bg-secondary text-xs font-bold text-muted-foreground mb-6">سوال</span>
@@ -155,9 +154,8 @@ const FlashcardReview: React.FC<FlashcardReviewProps> = ({ cards, onGrade, onFin
 
                         {/* BACK FACE */}
                         <div 
-                            className="absolute inset-0 backface-hidden w-full h-full bg-gradient-to-br from-secondary to-card border-2 border-primary/20 rounded-[2rem] shadow-2xl flex flex-col overflow-hidden"
+                            className="absolute inset-0 [backface-visibility:hidden] w-full h-full bg-gradient-to-br from-secondary to-card border-2 border-primary/20 rounded-[2rem] shadow-2xl flex flex-col overflow-hidden"
                             style={{ 
-                                backfaceVisibility: 'hidden', 
                                 transform: 'rotateY(180deg)' 
                             }}
                         >
@@ -166,7 +164,7 @@ const FlashcardReview: React.FC<FlashcardReviewProps> = ({ cards, onGrade, onFin
                                 <Sparkles className="w-4 h-4 text-primary" />
                             </div>
                             <div className="flex-grow p-6 md:p-8 overflow-y-auto custom-scrollbar text-center flex items-center justify-center">
-                                <div className="text-lg md:text-2xl leading-loose text-foreground font-medium" dir="rtl">
+                                <div className="text-lg md:text-2xl leading-loose text-foreground font-bold" dir="rtl">
                                     {currentCard.back}
                                 </div>
                             </div>

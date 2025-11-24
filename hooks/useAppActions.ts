@@ -845,8 +845,8 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
             const newCards: Flashcard[] = rawCards.map(c => ({
                 id: Math.random().toString(36).substr(2, 9),
                 nodeId: node.id,
-                front: c.front,
-                back: c.back,
+                front: c.front || "سوال نامشخص",
+                back: c.back || "پاسخی برای این کارت تولید نشد.",
                 interval: 0,
                 repetition: 0,
                 easeFactor: 2.5,

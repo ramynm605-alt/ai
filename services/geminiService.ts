@@ -791,6 +791,7 @@ export async function generateFlashcards(
         2. **Active Recall:** Use questions that force the user to think, not just recognize.
         3. **Cloze Deletion Style (Optional):** You can use fill-in-the-blanks if appropriate (e.g., "The capital of France is [...]").
         4. **Language:** Persian (Farsi).
+        5. **MANDATORY:** You MUST provide the 'back' field (Answer). It cannot be empty. If the answer is simple, provide a short definition. If it's complex, summarize it.
         
         Output JSON Format:
         [
