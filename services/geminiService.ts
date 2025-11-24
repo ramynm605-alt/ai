@@ -416,7 +416,15 @@ export async function generateLearningPlan(content: string, pageContents: string
         const pageContentForPrompt = pageContents ? pageContents.join('\n') : content;
         
         const prompt = `
-        Create Mind Map and Pre-Assessment.
+        You are an expert Curriculum Architect.
+        Goal: Decompose the provided content into a detailed, hierarchical Knowledge Graph (Mind Map).
+
+        CRITICAL RULES FOR MIND MAP:
+        1. **Decomposition:** You MUST break the topic down deeply.
+        2. **Structure:** The Output JSON must contain a Root Node and at least 4 to 8 Child Nodes (sub-topics).
+        3. **Depth:** If the content is short, expand on implied concepts to ensure a rich map.
+        4. **Forbidden:** Do NOT return a single node. Do NOT return a flat list. Use the 'children' array.
+        
         ${contextInstruction}
         ${preferenceInstructions}
         
@@ -425,6 +433,19 @@ export async function generateLearningPlan(content: string, pageContents: string
         2. [QUESTION_START] JSON [QUESTION_END] (x5)
 
         CRITICAL: DO NOT put markdown ticks (\`\`\`json) INSIDE the tags. Just the raw JSON string.
+
+        MIND MAP JSON SCHEMA:
+        {
+          "title": "Main Topic",
+          "children": [
+            { 
+              "title": "Sub-topic 1", 
+              "difficulty": 0.3,
+              "children": [ ... ]
+            },
+            ...
+          ]
+        }
 
         Question JSON Schema (Strict):
         For 'multiple-choice': { "type": "multiple-choice", "question": "...", "options": ["A","B","C","D"], "correctAnswerIndex": 0, "difficulty": "متوسط", "points": 10 }
@@ -450,7 +471,18 @@ export async function generateLearningPlan(content: string, pageContents: string
                     const jsonStr = cleanJsonString(buffer.substring(s + 16, e));
                     try {
                         const json = JSON.parse(jsonStr);
-                        let mindMap = flattenMindMap(json.mindMap || json); 
+                        
+                        // FIX: Handle if AI returns an array instead of a root object
+                        let rootData = json.mindMap || json;
+                        if (Array.isArray(rootData)) {
+                            // If array, create a synthetic root node
+                            rootData = {
+                                title: "نقشه یادگیری جامع",
+                                children: rootData
+                            };
+                        }
+
+                        let mindMap = flattenMindMap(rootData); 
                         if (mindMap.length > 0) mindMap[0].parentId = null;
                         onMindMapGenerated(mindMap, json.suggestedPath || []);
                         mindMapGenerated = true;
