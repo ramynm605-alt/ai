@@ -1,13 +1,61 @@
 
+
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, GradingResult, PreAssessmentAnalysis, ChatMessage, Weakness, ChatPersona, VoiceName, ResourceValidation, Flashcard } from '../types';
 import { marked } from 'marked';
+import katex from 'katex';
 
 const API_KEY = process.env.API_KEY;
 if (!API_KEY) {
     throw new Error("API_KEY environment variable not set");
 }
 const ai = new GoogleGenAI({ apiKey: API_KEY });
+
+// --- LaTeX/KaTeX Extension for Marked ---
+// Handles $...$ for inline math and $$...$$ for block math
+const mathExtension = {
+    name: 'math',
+    level: 'inline',
+    start(src: string) { return src.match(/\$/)?.index; },
+    tokenizer(src: string, tokens: any) {
+        const blockRule = /^\$\$([\s\S]+?)\$\$/;
+        const inlineRule = /^\$([^$\n]+?)\$/;
+        
+        let match = blockRule.exec(src);
+        if (match) {
+            return {
+                type: 'math',
+                raw: match[0],
+                text: match[1].trim(),
+                displayMode: true
+            };
+        }
+        
+        match = inlineRule.exec(src);
+        if (match) {
+            return {
+                type: 'math',
+                raw: match[0],
+                text: match[1].trim(),
+                displayMode: false
+            };
+        }
+    },
+    renderer(token: any) {
+        try {
+            return katex.renderToString(token.text, {
+                displayMode: token.displayMode,
+                throwOnError: false,
+                output: 'html'
+            });
+        } catch (e) {
+            return token.text;
+        }
+    }
+};
+
+// @ts-ignore - marked typing issue with custom extensions
+marked.use({ extensions: [mathExtension] });
 
 // Helper function for retrying with exponential backoff
 async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
@@ -229,6 +277,7 @@ export async function analyzeResourceContent(
         - Ensure all double quotes inside string values are properly escaped (\\").
         - Ensure newlines in text are escaped as \\n.
         - Do NOT break the JSON structure.
+        - Use LaTeX ($...$ or $$...$$) for mathematical expressions.
         `;
 
         if (isTopicResearch) {
@@ -257,6 +306,7 @@ export async function analyzeResourceContent(
                 - Organize it with clear headings (Introduction, Main Concepts, Examples, Conclusion).
                 - Ensure the content length matches the request: ${lengthPrompt}.
                 - Ensure the depth matches the request: ${depthPrompt}.
+                - Use LaTeX ($...$) for all mathematical notation.
              3. "validation": Assess the research quality.
              
              ${jsonFormatInstruction}
@@ -268,7 +318,7 @@ export async function analyzeResourceContent(
                 "qualityScore": number (0-100),
                 "issues": string[],
                 "summary": "Short summary of what was found.",
-                "extractedText": "The FULL RESEARCHED ARTICLE content in Persian (Markdown)..."
+                "extractedText": "The FULL RESEARCHED ARTICLE content in Persian (Markdown + LaTeX)..."
              }
              \`\`\`
              `;
@@ -283,7 +333,7 @@ export async function analyzeResourceContent(
              The user provided a link: "${title}".
              Tasks:
              1. Use Google Search to find the comprehensive content of this page or video.
-             2. "extractedText": Compile a detailed educational text.
+             2. "extractedText": Compile a detailed educational text. Use LaTeX format ($...$) for math.
              3. "validation": Assess quality.
              ${jsonFormatInstruction}
              Output JSON: { "isValid": boolean, "qualityScore": number, "issues": string[], "summary": string, "extractedText": string }
@@ -295,6 +345,7 @@ export async function analyzeResourceContent(
             Tasks:
             1. Transcribe the text (if image) or audio (if audio file). 
             2. Assess the quality.
+            3. Convert any mathematical expressions found into LaTeX format ($...$).
             ${jsonFormatInstruction}
             Output JSON: { "isValid": boolean, "qualityScore": number, "issues": string[], "summary": string, "extractedText": string }
             `;
@@ -307,7 +358,7 @@ export async function analyzeResourceContent(
              You are a Resource Validator. Analyze the following text.
              Tasks:
              1. Check for gibberish.
-             2. Clean up the text.
+             2. Clean up the text. Ensure mathematical formulas are properly formatted in LaTeX ($...$).
              ${jsonFormatInstruction}
              Text: ${rawText ? rawText.substring(0, 5000) : "No text"}...
              Output JSON: { "isValid": boolean, "qualityScore": number, "issues": string[], "summary": string, "extractedText": string }
@@ -461,10 +512,14 @@ export async function generateNodeContent(nodeTitle: string, fullContent: string
         Generate detailed educational content for the node: "${nodeTitle}".
         Context: ${fullContent.substring(0, 20000)}
         
+        IMPORTANT: Use LaTeX format for all mathematical formulas.
+        - Inline: $E=mc^2$
+        - Block: $$ \int_{a}^{b} x^2 dx $$
+        
         Format (JSON):
         {
             "introduction": "Markdown...",
-            "theory": "Markdown...",
+            "theory": "Markdown with LaTeX...",
             "example": "Markdown...",
             "connection": "Markdown...",
             "conclusion": "Markdown...",
@@ -504,7 +559,7 @@ export async function generateNodeContent(nodeTitle: string, fullContent: string
             content.introduction = await parseMarkdown(content.introduction);
             content.theory = await parseMarkdown(content.theory);
             content.example = await parseMarkdown(content.example);
-            content.connection = await parseMarkdown(content.connection);
+            content.connection = await parseMarkdown(content.conclusion);
             content.conclusion = await parseMarkdown(content.conclusion);
             
         } catch(e) {
@@ -532,6 +587,7 @@ export async function evaluateNodeInteraction(nodeTitle: string, learningObjecti
         User Response: "${userResponse}"
         
         Provide helpful feedback in Persian using Markdown.
+        Use LaTeX ($...$) for math.
         `;
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
@@ -546,7 +602,7 @@ export async function evaluateNodeInteraction(nodeTitle: string, learningObjecti
 export async function evaluateFeynmanExplanation(nodeTitle: string, nodeContent: string, userExplanation: string, audioData: string | null): Promise<string> {
     return withRetry(async () => {
         const parts: any[] = [
-            { text: `User is explaining "${nodeTitle}" in their own words (Feynman Technique). \nReference Content: ${nodeContent.substring(0, 2000)} \n\nEvaluate their explanation. Identify misconceptions or missing key points. Be encouraging.` }
+            { text: `User is explaining "${nodeTitle}" in their own words (Feynman Technique). \nReference Content: ${nodeContent.substring(0, 2000)} \n\nEvaluate their explanation. Identify misconceptions or missing key points. Be encouraging. Use LaTeX for math.` }
         ];
         if (audioData) {
             parts.push({ inlineData: { mimeType: 'audio/webm', data: audioData } }); // Assuming webm from MediaRecorder
@@ -581,6 +637,7 @@ export async function generateQuiz(topic: string, content: string, images: any[]
     return withRetry(async () => {
         const prompt = `
         Generate 3 multiple choice and 1 short answer question for "${topic}".
+        Ensure all math equations are in LaTeX format ($...$).
         Format: [QUESTION_START] JSON [QUESTION_END]
         `;
         const stream = await ai.models.generateContentStream({
@@ -619,6 +676,7 @@ export async function gradeAndAnalyzeQuiz(questions: any[], userAnswers: any, co
         Answers: ${JSON.stringify(userAnswers)}
         
         Output JSON array: [{ "questionId": "...", "isCorrect": boolean, "score": number, "analysis": "..." }]
+        Use LaTeX ($...$) in analysis if needed.
         `;
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
@@ -630,7 +688,7 @@ export async function gradeAndAnalyzeQuiz(questions: any[], userAnswers: any, co
 }
 
 export async function generateDeepAnalysis(title: string, content: string) {
-    const prompt = `Deep analysis for ${title}.`;
+    const prompt = `Deep analysis for ${title}. Use LaTeX for math formulas.`;
     const r = await ai.models.generateContent({ model: 'gemini-2.5-pro', contents: { parts: [{ text: prompt }] } });
     return marked.parse(r.text || '');
 }
@@ -644,6 +702,7 @@ export async function generateChatResponse(history: any, message: string, nodeTi
         const prompt = `
         ${personaPrompt}
         IMPORTANT: You MUST respond in Persian (Farsi).
+        IMPORTANT: Use LaTeX for ANY math formula ($...$ or $$...$$).
         Context: ${content.substring(0, 2000)}
         Current Node: ${nodeTitle}
         User: ${message}
@@ -658,7 +717,7 @@ export async function generateChatResponse(history: any, message: string, nodeTi
 
 export async function generateProactiveChatInitiation(nodeTitle: string, nodeContent: string, isDebateMode: boolean, weaknesses: any): Promise<string> {
     return withRetry(async () => {
-        const prompt = `Initiate a ${isDebateMode ? 'debate' : 'conversation'} about ${nodeTitle}. Language: Persian (Farsi).`;
+        const prompt = `Initiate a ${isDebateMode ? 'debate' : 'conversation'} about ${nodeTitle}. Language: Persian (Farsi). Use LaTeX for math if applicable.`;
         const r = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: { parts: [{ text: prompt }] } });
         return r.text || '';
     });
@@ -682,25 +741,55 @@ export async function generateCoachQuestion(nodeTitle: string, nodeContent: stri
 
 export async function generatePodcastScript(contents: any, mode: 'monologue' | 'dialogue'): Promise<string> {
     return withRetry(async () => {
+        const naturalStyleInstructions = `
+        STYLE GUIDE (CRITICAL):
+        1. **Conversational Persian:** Write in strictly colloquial Persian (محاوره‌ای), NOT formal (کتابی). Use "می‌رم" instead of "می‌روم", "اینه" instead of "این است".
+        2. **Human Touch:** Include natural speech markers. 
+           - Use **"هممم..."** (Hmmm...) for thinking pauses. 
+           - Use **"خب..."** (Well...) to transition.
+           - Use **"آها!"** (Aha!) for realization.
+           - Use **"..."** (Ellipsis) to indicate short pauses/breathing.
+        3. **Pacing:** Vary sentence length. Short, punchy sentences mixed with longer explanations.
+        4. **Emotion:** Show excitement, curiosity, or surprise using punctuation (!, ?).
+        5. **Math:** If there are formulas, explain them verbally (e.g. "ای برابر است با ام سی به توان دو"). Do not use LaTeX in podcast script.
+        `;
+
         let prompt = "";
         if (mode === 'dialogue') {
-            prompt = `Write a podcast dialogue script in Persian between a Host (named Host) and a Guest (named Guest).
-            Topic: ${JSON.stringify(contents)}.
-            IMPORTANT: Create a unique, creative name for the podcast episode (e.g., "Mind Journey", "Deep Dive: [Topic]"). 
-            Do NOT use generic placeholders like "Podcast Name". 
-            Start immediately with the Intro using the creative name.
+            prompt = `
+            You are a Professional Podcast Producer. Write a script in Persian between a Host (named Host) and a Guest (named Guest).
+            
+            ${naturalStyleInstructions}
+            
+            Topic Content: ${JSON.stringify(contents)}
+            
             Format:
-            Host: ...
-            Guest: ...
-            Keep it engaging and educational.`;
+            Host: [Text]
+            Guest: [Text]
+            
+            Specific Dialogue Instructions:
+            - Start immediately with a catchy intro and a unique creative name for the episode (e.g. "رادیو ذهن", "عمیق شو").
+            - The Host is curious and energetic. The Guest is knowledgeable but humble.
+            - Include small interruptions or agreements like "آره آره دقیقاً!" or "جدی؟!".
+            - End with a warm sign-off.
+            `;
         } else {
-            prompt = `Write a podcast monologue script in Persian.
-            Topic: ${JSON.stringify(contents)}.
-            IMPORTANT: Create a unique, creative name for the podcast episode (e.g., "Mind Journey", "Deep Dive: [Topic]"). 
-            Do NOT use generic placeholders like "Podcast Name". 
-            Start immediately with the Intro using the creative name.
-            Format: Just the spoken text.
-            Keep it engaging and educational.`;
+            prompt = `
+            You are a Professional Podcast Producer. Write a script for a solo podcaster (Monologue) in Persian.
+            
+            ${naturalStyleInstructions}
+            
+            Topic Content: ${JSON.stringify(contents)}
+            
+            Format: Just the spoken text (No "Host:" label needed).
+            
+            Specific Monologue Instructions:
+            - Start with a creative episode name.
+            - Talk DIRECTLY to the listener ("دوست من", "شما").
+            - Ask rhetorical questions to keep engagement ("تا حالا فکر کردید چرا...؟").
+            - Use "هممم" to pretend you are thinking about a complex point.
+            - End with a call to action or a thought-provoking question.
+            `;
         }
         const r = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: { parts: [{ text: prompt }] } });
         return r.text || '';
@@ -799,6 +888,7 @@ export async function generateFlashcards(
         3. **Cloze Deletion Style (Optional):** You can use fill-in-the-blanks if appropriate (e.g., "The capital of France is [...]").
         4. **Language:** Persian (Farsi).
         5. **MANDATORY:** You MUST provide the 'back' field (Answer). It cannot be empty. If the answer is simple, provide a short definition. If it's complex, summarize it.
+        6. **Math:** Use LaTeX ($...$) for any formulas.
         
         Output JSON Format:
         [
@@ -821,18 +911,26 @@ export async function generateFlashcards(
     });
 }
 
-export async function generatePracticeResponse(topic: string, problem: string): Promise<string> {
+export async function generatePracticeResponse(topic: string, problem: string, questionType: 'multiple-choice' | 'descriptive' = 'descriptive', difficulty: 'easy' | 'medium' | 'hard' = 'medium'): Promise<string> {
     return withRetry(async () => {
+        const typePrompt = questionType === 'multiple-choice' ? 'Create a multiple-choice question (with 4 options) based on the request.' : 'Create a descriptive/analytical problem or question.';
+        const diffPrompt = `Difficulty Level: ${difficulty}`;
+        
         const prompt = `
         You are an intelligent tutor.
         User Request:
         Topic: ${topic}
-        Problem: ${problem}
+        Problem Context (if any): ${problem}
+        
+        Configuration:
+        - ${typePrompt}
+        - ${diffPrompt}
 
         Instructions:
-        1. If a problem is provided, solve it step-by-step with clear explanations.
-        2. If only a topic is provided, create a relevant practice scenario or question and explain the solution.
-        3. If both are provided, use the topic as context to solve the problem.
+        1. If a specific problem is provided, solve it step-by-step with clear explanations.
+        2. If only a topic is provided, generate a practice question matching the configuration.
+        3. If generated question is multiple-choice, provide the question, options, and then the correct answer with explanation in a hidden/toggleable format if possible (or just plain text at the end).
+        4. Use LaTeX ($...$ or $$...$$) for ALL math equations.
         
         Language: Persian (Farsi).
         Output Format: Markdown HTML (use bold, lists, code blocks if needed).
@@ -858,6 +956,7 @@ export async function generateDailyChallenge(): Promise<string> {
         2. Keep it short (under 50 words).
         3. Language: Persian (Farsi).
         4. Tone: Energetic and motivating.
+        5. Use LaTeX ($...$) for numbers or formulas if needed.
         
         Output Format: Markdown HTML.
         `;

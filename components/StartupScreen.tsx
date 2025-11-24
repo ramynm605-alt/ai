@@ -20,7 +20,7 @@ const StartupScreen: React.FC<StartupScreenProps> = ({ onAnimationEnd }) => {
 
   return (
     <div className={`fixed inset-0 z-[9999] transition-opacity duration-700 ${isExiting ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-      <AuroraBackground>
+      <AuroraBackground showRadialGradient={true}>
         <div
           className={`relative z-10 flex flex-col items-center justify-center h-full px-4 text-center transition-all duration-700 transform ${isExiting ? 'scale-110 opacity-0' : 'scale-100 opacity-100'}`}
         >

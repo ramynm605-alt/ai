@@ -13,6 +13,7 @@
     "react-dom": "^19.2.0",
     "@google/genai": "^1.29.1",
     "marked": "^17.0.0",
+    "katex": "^0.16.9",
     "framer-motion": "^12.4.0",
     "clsx": "^2.1.1",
     "tailwind-merge": "^3.0.1",

@@ -16,6 +16,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- KaTeX CSS for Math Rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
+    
     <!-- Google Identity Services Script -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     
@@ -276,6 +279,10 @@
         direction: ltr; text-align: left; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
       }
       .markdown-content strong { color: rgb(var(--primary)); font-weight: 700; }
+      
+      /* KaTeX Math Adjustment */
+      .katex { direction: ltr; font-size: 1.1em; }
+      .katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.5em 0; }
 
       /* Mind Map Animations */
       .mindmap-node {
@@ -318,6 +325,7 @@
         "react/": "https://aistudiocdn.com/react@^19.2.0/",
         "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1",
         "marked": "https://aistudiocdn.com/marked@^17.0.0",
+        "katex": "https://aistudiocdn.com/katex@^0.16.9",
         "framer-motion": "https://aistudiocdn.com/framer-motion@^12.4.0",
         "clsx": "https://aistudiocdn.com/clsx@^2.1.1",
         "tailwind-merge": "https://aistudiocdn.com/tailwind-merge@^3.0.1",

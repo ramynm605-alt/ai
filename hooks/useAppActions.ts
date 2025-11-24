@@ -1,7 +1,7 @@
 
 import React, { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { AppStatus, ChatMessage, PodcastConfig, PodcastState, QuizResult, Reward, SavableState, SavedSession, UserAnswer, UserBehavior, UserProfile, Weakness, LearningPreferences, LearningResource, Flashcard, FlashcardGrade } from '../types';
+import { AppStatus, ChatMessage, PodcastConfig, PodcastState, QuizResult, Reward, SavableState, SavedSession, UserAnswer, UserBehavior, UserProfile, Weakness, LearningPreferences, LearningResource, Flashcard, FlashcardGrade, NodeProgress } from '../types';
 import { FirebaseService } from '../services/firebaseService';
 import { generateChatResponse, generateDailyChallenge, generateDeepAnalysis, generateLearningPlan, generateNodeContent, generatePodcastAudio, generatePodcastScript, generateProactiveChatInitiation, generateQuiz, generateRemedialNode, gradeAndAnalyzeQuiz, analyzePreAssessment, analyzeResourceContent, evaluateFeynmanExplanation, generateFlashcards, generateCoachQuestion } from '../services/geminiService';
 
@@ -125,7 +125,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         };
         
         const totalNodes = state.mindMap.length;
-        const completedNodes = Object.values(state.userProgress).filter(p => p.status === 'completed').length;
+        const completedNodes = Object.values(state.userProgress).filter((p: NodeProgress) => p.status === 'completed').length;
         const progress = totalNodes > 0 ? (completedNodes / totalNodes) * 100 : 0;
 
         let newSessions = [...state.savedSessions];
