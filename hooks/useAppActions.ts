@@ -761,6 +761,10 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
     const handleCoachDebateStart = useCallback(async (nodeId: string) => {
         if (!state.isChatOpen) dispatch({ type: 'TOGGLE_CHAT' });
         if (!state.isDebateMode) dispatch({ type: 'TOGGLE_DEBATE_MODE' });
+        
+        // Automatically set persona to Socratic Tutor for a better challenge experience
+        dispatch({ type: 'SET_CHAT_PERSONA', payload: 'socratic_tutor' });
+        
         dispatch({ type: 'SET_CHAT_LOADING', payload: true });
 
         const node = state.mindMap.find(n => n.id === nodeId);

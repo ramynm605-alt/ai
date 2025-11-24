@@ -643,6 +643,7 @@ export async function generateChatResponse(history: any, message: string, nodeTi
             
         const prompt = `
         ${personaPrompt}
+        IMPORTANT: You MUST respond in Persian (Farsi).
         Context: ${content.substring(0, 2000)}
         Current Node: ${nodeTitle}
         User: ${message}
@@ -657,7 +658,7 @@ export async function generateChatResponse(history: any, message: string, nodeTi
 
 export async function generateProactiveChatInitiation(nodeTitle: string, nodeContent: string, isDebateMode: boolean, weaknesses: any): Promise<string> {
     return withRetry(async () => {
-        const prompt = `Initiate a ${isDebateMode ? 'debate' : 'conversation'} about ${nodeTitle}.`;
+        const prompt = `Initiate a ${isDebateMode ? 'debate' : 'conversation'} about ${nodeTitle}. Language: Persian (Farsi).`;
         const r = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: { parts: [{ text: prompt }] } });
         return r.text || '';
     });
@@ -671,7 +672,7 @@ export async function generateCoachQuestion(nodeTitle: string, nodeContent: stri
         Content Context: ${nodeContent.substring(0, 1000)}
         
         Task: Generate a short, provocative, and engaging question (max 20 words) to challenge the student or initiate a debate about this specific topic.
-        Language: Persian (Farsi).
+        Language: Persian (Farsi) ONLY.
         Tone: Curious, slightly challenging, or Socratic.
         `;
         const r = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: { parts: [{ text: prompt }] } });

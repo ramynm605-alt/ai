@@ -4,7 +4,7 @@ import { AppProvider, useApp } from './context/AppContext';
 import { useAppActions } from './hooks/useAppActions';
 import { AppStatus, UserProfile, Flashcard } from './types';
 import { FirebaseService } from './services/firebaseService';
-import { Home, MessageSquare, Mic, User, SlidersHorizontal, ChevronLeft, ChevronRight, Brain, Save, Upload, CheckCircle, XCircle, Play, ArrowRight, ClipboardList, BrainCircuit } from './components/icons';
+import { Home, MessageSquare, Mic, User, SlidersHorizontal, ChevronLeft, ChevronRight, Brain, Save, Upload, CheckCircle, XCircle, Play, ArrowRight, ClipboardList, BrainCircuit, Sparkles } from './components/icons';
 import BoxLoader from './components/ui/box-loader';
 import StartupScreen from './components/StartupScreen';
 import ParticleBackground from './components/ParticleBackground';
@@ -31,6 +31,39 @@ const NotificationToast = ({ message, type = 'success', onClose }: { message: st
         return () => clearTimeout(timer);
     }, [message, onClose]);
     
+    if (type === 'coach') {
+        return (
+            <motion.div 
+                initial={{ y: -100, opacity: 0, scale: 0.9 }}
+                animate={{ y: 0, opacity: 1, scale: 1 }}
+                exit={{ y: -100, opacity: 0 }}
+                className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[10000] w-auto max-w-md"
+            >
+                <div className="relative bg-gradient-to-br from-indigo-600/95 to-purple-700/95 backdrop-blur-xl text-white px-5 py-4 rounded-2xl shadow-[0_10px_40px_-10px_rgba(79,70,229,0.5)] border border-white/10 flex items-center gap-4 overflow-hidden">
+                    {/* Decorative background elements */}
+                    <div className="absolute top-0 left-0 w-full h-full bg-white/5 noise-bg pointer-events-none"></div>
+                    <div className="absolute -right-4 -top-4 w-16 h-16 bg-purple-400/30 blur-2xl rounded-full"></div>
+                    
+                    <div className="relative p-2.5 bg-white/20 rounded-xl shadow-inner shrink-0">
+                        <BrainCircuit className="w-6 h-6 text-white animate-pulse" />
+                    </div>
+                    
+                    <div className="flex flex-col relative z-10">
+                        <span className="text-[10px] font-bold text-indigo-200 uppercase tracking-widest mb-0.5 flex items-center gap-1">
+                            <Sparkles className="w-3 h-3" />
+                            پیام مربی هوشمند
+                        </span>
+                        <span className="text-sm font-medium leading-snug text-white/95">{message}</span>
+                    </div>
+
+                    <button onClick={onClose} className="relative z-10 text-white/50 hover:text-white transition-colors mr-2">
+                        <XCircle className="w-5 h-5" />
+                    </button>
+                </div>
+            </motion.div>
+        );
+    }
+
     let borderColor = 'border-border';
     let iconBg = 'bg-green-500/10 text-green-500';
     let Icon = CheckCircle;
@@ -39,22 +72,22 @@ const NotificationToast = ({ message, type = 'success', onClose }: { message: st
         borderColor = 'border-destructive/50';
         iconBg = 'bg-destructive/10 text-destructive';
         Icon = XCircle;
-    } else if (type === 'coach') {
-        borderColor = 'border-primary/50';
-        iconBg = 'bg-primary/10 text-primary';
-        Icon = BrainCircuit;
     }
 
     return (
-        <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 z-[10000] bg-card border shadow-2xl rounded-xl px-4 py-3 flex items-center gap-3 animate-slide-up ${borderColor}`}>
+        <motion.div 
+            initial={{ y: -50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -50, opacity: 0 }}
+            className={`fixed top-20 left-1/2 transform -translate-x-1/2 z-[10000] bg-card border shadow-2xl rounded-xl px-4 py-3 flex items-center gap-3 ${borderColor}`}
+        >
             <div className={`p-2 rounded-full ${iconBg}`}>
                 <Icon className="w-5 h-5" />
             </div>
             <div className="flex flex-col">
-                {type === 'coach' && <span className="text-[10px] font-bold text-primary uppercase tracking-wider">پیام مربی هوشمند</span>}
                 <span className="text-sm font-bold text-foreground">{message}</span>
             </div>
-        </div>
+        </motion.div>
     );
 }
 
@@ -70,7 +103,7 @@ const AppLayout = () => {
     // New local state for Podcast flow
     const [showPodcastWizard, setShowPodcastWizard] = useState(false);
 
-    const showNotification = useCallback((msg: string, type: 'success' | 'error' = 'success') => {
+    const showNotification = useCallback((msg: string, type: 'success' | 'error' | 'coach' = 'success') => {
         setNotification({ message: msg, type });
     }, []);
 
@@ -300,7 +333,9 @@ const AppLayout = () => {
             <ParticleBackground theme={state.theme} />
             
             <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center z-[2000]"><BoxLoader size={150} /></div>}>
-                {notification && <NotificationToast message={notification.message} type={notification.type} onClose={() => setNotification(null)} />}
+                <AnimatePresence>
+                    {notification && <NotificationToast message={notification.message} type={notification.type} onClose={() => setNotification(null)} />}
+                </AnimatePresence>
                 
                 {isDebugOpen && <DebugPanel state={state} dispatch={dispatch} onClose={() => setIsDebugOpen(false)} onNotify={showNotification} />}
                 
