@@ -328,7 +328,8 @@ const AppLayout = () => {
                 {/* SRS FLASHCARD REVIEW UI */}
                 {state.status === AppStatus.REVIEWING_FLASHCARDS && (
                     <FlashcardReview 
-                        cards={getDueFlashcards()} 
+                        cards={getDueFlashcards()}
+                        mindMap={state.mindMap}
                         onGrade={actions.handleReviewFlashcard} 
                         onFinish={actions.exitFlashcardReview}
                     />

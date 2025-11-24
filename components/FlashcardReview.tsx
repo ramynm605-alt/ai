@@ -1,21 +1,39 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Flashcard, FlashcardGrade } from '../types';
-import { XCircle, Sparkles, BrainCircuit, CheckCircle, ArrowRight, Keyboard } from './icons';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Flashcard, FlashcardGrade, MindMapNode } from '../types';
+import { XCircle, Sparkles, BrainCircuit, CheckCircle, ArrowRight, Keyboard, Target } from './icons';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface FlashcardReviewProps {
     cards: Flashcard[];
+    mindMap: MindMapNode[];
     onGrade: (cardId: string, grade: FlashcardGrade) => void;
     onFinish: () => void;
 }
 
-const FlashcardReview: React.FC<FlashcardReviewProps> = ({ cards, onGrade, onFinish }) => {
+const FlashcardReview: React.FC<FlashcardReviewProps> = ({ cards, mindMap, onGrade, onFinish }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isFlipped, setIsFlipped] = useState(false);
     const [direction, setDirection] = useState(0); // For slide animation
 
     const currentCard = cards[currentIndex];
+
+    const contextLabel = useMemo(() => {
+        if (!currentCard) return '';
+        const node = mindMap.find(n => n.id === currentCard.nodeId);
+        if (!node) return '';
+        
+        // Find root topic
+        let root = node;
+        while (root.parentId) {
+            const parent = mindMap.find(n => n.id === root.parentId);
+            if (parent) root = parent;
+            else break;
+        }
+        
+        if (root.id === node.id) return node.title;
+        return `${root.title} / ${node.title}`;
+    }, [currentCard, mindMap]);
 
     // Keyboard Shortcuts
     useEffect(() => {
@@ -140,6 +158,14 @@ const FlashcardReview: React.FC<FlashcardReviewProps> = ({ cards, onGrade, onFin
                         <div 
                             className="absolute inset-0 [backface-visibility:hidden] w-full h-full bg-card border-2 border-border/60 rounded-[2rem] shadow-2xl flex flex-col items-center justify-center p-8 text-center z-20"
                         >
+                            {/* Context Badge */}
+                            <div className="absolute top-6 left-0 right-0 flex justify-center">
+                                <div className="flex items-center gap-1.5 bg-secondary/80 backdrop-blur-sm px-3 py-1.5 rounded-full text-[10px] font-bold text-muted-foreground border border-border/50 shadow-sm">
+                                    <Target className="w-3 h-3" />
+                                    <span className="max-w-[200px] truncate">{contextLabel}</span>
+                                </div>
+                            </div>
+
                             <div className="flex-grow flex flex-col items-center justify-center w-full">
                                 <span className="inline-block px-3 py-1 rounded-full bg-secondary text-xs font-bold text-muted-foreground mb-6">سوال</span>
                                 <h3 className="text-2xl md:text-4xl font-black leading-relaxed text-foreground select-none" dir="rtl">
@@ -159,7 +185,15 @@ const FlashcardReview: React.FC<FlashcardReviewProps> = ({ cards, onGrade, onFin
                                 transform: 'rotateY(180deg)' 
                             }}
                         >
-                            <div className="p-6 border-b border-border/50 bg-primary/5 flex justify-between items-center">
+                            {/* Context Badge (Back) */}
+                            <div className="absolute top-0 left-0 right-0 z-30 p-4 flex justify-center">
+                                <div className="flex items-center gap-1.5 bg-background/50 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-bold text-muted-foreground border border-border/20">
+                                    <Target className="w-3 h-3" />
+                                    <span className="max-w-[200px] truncate">{contextLabel}</span>
+                                </div>
+                            </div>
+
+                            <div className="p-6 border-b border-border/50 bg-primary/5 flex justify-between items-center pt-12">
                                 <span className="text-xs font-bold text-primary uppercase tracking-widest">پاسخ صحیح</span>
                                 <Sparkles className="w-4 h-4 text-primary" />
                             </div>
