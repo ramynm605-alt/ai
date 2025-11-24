@@ -82,6 +82,14 @@ const AppLayout = () => {
     // --- SMART STORAGE: Auto-Save Logic ---
     const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const prevStateRef = useRef<string>('');
+    
+    // Create a stable ref for the save function to prevent effect cleanup on unrelated state changes
+    const saveSessionRef = useRef(handleSaveSession);
+    
+    // Update the ref whenever the handler changes (which happens on state change)
+    useEffect(() => {
+        saveSessionRef.current = handleSaveSession;
+    }, [handleSaveSession]);
 
     useEffect(() => {
         if (!state.currentUser || !state.currentSessionId) return;
@@ -92,7 +100,8 @@ const AppLayout = () => {
             m: state.mindMap.map(n => ({ id: n.id, l: n.locked })), // Track lock status changes
             r: state.rewards.length,
             f: state.flashcards.length,
-            b: state.behavior
+            b: state.behavior,
+            nc: Object.keys(state.nodeContents).length // Track count of generated nodes
         });
 
         if (prevStateRef.current !== stateSignature) {
@@ -101,8 +110,9 @@ const AppLayout = () => {
             
             // Debounce for 3 seconds
             autoSaveTimeoutRef.current = setTimeout(() => {
-                if (state.isAutoSaving) return; // Skip if already saving
-                handleSaveSession('', true);
+                // We don't check state.isAutoSaving here from the closure because it might be stale.
+                // We rely on the latest function ref to handle the save.
+                saveSessionRef.current('', true);
             }, 3000);
 
             prevStateRef.current = stateSignature;
@@ -117,10 +127,9 @@ const AppLayout = () => {
         state.rewards, 
         state.flashcards, 
         state.behavior, 
+        state.nodeContents, // Added to dependencies
         state.currentUser, 
         state.currentSessionId,
-        state.isAutoSaving,
-        handleSaveSession
     ]);
     // --------------------------------------
 
