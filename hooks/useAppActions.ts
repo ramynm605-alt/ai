@@ -56,8 +56,6 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
            console.error("Cloud Load Error", e);
            // If timeout or error, fallback to idle/error status
            dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'error' } });
-           // Only show notification if it's not a silent background sync
-           // showNotification("خطا در اتصال به فضای ابری.", "error");
        }
     }, [dispatch, showNotification]);
 
@@ -66,7 +64,10 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         try {
             const timestamp = new Date().toISOString();
             const dataToSave = { sessions, behavior, lastModified: timestamp };
-            const success = await withTimeout(FirebaseService.saveUserData(userId, dataToSave), 10000);
+            
+            // Reduced timeout to 8s to prevent long hangs
+            const success = await withTimeout(FirebaseService.saveUserData(userId, dataToSave), 8000);
+            
             if (success) {
                 dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'success', lastSync: timestamp } });
             } else {
@@ -164,6 +165,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         localStorage.setItem(`zehngah_sessions_${state.currentUser.id}`, JSON.stringify(newSessions));
         dispatch({ type: 'UPDATE_SAVED_SESSIONS', payload: newSessions });
 
+        // Fire and forget cloud save, but handle state updates correctly
         handleCloudSave(state.currentUser.id, newSessions, state.behavior);
 
         if (isAutoSave) {

@@ -23,9 +23,9 @@ let db: any = null;
 
 export const FirebaseService = {
     initialize() {
-        // Safety check for missing SDK
+        // Safety check for missing SDK or partial load
         if (typeof firebase === 'undefined') {
-            console.warn("Firebase SDK not loaded");
+            console.warn("Firebase SDK not loaded yet.");
             return false;
         }
 
@@ -35,8 +35,14 @@ export const FirebaseService = {
                 firebase.initializeApp(firebaseConfig);
             }
 
+            // Check if Firestore module is loaded
+            if (!firebase.firestore) {
+                console.warn("Firebase Firestore module not loaded.");
+                return false;
+            }
+
             // Initialize Firestore if not already set
-            if (!db && firebase.firestore) {
+            if (!db) {
                 db = firebase.firestore();
                 
                 // Enable Offline Persistence safely
