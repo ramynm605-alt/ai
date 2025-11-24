@@ -296,12 +296,13 @@
       @media (hover: hover) {
         .mindmap-node:hover {
             z-index: 100 !important;
-            transform: translateY(-2px) scale(1.02) translateZ(0) !important;
+            /* Ensure we keep the centering translate(-50%) and add the hover effects */
+            transform: translate(-50%, -4px) scale(1.02) translateZ(0) !important;
         }
       }
       .mindmap-node.active-node {
         z-index: 50;
-        transform: scale(1.01) translateZ(0);
+        transform: translate(-50%, 0) scale(1.01) translateZ(0);
       }
       .mindmap-node-visible { opacity: 1; }
       
