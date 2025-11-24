@@ -27,7 +27,8 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Pr
 
 // Helper to clean JSON string from markdown code blocks
 function cleanJsonString(str: string): string {
-    return str.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+    let cleaned = str.trim();
+    return cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
 }
 
 // Helper to escape regex characters
@@ -122,9 +123,6 @@ const getPreferenceInstructions = (preferences: LearningPreferences): string => 
 
     return instructions;
 };
-
-// ... (analyzeResourceContent, generateLearningPlan, analyzePreAssessment, generateAdaptiveModifications - NO CHANGES, KEPT) ...
-// *Note for AI processing: Assuming previous functions are here. I will paste the new function below.*
 
 export async function analyzeResourceContent(
     title: string,
@@ -276,9 +274,6 @@ export async function analyzeResourceContent(
 
 export async function generateLearningPlan(content: string, pageContents: string[] | null, images: any[], preferences: LearningPreferences, onMindMapGenerated: any, onQuestionStream: any): Promise<Quiz> { 
     return withRetry(async () => {
-        // ... existing implementation ...
-        // Minimizing changes here to focus on Flashcards
-        // Reusing the exact logic from previous file content
         const preferenceInstructions = getPreferenceInstructions(preferences);
         const isMultiSource = content.includes("[[Resource");
         const isTopicMode = !isMultiSource && content.length < 500 && !pageContents && images.length === 0;
@@ -299,7 +294,7 @@ export async function generateLearningPlan(content: string, pageContents: string
         
         const stream = await ai.models.generateContentStream({
             model: "gemini-2.5-pro",
-            contents: { parts: [{ text: prompt }] }, // Simplified for brevity in update
+            contents: { parts: [{ text: prompt }] }, 
         });
 
         let buffer = '';
@@ -312,20 +307,20 @@ export async function generateLearningPlan(content: string, pageContents: string
                 const s = buffer.indexOf('[MIND_MAP_START]');
                 const e = buffer.indexOf('[MIND_MAP_END]', s);
                 if (s !== -1 && e !== -1) {
-                    const json = JSON.parse(cleanJsonString(buffer.substring(s + 16, e)));
-                    let mindMap = flattenMindMap(json.mindMap || json); // Reuse helper
-                    // Fix root parentId
+                    const jsonStr = cleanJsonString(buffer.substring(s + 16, e));
+                    const json = JSON.parse(jsonStr);
+                    let mindMap = flattenMindMap(json.mindMap || json); 
                     if (mindMap.length > 0) mindMap[0].parentId = null;
                     onMindMapGenerated(mindMap, json.suggestedPath || []);
                     mindMapGenerated = true;
                     buffer = buffer.substring(e + 14);
                 }
             }
-            // Question parsing logic... same as before
+            
              let s, e;
             while ((s = buffer.indexOf('[QUESTION_START]')) !== -1 && (e = buffer.indexOf('[QUESTION_END]', s)) !== -1) {
-                const q = JSON.parse(cleanJsonString(buffer.substring(s + 16, e)));
-                // ... validation logic ...
+                const jsonStr = cleanJsonString(buffer.substring(s + 16, e));
+                const q = JSON.parse(jsonStr);
                 if (!q.id) q.id = Math.random().toString();
                 questions.push(q);
                 onQuestionStream(q);
@@ -338,41 +333,190 @@ export async function generateLearningPlan(content: string, pageContents: string
 
 export async function analyzePreAssessment(questions: any, userAnswers: any, sourceContent: string): Promise<PreAssessmentAnalysis> {
     return withRetry(async () => {
-        // ... implementation ...
-        return { overallAnalysis: "Analysis", strengths: [], weaknesses: [], recommendedLevel: "متوسط", weaknessTags: [], strengthTags: [], conceptScores: {} };
+        const prompt = `
+        Analyze the user's pre-assessment results.
+        
+        Questions: ${JSON.stringify(questions)}
+        User Answers: ${JSON.stringify(userAnswers)}
+        
+        Output JSON:
+        {
+            "overallAnalysis": "...",
+            "strengths": ["concept1", ...],
+            "weaknesses": ["concept2", ...],
+            "recommendedLevel": "beginner" | "intermediate" | "expert",
+            "weaknessTags": ["tag1", "tag2"],
+            "strengthTags": ["tag3", "tag4"],
+            "conceptScores": { "concept1": 80, "concept2": 40 }
+        }
+        `;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: { parts: [{ text: prompt }] },
+            config: { responseMimeType: "application/json" }
+        });
+
+        return JSON.parse(cleanJsonString(response.text || '{}'));
     });
 }
 
 export async function generateNodeContent(nodeTitle: string, fullContent: string, images: any[], preferences: any, strengths: any, weaknesses: any, isIntroNode: boolean, nodeType: any, onStreamUpdate: any): Promise<NodeContent> {
-    // ... implementation ...
-    // Using dummy implementation to fit XML limits, assume previous full implementation is kept
-    // Just ensuring exports exist
-    return { introduction: "", theory: "", example: "", connection: "", conclusion: "", suggestedQuestions: [] };
+    return withRetry(async () => {
+        const prompt = `
+        Generate detailed educational content for the node: "${nodeTitle}".
+        Context: ${fullContent.substring(0, 20000)}
+        
+        Format (JSON):
+        {
+            "introduction": "Markdown...",
+            "theory": "Markdown...",
+            "example": "Markdown...",
+            "connection": "Markdown...",
+            "conclusion": "Markdown...",
+            "suggestedQuestions": ["q1", "q2"],
+            "interactiveTask": "A prompt for the user to do something..."
+        }
+        `;
+
+        const response = await ai.models.generateContentStream({
+            model: "gemini-2.5-pro",
+            contents: { parts: [{ text: prompt }] }
+        });
+
+        let fullText = "";
+        for await (const chunk of response) {
+            fullText += chunk.text;
+            // Simple heuristic streaming update: rough JSON parsing
+            // In a real app, use a streaming JSON parser.
+            try {
+                // Attempt to parse partial JSON if it looks complete enough, 
+                // or just pass the raw text if we were just streaming text.
+                // Since we requested JSON, streaming partial JSON is hard.
+                // We will just accumulate here for the final result, 
+                // but for "streaming" feel, we might fake it or use a simpler format.
+                // For now, we just wait for completion for robust JSON, 
+                // OR we could ask for specific sections in chunks.
+                // Let's just accumulate for safety in this demo to avoid JSON errors.
+            } catch (e) {}
+        }
+        
+        const jsonStr = cleanJsonString(fullText);
+        let content;
+        try {
+            content = JSON.parse(jsonStr);
+        } catch(e) {
+            // Fallback if JSON fails
+            content = {
+                introduction: fullText,
+                theory: "",
+                example: "",
+                connection: "",
+                conclusion: "",
+                suggestedQuestions: []
+            };
+        }
+        
+        onStreamUpdate(content);
+        return content;
+    });
 }
 
 export async function evaluateNodeInteraction(nodeTitle: string, learningObjective: string, task: string, userResponse: string, sourceContent: string): Promise<string> {
-    // ... implementation ...
-    return "Feedback";
+    return withRetry(async () => {
+        const prompt = `
+        Evaluate user response for task: "${task}" in node "${nodeTitle}".
+        User Response: "${userResponse}"
+        
+        Provide helpful feedback in Persian.
+        `;
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: { parts: [{ text: prompt }] }
+        });
+        return response.text || "Feedback unavailable.";
+    });
 }
 
 export async function evaluateFeynmanExplanation(nodeTitle: string, nodeContent: string, userExplanation: string, audioData: string | null): Promise<string> {
-    // ... implementation ...
-    return "Feynman Feedback";
+    return withRetry(async () => {
+        const parts: any[] = [
+            { text: `User is explaining "${nodeTitle}" in their own words (Feynman Technique). \nReference Content: ${nodeContent.substring(0, 2000)} \n\nEvaluate their explanation. Identify misconceptions or missing key points. Be encouraging.` }
+        ];
+        if (audioData) {
+            parts.push({ inlineData: { mimeType: 'audio/webm', data: audioData } }); // Assuming webm from MediaRecorder
+        } else {
+            parts.push({ text: `User Explanation: ${userExplanation}` });
+        }
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: { parts }
+        });
+        return marked.parse(response.text || '') as string;
+    });
 }
 
 export async function generateRemedialNode(originalNodeId: string, parentTitle: string, weaknesses: Weakness[], content: string, images: any[]) {
-    // ... implementation ...
-    return { id: "rem", title: "Remedial", parentId: originalNodeId, locked: false, difficulty: 0.3, isExplanatory: true, sourcePages: [], type: 'remedial', isAdaptive: true };
+    return withRetry(async () => {
+        const prompt = `
+        Create a remedial node for "${parentTitle}" addressing these weaknesses: ${JSON.stringify(weaknesses)}.
+        Output JSON: { "id": "rem_...", "title": "...", "difficulty": 0.3, "isExplanatory": true, ... }
+        `;
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: { parts: [{ text: prompt }] },
+            config: { responseMimeType: "application/json" }
+        });
+        return JSON.parse(cleanJsonString(response.text || '{}'));
+    });
 }
 
 export async function generateQuiz(topic: string, content: string, images: any[], onQuestionStream: any): Promise<Quiz> {
-    // ... implementation ...
-    return { questions: [] };
+    return withRetry(async () => {
+        const prompt = `
+        Generate 3 multiple choice and 1 short answer question for "${topic}".
+        Format: [QUESTION_START] JSON [QUESTION_END]
+        `;
+        const stream = await ai.models.generateContentStream({
+            model: "gemini-2.5-flash",
+            contents: { parts: [{ text: prompt }] }
+        });
+        
+        let buffer = "";
+        const questions: QuizQuestion[] = [];
+        for await (const chunk of stream) {
+            buffer += chunk.text;
+            let s, e;
+            while ((s = buffer.indexOf('[QUESTION_START]')) !== -1 && (e = buffer.indexOf('[QUESTION_END]', s)) !== -1) {
+                const jsonStr = cleanJsonString(buffer.substring(s + 16, e));
+                const q = JSON.parse(jsonStr);
+                if (!q.id) q.id = Math.random().toString();
+                questions.push(q);
+                onQuestionStream(q);
+                buffer = buffer.substring(e + 14);
+            }
+        }
+        return { questions };
+    });
 }
 
 export async function gradeAndAnalyzeQuiz(questions: any[], userAnswers: any, content: string, images: any[]) {
-    // ... implementation ...
-    return [];
+    return withRetry(async () => {
+        const prompt = `
+        Grade this quiz.
+        Questions: ${JSON.stringify(questions)}
+        Answers: ${JSON.stringify(userAnswers)}
+        
+        Output JSON array: [{ "questionId": "...", "isCorrect": boolean, "score": number, "analysis": "..." }]
+        `;
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: { parts: [{ text: prompt }] },
+            config: { responseMimeType: "application/json" }
+        });
+        return JSON.parse(cleanJsonString(response.text || '[]'));
+    });
 }
 
 export async function generateDeepAnalysis(title: string, content: string) {
@@ -382,26 +526,73 @@ export async function generateDeepAnalysis(title: string, content: string) {
 }
 
 export async function generateChatResponse(history: any, message: string, nodeTitle: any, content: string, isDebateMode: boolean, weaknesses: any, chatPersona: any, availableNodes: any) {
-    // ... implementation ...
-    return "Chat response";
+    return withRetry(async () => {
+        const personaPrompt = isDebateMode ? 
+            `You are in DEBATE MODE. Persona: ${chatPersona}. Challenge the user.` : 
+            `You are a Tutor. Persona: ${chatPersona}. Helpful and guiding.`;
+            
+        const prompt = `
+        ${personaPrompt}
+        Context: ${content.substring(0, 2000)}
+        Current Node: ${nodeTitle}
+        User: ${message}
+        
+        Available Nodes for linking: ${JSON.stringify(availableNodes)}
+        If relevant, link to nodes using [[Node Title]].
+        `;
+        const r = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: { parts: [{ text: prompt }] } });
+        return r.text || '';
+    });
 }
 
 export async function generateProactiveChatInitiation(nodeTitle: string, nodeContent: string, isDebateMode: boolean, weaknesses: any): Promise<string> {
-    // ... implementation ...
-    return "Initiation";
+    return withRetry(async () => {
+        const prompt = `Initiate a ${isDebateMode ? 'debate' : 'conversation'} about ${nodeTitle}.`;
+        const r = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: { parts: [{ text: prompt }] } });
+        return r.text || '';
+    });
 }
 
 export async function generatePodcastScript(contents: any, mode: any): Promise<string> {
-    // ... implementation ...
-    return "Script";
+    return withRetry(async () => {
+        const prompt = `Write a podcast script (${mode}) about: ${JSON.stringify(contents)}.`;
+        const r = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: { parts: [{ text: prompt }] } });
+        return r.text || '';
+    });
 }
 
 export async function generatePodcastAudio(script: string, speaker1: any, speaker2: any, mode: any): Promise<string> {
-    // ... implementation ...
-    return "blob:url";
+    return withRetry(async () => {
+        // Mock audio generation for now as the actual API requires specific setup
+        // In a real implementation, this would call the TTS model.
+        // For now, returning a dummy blob or handling via a real call if enabled.
+        
+        // REAL IMPLEMENTATION ATTEMPT (if configured)
+        try {
+            const ttsPrompt = `Read this: ${script.substring(0, 500)}`; // Truncate for demo
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash-preview-tts", // Use correct TTS model
+                contents: [{ parts: [{ text: ttsPrompt }] }],
+                config: {
+                    responseModalities: [Modality.AUDIO],
+                    speechConfig: {
+                        voiceConfig: { prebuiltVoiceConfig: { voiceName: speaker1 } }
+                    }
+                }
+            });
+            
+            if (response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data) {
+                const base64 = response.candidates[0].content.parts[0].inlineData.data;
+                return `data:audio/mp3;base64,${base64}`;
+            }
+        } catch (e) {
+            console.warn("TTS Failed, falling back or throwing", e);
+        }
+        
+        throw new Error("Audio generation not available in this demo environment.");
+    });
 }
 
-// --- NEW: Generate Flashcards ---
 const flashcardSchema = {
     type: Type.ARRAY,
     items: {
@@ -451,8 +642,6 @@ export async function generateFlashcards(
         return JSON.parse(cleanText);
     });
 }
-
-// --- Added missing functions for Practice Zone and Daily Challenge ---
 
 export async function generatePracticeResponse(topic: string, problem: string): Promise<string> {
     return withRetry(async () => {
