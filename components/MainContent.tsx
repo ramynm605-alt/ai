@@ -535,7 +535,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
     };
 
     return (
-        <div className="flex-grow relative z-10 overflow-y-auto scroll-smooth" id="tour-main-content">
+        <div className="flex-grow relative z-10 overflow-y-auto scroll-smooth">
             {reviewResource && renderReviewModal()}
             
             {state.status === AppStatus.IDLE && (
@@ -561,7 +561,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                             </div>
 
                             {/* Main Action Cards */}
-                            <div id="tour-input-methods" className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
                                 {/* Option 1: Source Upload */}
                                 <button 
                                     onClick={() => handleEnterAction('upload')}
@@ -623,7 +623,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                             </div>
 
                             {/* Custom Tabs */}
-                            <div id="tour-input-methods" className="flex p-1 bg-secondary/50 rounded-2xl mb-6 mx-auto max-w-3xl overflow-x-auto">
+                            <div className="flex p-1 bg-secondary/50 rounded-2xl mb-6 mx-auto max-w-3xl overflow-x-auto">
                                 <button 
                                     onClick={() => setActiveTab('upload')}
                                     className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 min-w-[100px] rounded-xl text-sm font-bold transition-all duration-300 ${activeTab === 'upload' ? 'bg-background text-foreground shadow-md' : 'text-muted-foreground hover:text-foreground'}`}

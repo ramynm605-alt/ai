@@ -4,7 +4,7 @@ import { AppProvider, useApp } from './context/AppContext';
 import { useAppActions } from './hooks/useAppActions';
 import { AppStatus, UserProfile, Flashcard } from './types';
 import { FirebaseService } from './services/firebaseService';
-import { Home, MessageSquare, Mic, User, SlidersHorizontal, ChevronLeft, ChevronRight, Brain, Save, Upload, CheckCircle, XCircle, Play, ArrowRight, ClipboardList, HelpCircle } from './components/icons';
+import { Home, MessageSquare, Mic, User, SlidersHorizontal, ChevronLeft, ChevronRight, Brain, Save, Upload, CheckCircle, XCircle, Play, ArrowRight, ClipboardList } from './components/icons';
 import BoxLoader from './components/ui/box-loader';
 import StartupScreen from './components/StartupScreen';
 import ParticleBackground from './components/ParticleBackground';
@@ -12,7 +12,6 @@ import { Sidebar, SidebarBody, SidebarLink } from './components/Sidebar';
 import { ThemeToggle } from './components/ThemeToggle';
 import { motion, AnimatePresence } from 'framer-motion';
 import MainContent from './components/MainContent';
-import AppTour from './components/AppTour';
 
 // Lazy Load Overlays
 const WeaknessTracker = React.lazy(() => import('./components/WeaknessTracker'));
@@ -50,7 +49,6 @@ const AppLayout = () => {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isToolboxOpen, setIsToolboxOpen] = useState(true);
     const [logoClickCount, setLogoClickCount] = useState(0);
-    const [showTour, setShowTour] = useState(false);
     
     // New local state for Podcast flow
     const [showPodcastWizard, setShowPodcastWizard] = useState(false);
@@ -143,14 +141,12 @@ const AppLayout = () => {
         {
             label: "مربی هوشمند",
             href: "#",
-            id: "tour-chat-btn", // Added ID for Tour
             icon: <MessageSquare className="text-foreground h-5 w-5 flex-shrink-0" />,
             onClick: () => dispatch({ type: 'TOGGLE_CHAT' })
         },
         {
             label: "ساخت پادکست",
             href: "#",
-            id: "tour-podcast-btn", // Added ID for Tour
             icon: <Mic className="text-foreground h-5 w-5 flex-shrink-0" />,
             onClick: () => {
                  if (state.status !== AppStatus.LEARNING && state.status !== AppStatus.VIEWING_NODE) {
@@ -163,7 +159,6 @@ const AppLayout = () => {
         {
             label: "مرور (لایتنر)",
             href: "#",
-            id: "tour-flashcard-btn", // Added ID for Tour
             icon: <div className="relative"><ClipboardList className="text-foreground h-5 w-5 flex-shrink-0" />{getDueFlashcards().length > 0 && <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></span>}</div>,
             onClick: () => {
                 if (getDueFlashcards().length === 0) {
@@ -176,15 +171,8 @@ const AppLayout = () => {
         {
             label: "پروفایل من",
             href: "#",
-            id: "tour-profile-btn", // Added ID for Tour
             icon: <User className="text-foreground h-5 w-5 flex-shrink-0" />,
             onClick: () => dispatch({ type: 'TOGGLE_USER_PANEL' })
-        },
-        {
-            label: "راهنمای برنامه",
-            href: "#",
-            icon: <HelpCircle className="text-foreground h-5 w-5 flex-shrink-0" />,
-            onClick: () => setShowTour(true)
         }
     ];
 
@@ -223,9 +211,6 @@ const AppLayout = () => {
             {showStartup && <StartupScreen onAnimationEnd={() => setShowStartup(false)} />}
             <ParticleBackground theme={state.theme} />
             
-            {/* Tour Component */}
-            <AppTour isOpen={showTour} onClose={() => setShowTour(false)} />
-
             <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center z-[2000]"><BoxLoader size={150} /></div>}>
                 {notification && <NotificationToast message={notification.message} type={notification.type} onClose={() => setNotification(null)} />}
                 
@@ -345,17 +330,17 @@ const AppLayout = () => {
                     <SidebarBody className="justify-between gap-10">
                         <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
                             <div className="flex flex-col gap-2">
-                                <div id="sidebar-logo" onClick={handleLogoClick} className="flex items-center gap-2 font-black text-lg text-foreground py-2 cursor-pointer mb-4">
+                                <div onClick={handleLogoClick} className="flex items-center gap-2 font-black text-lg text-foreground py-2 cursor-pointer mb-4">
                                     <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-primary/20 shrink-0">
                                         <Brain className="w-5 h-5 text-primary-foreground" />
                                     </div>
                                     <motion.span initial={{ opacity: 0 }} animate={{ display: sidebarOpen ? "inline-block" : "none", opacity: sidebarOpen ? 1 : 0 }} className="font-extrabold tracking-tight whitespace-pre">ذهن گاه</motion.span>
                                 </div>
-                                {links.map((link, idx) => <SidebarLink key={idx} link={link} id={link.id} />)}
+                                {links.map((link, idx) => <SidebarLink key={idx} link={link} />)}
                             </div>
                         </div>
                         <div className="flex flex-col gap-4">
-                             <div id="tour-theme-toggle" className="flex justify-center md:justify-start px-2">
+                             <div className="flex justify-center md:justify-start px-2">
                                 <ThemeToggle theme={state.theme} onToggle={handleThemeToggle} className={!sidebarOpen ? "w-8 h-4" : ""} />
                              </div>
                              {state.currentUser ? (
@@ -389,7 +374,7 @@ const AppLayout = () => {
                     <AnimatePresence>
                     {!isToolboxOpen && (
                         <motion.div className="absolute left-0 bottom-8 z-50" initial={{ x: -50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }}>
-                            <button id="tour-toolbox-btn" onClick={() => setIsToolboxOpen(true)} className="flex items-center gap-2 bg-card border border-border border-l-0 rounded-r-xl p-3 shadow-lg hover:bg-secondary transition-all group">
+                            <button onClick={() => setIsToolboxOpen(true)} className="flex items-center gap-2 bg-card border border-border border-l-0 rounded-r-xl p-3 shadow-lg hover:bg-secondary transition-all group">
                                 <SlidersHorizontal className="w-5 h-5 text-primary" />
                                 <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary hidden lg:block" />
                                 <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary lg:hidden rotate-180" />
