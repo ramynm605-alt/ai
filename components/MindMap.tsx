@@ -12,12 +12,10 @@ interface MindMapProps {
     theme: 'light' | 'balanced' | 'dark';
     activeNodeId: string | null;
     showSuggestedPath: boolean;
-    // New Props for Selection Mode
     isSelectionMode?: boolean;
     selectedNodeIds?: string[];
 }
 
-// Extracted component to prevent re-mounting and hover flicker
 const MindMapNodeItem = React.memo(({ 
     node, 
     index, 
@@ -26,8 +24,8 @@ const MindMapNodeItem = React.memo(({
     isSuggestedAndIncomplete, 
     suggestedIndex, 
     isActive, 
-    isSelected, // New Prop
-    isSelectionMode, // New Prop
+    isSelected, 
+    isSelectionMode, 
     isRemedial, 
     isAdaptive,
     isIntro, 
@@ -66,11 +64,10 @@ const MindMapNodeItem = React.memo(({
         }
     };
 
-    // Elegant color palette for difficulty/type indicators
-    let difficultyColor = 'bg-blue-500'; // Default/Medium
+    let difficultyColor = 'bg-blue-500'; 
     if (isRemedial || isAdaptive) difficultyColor = 'bg-purple-500';
-    else if (node.difficulty < 0.4) difficultyColor = 'bg-emerald-500'; // Easy
-    else if (node.difficulty > 0.7) difficultyColor = 'bg-rose-500';    // Hard
+    else if (node.difficulty < 0.4) difficultyColor = 'bg-emerald-500'; 
+    else if (node.difficulty > 0.7) difficultyColor = 'bg-rose-500';    
 
     const baseStyle = {
         left: node.x,
@@ -80,16 +77,15 @@ const MindMapNodeItem = React.memo(({
         transitionDelay: `${index * 30}ms`,
         zIndex: isActive || isSelected ? 50 : (isLocked ? 10 : 20),
         touchAction: 'manipulation',
+        transform: `translate(-50%, 0)`, // Center the node on its X coordinate
     };
     
-    // Selection visuals
     const selectionClass = isSelectionMode 
         ? isSelected 
             ? 'ring-4 ring-primary scale-105 border-primary' 
             : 'opacity-60 grayscale hover:opacity-100 hover:grayscale-0 hover:scale-105' 
         : '';
 
-    // 1. Introduction Node - Minimal & Clean
     if (isIntro) {
         return (
             <div
@@ -115,16 +111,10 @@ const MindMapNodeItem = React.memo(({
                         <CheckCircle className="w-5 h-5 text-emerald-500" />
                     </div>
                  )}
-                 {isSelected && (
-                    <div className="absolute -top-2 -left-2 z-40 bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg">
-                        <CheckCircle className="w-4 h-4" />
-                    </div>
-                 )}
             </div>
         );
     }
 
-    // 2. Conclusion Node - Minimal & Clean
     if (isConclusion) {
          return (
             <div
@@ -144,16 +134,10 @@ const MindMapNodeItem = React.memo(({
                     </div>
                     <h3 className={`font-bold text-foreground leading-snug line-clamp-2 ${isPortrait ? 'text-xs' : 'text-sm'}`}>{node.title}</h3>
                 </div>
-                {isSelected && (
-                    <div className="absolute -top-2 -left-2 z-40 bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg">
-                        <CheckCircle className="w-4 h-4" />
-                    </div>
-                 )}
             </div>
         );
     }
 
-    // 3. Standard Node - Centered, Better Typography
     return (
         <div
             className={`mindmap-node group ${isVisible ? 'mindmap-node-visible' : ''} absolute select-none outline-none`}
@@ -173,19 +157,14 @@ const MindMapNodeItem = React.memo(({
                 ${isLocked && !isSelectionMode ? 'opacity-60 grayscale-[0.8] pointer-events-none' : ''}
                 ${selectionClass}
             `}>
-                 {/* Minimal Status Strip (RTL placement: Right) */}
                  <div className={`absolute right-0 top-0 bottom-0 w-1 ${difficultyColor} opacity-80`} />
 
-                 {/* Content Wrapper */}
                  <div className="w-full h-full p-3 px-4 flex flex-col items-center justify-center relative">
-                    
-                    {/* Status Icons - Top Right Float */}
                     <div className="absolute top-2 left-2 flex gap-1">
                         {status === 'completed' && <CheckCircle className="w-4 h-4 text-emerald-500" />}
                         {isLocked && <Lock className="w-3 h-3 text-muted-foreground/40" />}
                     </div>
 
-                    {/* Title with Improved Typography */}
                     <h3 
                         className={`
                             font-bold leading-relaxed text-foreground/90 w-full
@@ -193,21 +172,12 @@ const MindMapNodeItem = React.memo(({
                             ${isLocked && !isSelectionMode ? 'text-muted-foreground' : ''}
                         `} 
                         dir="rtl"
-                        title={node.title} // Tooltip for truncated text
+                        title={node.title}
                     >
                         {node.title}
                     </h3>
                     
-                    {/* Tags / Badges - Bottom */}
                     <div className="absolute bottom-2 w-full flex items-center justify-center gap-2">
-                         {/* Page Numbers Badge */}
-                         {/* {!isPortrait && node.sourcePages.length > 0 && (
-                            <span className="text-[9px] text-muted-foreground/70 font-mono tracking-tight bg-secondary px-1.5 rounded-sm">
-                                ص {node.sourcePages[0]}
-                            </span>
-                         )} */}
-                         
-                         {/* Remedial Badge */}
                          {(isRemedial || isAdaptive) && (
                              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] bg-purple-500/10">
                                  <Sparkles className="w-2.5 h-2.5 text-purple-600" />
@@ -218,14 +188,12 @@ const MindMapNodeItem = React.memo(({
                  </div>
             </div>
 
-             {/* Suggested Path Badge */}
              {isSuggestedAndIncomplete && suggestedIndex !== -1 && !isSelectionMode && (
                 <div className="absolute -top-2 -right-2 z-30 flex items-center justify-center w-5 h-5 text-[10px] font-bold text-primary-foreground rounded-full bg-primary shadow-sm ring-2 ring-background animate-bounce">
                     {suggestedIndex + 1}
                 </div>
              )}
 
-             {/* Selection Badge */}
              {isSelected && (
                 <div className="absolute -top-2 -left-2 z-50 bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg border-2 border-background animate-pop-in">
                     <CheckCircle className="w-4 h-4" />
@@ -264,13 +232,10 @@ const MindMap: React.FC<MindMapProps> = ({
                 const { width, height } = entries[0].contentRect;
                 clearTimeout(timeoutId);
                 timeoutId = setTimeout(() => {
-                    if (Math.abs(prev.width - width) < 10 && Math.abs(prev.height - height) < 80) return prev;
                     setContainerSize({ width, height });
                 }, 200);
             }
         });
-        // Helper to fix prev usage inside callback
-        let prev = { width: 0, height: 0 }; 
         
         if (containerRef.current) resizeObserver.observe(containerRef.current);
         return () => {
@@ -286,172 +251,210 @@ const MindMap: React.FC<MindMapProps> = ({
 
         const isMobile = containerSize.width < 768;
         
-        // Compact, minimal dimensions
-        const R_NODE_WIDTH = isMobile ? 140 : 200;
-        const R_NODE_HEIGHT = isMobile ? 80 : 100;
-        const R_H_GAP = isMobile ? 20 : 60; 
-        const R_V_GAP = isMobile ? 50 : 100; 
+        // Layout Config
+        const NODE_WIDTH = isMobile ? 140 : 200;
+        const NODE_HEIGHT = isMobile ? 80 : 100;
+        const HORIZONTAL_GAP = isMobile ? 30 : 60; 
+        const VERTICAL_GAP = isMobile ? 80 : 120; 
 
-        type NodeWithChildren = MindMapNodeType & { children: NodeWithChildren[], level: number, x: number, y: number };
-        const nodeMap = new Map<string, NodeWithChildren>(nodes.map(n => [n.id, { ...n, children: [], level: 0, x: 0, y: 0 }]));
-        const roots: NodeWithChildren[] = [];
+        type AugmentedNode = Omit<MindMapNodeType, 'children'> & { 
+            x: number; 
+            y: number; 
+            children: AugmentedNode[]; 
+            treeWidth: number; 
+            level: number 
+        };
 
-        let conclusionNodeId: string | null = null;
-        const isConclusion = (title: string) => title.includes('نتیجه‌گیری') || title.includes('جمع‌بندی') || title.toLowerCase().includes('conclusion');
-        const conclusionEntry = nodes.find(n => isConclusion(n.title));
-        if (conclusionEntry) conclusionNodeId = conclusionEntry.id;
-
+        // Build Tree
+        const nodeMap = new Map<string, AugmentedNode>(nodes.map(n => {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { children, ...rest } = n;
+            return [n.id, { ...rest, x: 0, y: 0, children: [], treeWidth: 0, level: 0 } as AugmentedNode];
+        }));
+        const roots: AugmentedNode[] = [];
+        
+        // Separate Conclusion Node
+        let conclusionNode: AugmentedNode | null = null;
+        
         nodes.forEach(node => {
             const nodeObj = nodeMap.get(node.id)!;
-            if (node.id === conclusionNodeId) return;
+            const isConclusion = node.title.includes('نتیجه‌گیری') || node.title.includes('جمع‌بندی') || node.title.toLowerCase().includes('conclusion');
+            
+            if (isConclusion && !conclusionNode) {
+                conclusionNode = nodeObj;
+                return; // Don't add to normal tree
+            }
+
             if (node.parentId && nodeMap.has(node.parentId)) {
                 const parent = nodeMap.get(node.parentId)!;
-                if (parent.id !== conclusionNodeId) parent.children.push(nodeObj);
+                // Avoid cycles or attaching to conclusion
+                if (parent !== conclusionNode) {
+                    parent.children.push(nodeObj);
+                } else {
+                    roots.push(nodeObj); 
+                }
             } else {
                 roots.push(nodeObj);
             }
         });
 
-        if (roots.length === 0 && nodes.length > 0 && !conclusionNodeId) {
-             if (nodes.length > 1 || (nodes.length === 1 && nodes[0].id !== conclusionNodeId)) {
-                 const first = nodeMap.get(nodes[0].id)!;
-                 if (first.id !== conclusionNodeId) roots.push(first);
-             }
+        // If no root found but nodes exist (e.g. circular or disconnected), pick first non-conclusion
+        if (roots.length === 0 && nodes.length > 0 && !conclusionNode) {
+             roots.push(nodeMap.get(nodes[0].id)!);
         }
 
-        const levels: NodeWithChildren[][] = [];
-        function assignLevels(node: MindMapNodeType, level: number) {
-            const positionedNode = nodeMap.get(node.id)!;
-            if(positionedNode.level > 0 && positionedNode.level !== level) return; 
-            if(positionedNode.level > 0 && level > positionedNode.level) positionedNode.level = level; 
-            if(positionedNode.level === 0) positionedNode.level = level;
-
-            if (!levels[level]) levels[level] = [];
-            if (!levels[level].includes(positionedNode)) levels[level].push(positionedNode);
-            positionedNode.children.forEach(child => assignLevels(child, level + 1));
-        }
-
-        roots.forEach(root => assignLevels(root, 0));
-        
-        const positionedNodesList: NodeWithChildren[] = [];
-        const lines: { x1: number, y1: number, x2: number, y2: number, parentId: string, childId: string, type?: 'normal' | 'conclusion' }[] = [];
-        const PADDING = isMobile ? 60 : 120;
-        
-        let currentLeafX = 0;
-        const layoutVerticalNode = (node: NodeWithChildren) => {
-            node.children.forEach(layoutVerticalNode);
+        // 1. Calculate Subtree Widths (Recursive Post-Order)
+        const calculateTreeWidth = (node: AugmentedNode) => {
             if (node.children.length === 0) {
-                node.x = currentLeafX;
-                currentLeafX += R_NODE_WIDTH + R_H_GAP;
-            } else {
-                const firstChild = node.children[0];
-                const lastChild = node.children[node.children.length - 1];
-                node.x = (firstChild.x + lastChild.x) / 2;
+                node.treeWidth = NODE_WIDTH;
+                return;
             }
-            node.y = node.level * (R_NODE_HEIGHT + R_V_GAP);
-            positionedNodesList.push(node);
+            let totalWidth = 0;
+            node.children.forEach(child => {
+                calculateTreeWidth(child);
+                totalWidth += child.treeWidth;
+            });
+            // Add gaps between children
+            totalWidth += (node.children.length - 1) * HORIZONTAL_GAP;
+            node.treeWidth = Math.max(NODE_WIDTH, totalWidth);
         };
 
-        roots.forEach(root => layoutVerticalNode(root));
+        roots.forEach(calculateTreeWidth);
 
-        let minX = Infinity, maxX = -Infinity, maxY = -Infinity;
-        if (positionedNodesList.length > 0) {
-            positionedNodesList.forEach(n => {
-                minX = Math.min(minX, n.x);
-                maxX = Math.max(maxX, n.x);
-                maxY = Math.max(maxY, n.y);
-            });
-        } else {
-            minX = 0; maxX = 0; maxY = 0;
-        }
-
-        if (conclusionNodeId) {
-            const cNode = nodeMap.get(conclusionNodeId)!;
-            const treeCenter = (minX + maxX) / 2;
-            cNode.x = treeCenter; 
-            cNode.y = maxY + R_V_GAP * 1.2; // Less gap for conclusion
-            positionedNodesList.push(cNode);
-            minX = Math.min(minX, cNode.x);
-            maxX = Math.max(maxX, cNode.x);
-            maxY = Math.max(maxY, cNode.y);
-        }
-
-        const finalWidth = (maxX - minX) + R_NODE_WIDTH + PADDING * 2;
-        const finalHeight = (maxY) + R_NODE_HEIGHT + PADDING * 2;
-        const flipX = true; 
-        const positionedNodesMap = new Map(positionedNodesList.map(n => [n.id, n]));
-        
-        positionedNodesList.forEach(node => {
-            const normalizedX = node.x - minX;
-            let xPos = flipX ? (maxX - minX) - normalizedX + PADDING : normalizedX + PADDING;
+        // 2. Assign Positions (Recursive Pre-Order)
+        const positionedNodesList: AugmentedNode[] = [];
+        const assignPositions = (node: AugmentedNode, startX: number, y: number, level: number) => {
+            node.level = level;
             
-            node.x = Math.round(xPos);
-            node.y = Math.round(node.y + PADDING);
+            // Center node relative to its own allocated width
+            node.x = startX + node.treeWidth / 2; 
+            node.y = y;
+            positionedNodesList.push(node);
+
+            let currentChildX = startX;
+            
+            // If the node is wider than its children combined (rare with this algo), center children
+            const childrenTotalWidth = node.children.reduce((acc, c) => acc + c.treeWidth, 0) + (node.children.length - 1) * HORIZONTAL_GAP;
+            if (childrenTotalWidth < node.treeWidth) {
+                currentChildX += (node.treeWidth - childrenTotalWidth) / 2;
+            }
+
+            node.children.forEach(child => {
+                assignPositions(child, currentChildX, y + VERTICAL_GAP + NODE_HEIGHT, level + 1);
+                currentChildX += child.treeWidth + HORIZONTAL_GAP;
+            });
+        };
+
+        let currentRootX = 0;
+        roots.forEach(root => {
+            assignPositions(root, currentRootX, HORIZONTAL_GAP, 0);
+            currentRootX += root.treeWidth + HORIZONTAL_GAP * 2; // Gap between major trees
         });
 
+        // 3. Handle Conclusion Node (Place at bottom, centered)
+        let maxY = 0;
+        let minX = Infinity;
+        let maxX = -Infinity;
+
+        positionedNodesList.forEach(n => {
+            if (n.y > maxY) maxY = n.y;
+            if (n.x < minX) minX = n.x;
+            if (n.x > maxX) maxX = n.x;
+        });
+
+        if (conclusionNode) {
+            const treeCenter = (minX + maxX) / 2;
+            conclusionNode.x = treeCenter || (NODE_WIDTH / 2); // Fallback if empty
+            conclusionNode.y = maxY + VERTICAL_GAP + NODE_HEIGHT;
+            positionedNodesList.push(conclusionNode);
+            maxY = conclusionNode.y;
+        }
+
+        // 4. Normalize Coordinates (Add padding)
+        const PADDING = isMobile ? 40 : 100;
+        const totalWidth = Math.max(containerSize.width, currentRootX + PADDING * 2);
+        const totalHeight = maxY + NODE_HEIGHT + PADDING * 2;
+
+        // Center the whole structure horizontally in the canvas if it's smaller than container
+        const offsetX = Math.max(0, (containerSize.width - currentRootX) / 2);
+        
+        positionedNodesList.forEach(n => {
+            n.x += offsetX + PADDING; // Shift right
+            n.y += PADDING;
+        });
+
+        // 5. Generate Lines
+        const lines: any[] = [];
+        const linesMap = new Map(positionedNodesList.map(n => [n.id, n]));
+
         positionedNodesList.forEach(node => {
-            if (node.id !== conclusionNodeId && node.parentId && positionedNodesMap.has(node.parentId)) {
-                const parent = positionedNodesMap.get(node.parentId)!;
-                if (parent.id !== conclusionNodeId) {
-                    lines.push({
-                        x1: Math.round(parent.x + R_NODE_WIDTH / 2),
-                        y1: Math.round(parent.y + R_NODE_HEIGHT),
-                        x2: Math.round(node.x + R_NODE_WIDTH / 2),
-                        y2: Math.round(node.y),
-                        parentId: parent.id,
-                        childId: node.id,
-                        type: 'normal'
-                    });
-                }
+            if (node.parentId && linesMap.has(node.parentId) && node !== conclusionNode) {
+                const parent = linesMap.get(node.parentId)!;
+                lines.push({
+                    x1: parent.x,
+                    y1: parent.y + NODE_HEIGHT,
+                    x2: node.x,
+                    y2: node.y,
+                    parentId: parent.id,
+                    childId: node.id,
+                    type: 'normal'
+                });
             }
         });
 
-        if (conclusionNodeId && positionedNodesMap.has(conclusionNodeId)) {
-            const cNode = positionedNodesMap.get(conclusionNodeId)!;
-            const leafNodes = positionedNodesList.filter(n => n.id !== conclusionNodeId && n.children.length === 0);
-            leafNodes.forEach(leaf => {
+        // Conclusion Lines (Connect all leaves)
+        if (conclusionNode) {
+            const leaves = positionedNodesList.filter(n => n !== conclusionNode && n.children.length === 0);
+            // Limit connections to prevent clutter - maybe only last level leaves or major branches?
+            // For now, connect reasonable leaves.
+            leaves.forEach(leaf => {
+                // Logic: Connect leaf if it's at the bottom-most level of its branch
                 lines.push({
-                    x1: Math.round(leaf.x + R_NODE_WIDTH / 2),
-                    y1: Math.round(leaf.y + R_NODE_HEIGHT),
-                    x2: Math.round(cNode.x + R_NODE_WIDTH / 2),
-                    y2: Math.round(cNode.y),
+                    x1: leaf.x,
+                    y1: leaf.y + NODE_HEIGHT,
+                    x2: conclusionNode!.x,
+                    y2: conclusionNode!.y,
                     parentId: leaf.id,
-                    childId: cNode.id,
+                    childId: conclusionNode!.id,
                     type: 'conclusion'
                 });
             });
         }
 
-        return { positionedNodes: positionedNodesList, lines, width: finalWidth, height: finalHeight, isPortrait: isMobile, nodeWidth: R_NODE_WIDTH, nodeHeight: R_NODE_HEIGHT };
+        return { 
+            positionedNodes: positionedNodesList, 
+            lines, 
+            width: totalWidth, 
+            height: totalHeight, 
+            isPortrait: isMobile, 
+            nodeWidth: NODE_WIDTH, 
+            nodeHeight: NODE_HEIGHT 
+        };
 
     }, [nodes, containerSize]);
 
     useEffect(() => {
         hasCenteredRef.current = false;
-    }, [isPortrait]);
+    }, [isPortrait, nodes.length]);
 
     useLayoutEffect(() => {
         if (positionedNodes.length > 0 && containerRef.current && !hasCenteredRef.current && width > 0) {
              const root = positionedNodes.find(n => n.parentId === null) || positionedNodes[0];
              if (root) {
                 const container = containerRef.current;
-                const scrollX = root.x - (container.clientWidth / 2) + (nodeWidth / 2);
-                const scrollY = root.y - (container.clientHeight / 2) + (nodeHeight / 2);
-                container.scrollTo({ left: scrollX, top: scrollY });
+                // Scroll to top-center
+                const scrollX = (width - container.clientWidth) / 2;
+                container.scrollTo({ left: scrollX, top: 0 });
                 hasCenteredRef.current = true;
              }
         }
-    }, [positionedNodes.length, width, nodeWidth, nodeHeight]);
+    }, [positionedNodes.length, width]);
 
     const centerOnRoot = () => {
         if (positionedNodes.length > 0 && containerRef.current) {
-           const root = positionedNodes.find(n => n.parentId === null) || positionedNodes[0];
-           if (root) {
-               const container = containerRef.current;
-               const scrollX = root.x - (container.clientWidth / 2) + (nodeWidth / 2);
-               const scrollY = root.y - (container.clientHeight / 2) + (nodeHeight / 2);
-               container.scrollTo({ left: scrollX, top: scrollY, behavior: 'smooth' });
-           }
+           const container = containerRef.current;
+           const scrollX = (width - container.clientWidth) / 2;
+           container.scrollTo({ left: scrollX, top: 0, behavior: 'smooth' });
        }
    };
 
@@ -459,13 +462,13 @@ const MindMap: React.FC<MindMapProps> = ({
     const selectedSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
 
     return (
-        <div ref={containerRef} className="relative w-full h-full overflow-auto bg-background/5 touch-pan-x touch-pan-y" style={{ direction: 'ltr' }}>
+        <div ref={containerRef} className="relative w-full h-full overflow-auto bg-background/5 touch-pan-x touch-pan-y custom-scrollbar" style={{ direction: 'ltr' }}>
             <button onClick={centerOnRoot} className="absolute z-50 p-3 transition-transform rounded-full shadow-md bottom-24 md:bottom-6 left-4 md:left-6 bg-card text-primary border border-border hover:bg-secondary hover:scale-110 active:scale-95">
                <Target className="w-5 h-5" />
             </button>
 
-            <div className="relative mx-auto transition-all duration-500 ease-out" style={{ width: Math.max(width, containerSize.width), height: Math.max(height, containerSize.height) }}>
-                <svg className="absolute top-0 left-0 pointer-events-none" style={{ width: '100%', height: '100%', overflow: 'visible' }} shapeRendering="geometricPrecision">
+            <div className="relative transition-all duration-500 ease-out origin-top-center" style={{ width: width, height: height }}>
+                <svg className="absolute top-0 left-0 pointer-events-none" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
                     <defs>
                         <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
                             <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(var(--muted-foreground))" opacity="0.3" />
@@ -483,9 +486,10 @@ const MindMap: React.FC<MindMapProps> = ({
                          const isConclusionLine = line.type === 'conclusion';
                          const isSelectionInvolved = isSelectionMode && (selectedSet.has(line.parentId) || selectedSet.has(line.childId));
 
-                         // Thinner, simpler bezier
-                         const cpY = (line.y2 - line.y1) * 0.5;
-                         const path = `M${line.x1},${line.y1} C${line.x1},${line.y1 + cpY} ${line.x2},${line.y2 - cpY} ${line.x2},${line.y2}`;
+                         // Bezier Curve Calculation
+                         // M x1 y1 C x1 (y1+dy) x2 (y2-dy) x2 y2
+                         const dy = (line.y2 - line.y1) * 0.5;
+                         const path = `M${line.x1},${line.y1} C${line.x1},${line.y1 + dy} ${line.x2},${line.y2 - dy} ${line.x2},${line.y2}`;
                          
                          return (
                             <g key={i}>
@@ -493,8 +497,8 @@ const MindMap: React.FC<MindMapProps> = ({
                                     d={path}
                                     fill="none"
                                     stroke={isConclusionLine ? "rgb(var(--success))" : "rgb(var(--border))"}
-                                    strokeWidth={isActive || isSelectionInvolved ? 2 : 1.5}
-                                    strokeOpacity={isActive || isSelectionInvolved ? 1 : 0.3}
+                                    strokeWidth={isActive || isSelectionInvolved ? 2.5 : 1.5}
+                                    strokeOpacity={isActive || isSelectionInvolved ? 1 : (isConclusionLine ? 0.2 : 0.4)}
                                     className={`mindmap-line ${isVisible ? 'opacity-100' : 'opacity-0'}`}
                                     style={{ transitionDelay: `${i * 5}ms` }}
                                     markerEnd={isConclusionLine ? "url(#arrow-conclusion)" : (isActive ? "url(#arrow-active)" : "url(#arrow)")}
@@ -505,7 +509,7 @@ const MindMap: React.FC<MindMapProps> = ({
                                         fill="none"
                                         stroke="rgb(var(--primary))"
                                         strokeWidth={1.5}
-                                        strokeOpacity={0.7}
+                                        strokeOpacity={0.8}
                                         className="mindmap-line-flow"
                                     />
                                 )}
