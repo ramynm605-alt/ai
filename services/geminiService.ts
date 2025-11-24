@@ -125,6 +125,58 @@ function flattenMindMap(node: any, parentId: string | null = null): MindMapNode[
     return [currentNode, ...childrenNodes];
 }
 
+// Audio Helper Functions
+function base64ToUint8Array(base64: string): Uint8Array {
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+}
+
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+}
+
+function writeString(view: DataView, offset: number, string: string) {
+    for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+    }
+}
+
+function createWavHeader(dataLength: number, sampleRate: number = 24000, numChannels: number = 1, bitsPerSample: number = 16): Uint8Array {
+    const header = new ArrayBuffer(44);
+    const view = new DataView(header);
+
+    // RIFF chunk descriptor
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + dataLength, true); // ChunkSize
+    writeString(view, 8, 'WAVE');
+
+    // fmt sub-chunk
+    writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
+    view.setUint16(20, 1, true); // AudioFormat (1 for PCM)
+    view.setUint16(22, numChannels, true); // NumChannels
+    view.setUint32(24, sampleRate, true); // SampleRate
+    view.setUint32(28, sampleRate * numChannels * (bitsPerSample / 8), true); // ByteRate
+    view.setUint16(32, numChannels * (bitsPerSample / 8), true); // BlockAlign
+    view.setUint16(34, bitsPerSample, true); // BitsPerSample
+
+    // data sub-chunk
+    writeString(view, 36, 'data');
+    view.setUint32(40, dataLength, true); // Subchunk2Size
+
+    return new Uint8Array(header);
+}
+
 const getPreferenceInstructions = (preferences: LearningPreferences): string => {
     const translations = {
         knowledgeLevel: {
@@ -611,43 +663,87 @@ export async function generateProactiveChatInitiation(nodeTitle: string, nodeCon
     });
 }
 
-export async function generatePodcastScript(contents: any, mode: any): Promise<string> {
+export async function generatePodcastScript(contents: any, mode: 'monologue' | 'dialogue'): Promise<string> {
     return withRetry(async () => {
-        const prompt = `Write a podcast script (${mode}) about: ${JSON.stringify(contents)}.`;
+        let prompt = "";
+        if (mode === 'dialogue') {
+            prompt = `Write a podcast dialogue script in Persian between a Host (named Host) and a Guest (named Guest).
+            Topic: ${JSON.stringify(contents)}.
+            Format:
+            Host: ...
+            Guest: ...
+            Keep it engaging and educational.`;
+        } else {
+            prompt = `Write a podcast monologue script in Persian.
+            Topic: ${JSON.stringify(contents)}.
+            Format: Just the spoken text.
+            Keep it engaging and educational.`;
+        }
         const r = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: { parts: [{ text: prompt }] } });
         return r.text || '';
     });
 }
 
-export async function generatePodcastAudio(script: string, speaker1: any, speaker2: any, mode: any): Promise<string> {
+export async function generatePodcastAudio(script: string, speaker1: VoiceName, speaker2: VoiceName | undefined, mode: 'monologue' | 'dialogue'): Promise<string> {
     return withRetry(async () => {
-        // Mock audio generation for now as the actual API requires specific setup
-        // In a real implementation, this would call the TTS model.
-        // For now, returning a dummy blob or handling via a real call if enabled.
-        
-        // REAL IMPLEMENTATION ATTEMPT (if configured)
+        // REAL IMPLEMENTATION
         try {
-            const ttsPrompt = `Read this: ${script.substring(0, 500)}`; // Truncate for demo
+            // If the script is very long, we should truncate it for this demo as audio gen has limits
+            const truncatedScript = script.substring(0, 2000); 
+
+            let speechConfig: any;
+
+            if (mode === 'dialogue' && speaker2) {
+                speechConfig = {
+                    multiSpeakerVoiceConfig: {
+                        speakerVoiceConfigs: [
+                            {
+                                speaker: 'Host',
+                                voiceConfig: { prebuiltVoiceConfig: { voiceName: speaker1 } }
+                            },
+                            {
+                                speaker: 'Guest',
+                                voiceConfig: { prebuiltVoiceConfig: { voiceName: speaker2 } }
+                            }
+                        ]
+                    }
+                };
+            } else {
+                speechConfig = {
+                    voiceConfig: { prebuiltVoiceConfig: { voiceName: speaker1 } }
+                };
+            }
+
             const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash-preview-tts", // Use correct TTS model
-                contents: [{ parts: [{ text: ttsPrompt }] }],
+                model: "gemini-2.5-flash-preview-tts",
+                contents: [{ parts: [{ text: truncatedScript }] }],
                 config: {
                     responseModalities: [Modality.AUDIO],
-                    speechConfig: {
-                        voiceConfig: { prebuiltVoiceConfig: { voiceName: speaker1 } }
-                    }
+                    speechConfig: speechConfig
                 }
             });
             
-            if (response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data) {
-                const base64 = response.candidates[0].content.parts[0].inlineData.data;
-                return `data:audio/mp3;base64,${base64}`;
+            const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+            
+            if (base64Audio) {
+                // The API returns raw PCM audio (usually 24kHz 1-channel).
+                // We need to wrap it in a WAV header to make it playable in browsers.
+                const rawAudioBytes = base64ToUint8Array(base64Audio);
+                const wavHeader = createWavHeader(rawAudioBytes.length, 24000, 1, 16); // Assuming 24kHz, Mono, 16-bit
+                
+                const wavBytes = new Uint8Array(wavHeader.length + rawAudioBytes.length);
+                wavBytes.set(wavHeader, 0);
+                wavBytes.set(rawAudioBytes, wavHeader.length);
+                
+                const wavBase64 = uint8ArrayToBase64(wavBytes);
+                return `data:audio/wav;base64,${wavBase64}`;
             }
         } catch (e) {
-            console.warn("TTS Failed, falling back or throwing", e);
+            console.warn("TTS Failed", e);
+            throw e;
         }
         
-        throw new Error("Audio generation not available in this demo environment.");
+        throw new Error("Failed to generate audio.");
     });
 }
 

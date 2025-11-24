@@ -408,17 +408,14 @@ function appReducer(state: AppState, action: any): AppState {
         let newStreak = state.behavior.dailyStreak;
         let showBriefing = false;
 
-        if (state.mindMap.length > 0) {
-            if (diffHours > 24 && diffHours < 48) {
-                newStreak += 1;
-                showBriefing = true;
-            } else if (diffHours >= 48) {
-                newStreak = 1;
-                showBriefing = true;
-            } else if (new Date(state.behavior.lastLoginDate).getDate() !== now.getDate()) {
-                // Same day logic to ensure daily brief shows at least once a day
-                showBriefing = true;
-            }
+        if (diffHours > 24 && diffHours < 48) {
+            newStreak += 1;
+            showBriefing = true;
+        } else if (diffHours >= 48) {
+            newStreak = 1;
+            showBriefing = true;
+        } else if (new Date(state.behavior.lastLoginDate).getDate() !== now.getDate()) {
+            showBriefing = true;
         }
 
         const newBehavior = { 

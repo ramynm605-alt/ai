@@ -7,7 +7,7 @@ import { generateChatResponse, generateDailyChallenge, generateDeepAnalysis, gen
 
 declare var pdfjsLib: any;
 
-export const useAppActions = (showNotification: (msg: string, type?: 'success' | 'error') => void) => {
+export const useAppActions = (showNotification: (msg: string, type?: 'success' | 'error' | 'coach') => void) => {
     const { state, dispatch } = useApp();
 
     // Helper: Promise with Timeout
@@ -835,6 +835,20 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         dispatch({ type: 'FINISH_FLASHCARD_REVIEW' });
     };
 
+    // --- Daily Status & Notification Actions ---
+    const checkDailyStatus = useCallback(() => {
+        dispatch({ type: 'CHECK_DAILY_STATUS' });
+    }, [dispatch]);
+
+    const generateDailyContent = useCallback(async () => {
+        try {
+            const content = await generateDailyChallenge();
+            dispatch({ type: 'SET_DAILY_CHALLENGE', payload: content });
+        } catch (e) {
+            console.error("Failed to generate daily challenge", e);
+        }
+    }, [dispatch]);
+
     return {
         generatePlanInternal,
         handleLogin,
@@ -870,9 +884,11 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         handleUpdateResourceInstructions, 
         triggerFeynmanChallenge, 
         submitFeynmanExplanation,
-        handleGenerateFlashcards, // New
-        handleReviewFlashcard, // New
-        startFlashcardReview, // New
-        exitFlashcardReview // New
+        handleGenerateFlashcards, 
+        handleReviewFlashcard, 
+        startFlashcardReview, 
+        exitFlashcardReview,
+        checkDailyStatus, // New
+        generateDailyContent // New
     };
 };

@@ -1,10 +1,10 @@
 
-import React, { useState, useCallback, useEffect, Suspense } from 'react';
+import React, { useState, useCallback, useEffect, Suspense, useRef } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { useAppActions } from './hooks/useAppActions';
 import { AppStatus, UserProfile, Flashcard } from './types';
 import { FirebaseService } from './services/firebaseService';
-import { Home, MessageSquare, Mic, User, SlidersHorizontal, ChevronLeft, ChevronRight, Brain, Save, Upload, CheckCircle, XCircle, Play, ArrowRight, ClipboardList } from './components/icons';
+import { Home, MessageSquare, Mic, User, SlidersHorizontal, ChevronLeft, ChevronRight, Brain, Save, Upload, CheckCircle, XCircle, Play, ArrowRight, ClipboardList, BrainCircuit } from './components/icons';
 import BoxLoader from './components/ui/box-loader';
 import StartupScreen from './components/StartupScreen';
 import ParticleBackground from './components/ParticleBackground';
@@ -25,18 +25,35 @@ const PodcastPlayer = React.lazy(() => import('./components/PodcastPlayer'));
 const FeynmanMode = React.lazy(() => import('./components/FeynmanMode'));
 const FlashcardReview = React.lazy(() => import('./components/FlashcardReview'));
 
-const NotificationToast = ({ message, type = 'success', onClose }: { message: string, type?: 'success' | 'error', onClose: () => void }) => {
+const NotificationToast = ({ message, type = 'success', onClose }: { message: string, type?: 'success' | 'error' | 'coach', onClose: () => void }) => {
     useEffect(() => {
-        const timer = setTimeout(onClose, 4000);
+        const timer = setTimeout(onClose, 5000);
         return () => clearTimeout(timer);
     }, [message, onClose]);
-    const isError = type === 'error';
+    
+    let borderColor = 'border-border';
+    let iconBg = 'bg-green-500/10 text-green-500';
+    let Icon = CheckCircle;
+
+    if (type === 'error') {
+        borderColor = 'border-destructive/50';
+        iconBg = 'bg-destructive/10 text-destructive';
+        Icon = XCircle;
+    } else if (type === 'coach') {
+        borderColor = 'border-primary/50';
+        iconBg = 'bg-primary/10 text-primary';
+        Icon = BrainCircuit;
+    }
+
     return (
-        <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 z-[10000] bg-card border shadow-2xl rounded-xl px-4 py-3 flex items-center gap-3 animate-slide-up ${isError ? 'border-destructive/50' : 'border-border'}`}>
-            <div className={`p-1.5 rounded-full ${isError ? 'bg-destructive/10 text-destructive' : 'bg-green-500/10 text-green-500'}`}>
-                {isError ? <XCircle className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
+        <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 z-[10000] bg-card border shadow-2xl rounded-xl px-4 py-3 flex items-center gap-3 animate-slide-up ${borderColor}`}>
+            <div className={`p-2 rounded-full ${iconBg}`}>
+                <Icon className="w-5 h-5" />
             </div>
-            <span className="text-sm font-bold text-foreground">{message}</span>
+            <div className="flex flex-col">
+                {type === 'coach' && <span className="text-[10px] font-bold text-primary uppercase tracking-wider">پیام مربی هوشمند</span>}
+                <span className="text-sm font-bold text-foreground">{message}</span>
+            </div>
         </div>
     );
 }
@@ -45,7 +62,7 @@ const AppLayout = () => {
     const { state, dispatch } = useApp();
     const [showStartup, setShowStartup] = useState(true);
     const [isDebugOpen, setIsDebugOpen] = useState(false);
-    const [notification, setNotification] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+    const [notification, setNotification] = useState<{message: string, type: 'success' | 'error' | 'coach'} | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isToolboxOpen, setIsToolboxOpen] = useState(true);
     const [logoClickCount, setLogoClickCount] = useState(0);
@@ -58,6 +75,68 @@ const AppLayout = () => {
     }, []);
 
     const actions = useAppActions(showNotification);
+    
+    // Destructure actions for use in useEffect
+    const { checkDailyStatus, generateDailyContent, handleSaveSession } = actions;
+
+    // --- SMART STORAGE: Auto-Save Logic ---
+    const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const prevStateRef = useRef<string>('');
+
+    useEffect(() => {
+        if (!state.currentUser || !state.currentSessionId) return;
+
+        // Create a signature of the saveable state to detect changes
+        const stateSignature = JSON.stringify({
+            p: state.userProgress,
+            m: state.mindMap.map(n => ({ id: n.id, l: n.locked })), // Track lock status changes
+            r: state.rewards.length,
+            f: state.flashcards.length,
+            b: state.behavior
+        });
+
+        if (prevStateRef.current !== stateSignature) {
+            // If signature changed, schedule save
+            if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
+            
+            // Debounce for 3 seconds
+            autoSaveTimeoutRef.current = setTimeout(() => {
+                if (state.isAutoSaving) return; // Skip if already saving
+                handleSaveSession('', true);
+            }, 3000);
+
+            prevStateRef.current = stateSignature;
+        }
+
+        return () => {
+            if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
+        };
+    }, [
+        state.userProgress, 
+        state.mindMap, 
+        state.rewards, 
+        state.flashcards, 
+        state.behavior, 
+        state.currentUser, 
+        state.currentSessionId,
+        state.isAutoSaving,
+        handleSaveSession
+    ]);
+    // --------------------------------------
+
+    // Check Daily Status on Load / User Login
+    useEffect(() => {
+        if (state.currentUser) {
+            checkDailyStatus();
+        }
+    }, [state.currentUser, checkDailyStatus]);
+
+    // Generate Content if Briefing is shown but content is missing
+    useEffect(() => {
+        if (state.showDailyBriefing && !state.dailyChallengeContent) {
+            generateDailyContent();
+        }
+    }, [state.showDailyBriefing, state.dailyChallengeContent, generateDailyContent]);
 
     useEffect(() => {
         if (state.error) showNotification(state.error, 'error');
