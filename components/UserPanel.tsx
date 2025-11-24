@@ -282,10 +282,10 @@ const UserPanel: React.FC<UserPanelProps> = ({
                                                 {cloudStatus === 'success' 
                                                     ? `آخرین ذخیره خودکار: ${lastSyncTime ? new Date(lastSyncTime).toLocaleTimeString('fa-IR') : 'همین الان'}` 
                                                     : cloudStatus === 'error' 
-                                                        ? 'خطا در اتصال به سرور' 
+                                                        ? 'خطا در اتصال به سرور (ذخیره محلی فعال است)' 
                                                         : cloudStatus === 'syncing' 
-                                                            ? 'در حال همگام‌سازی...' 
-                                                            : 'ذخیره محلی فعال است'}
+                                                            ? 'در حال برقراری ارتباط...' 
+                                                            : 'بیکار (ذخیره محلی فعال است)'}
                                             </p>
                                         </div>
                                     </div>

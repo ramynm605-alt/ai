@@ -56,7 +56,8 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
            console.error("Cloud Load Error", e);
            // If timeout or error, fallback to idle/error status
            dispatch({ type: 'SET_CLOUD_STATUS', payload: { status: 'error' } });
-           showNotification("خطا در اتصال به فضای ابری.", "error");
+           // Only show notification if it's not a silent background sync
+           // showNotification("خطا در اتصال به فضای ابری.", "error");
        }
     }, [dispatch, showNotification]);
 
