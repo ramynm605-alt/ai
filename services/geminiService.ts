@@ -183,32 +183,34 @@ export async function analyzeResourceContent(
             parts.push({ text: prompt });
         } else {
             prompt = `
-            ROLE: Expert Content Analyst.
-            TASK: Analyze the provided resource titled "${title}".
+            ROLE: Senior Content Analyst & Educational Architect.
+            TASK: Deeply analyze the provided resource titled "${title}" to create a high-fidelity knowledge base.
             
-            INSTRUCTIONS:
-            1. Extract/Summarize the core educational content. If text is provided, clean it. If it's code, describe it.
-            2. Evaluate the quality and relevance for a learner.
-            3. Identify any potential issues (e.g., incomplete text, very short, unrelated).
+            CRITICAL INSTRUCTIONS:
+            1. **DO NOT SUMMARIZE**. Instead, EXTRACT and RESTRUCTURE all key educational concepts, definitions, formulas, and arguments.
+            2. If the text is messy (e.g. PDF OCR errors), clean it up but keep the original meaning.
+            3. Organize the output using Markdown headings (#, ##, ###) to show hierarchy.
+            4. Ensure technical terms are preserved.
+            5. If the content is very short/irrelevant, mark 'isValid' as false.
             
             OUTPUT FORMAT (JSON):
             {
-                "extractedText": "The cleaned, structured full content...",
+                "extractedText": "The structured, detailed content in Persian (or original language if code)...",
                 "validation": {
                     "isValid": boolean,
                     "qualityScore": number (0-100),
-                    "issues": ["Issue 1 in Persian", ...],
-                    "summary": "A concise summary of what this resource covers in PERSIAN."
+                    "issues": ["Specific issue in Persian (e.g. 'متن ناخوانا')", ...],
+                    "summary": "A professional summary of the content coverage in PERSIAN."
                 }
             }
             `;
             parts.push({ text: prompt });
-            if (rawText) parts.push({ text: `CONTENT:\n${rawText.substring(0, 20000)}` }); // Limit context
+            if (rawText) parts.push({ text: `CONTENT START:\n${rawText.substring(0, 300000)}\nCONTENT END` }); // Increased context limit for chunking
             if (media) parts.push({ inlineData: media });
         }
         
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: "gemini-3-pro-preview", // UPGRADED MODEL FOR BETTER ACCURACY
             contents: { parts },
             config: { responseMimeType: "application/json" }
         });
@@ -232,11 +234,11 @@ export async function generateLearningPlan(
 ): Promise<Quiz> { 
     return withRetry(async () => {
         const detailInstruction = preferences.detailLevel === 'advanced'
-            ? "STRUCTURE: Deep, nested hierarchy (3-4 levels). Break down complex topics into granular sub-concepts. Total nodes: 15-25."
-            : "STRUCTURE: Simple, flat hierarchy (2 levels). Focus on main pillars only. Total nodes: 8-12.";
+            ? "STRUCTURE: Consolidated Hierarchy. Group concepts into 8-10 comprehensive nodes. STRICT MAX: 10 NODES."
+            : "STRUCTURE: High-Level Overview. Group concepts into 5-8 nodes. STRICT MAX: 8 NODES.";
 
         const prompt = `
-        You are a World-Class Curriculum Architect (Curriculum Designer).
+        You are a World-Class Curriculum Architect.
         
         CONTEXT:
         User Knowledge Level: ${preferences.knowledgeLevel}
@@ -245,8 +247,14 @@ export async function generateLearningPlan(
         Goal: ${preferences.learningGoal || "General Mastery"}
         
         TASK:
-        Create a comprehensive, structured Learning Mind Map based on the provided content.
+        Create a structured Learning Mind Map based on the provided content.
         The output must be in **PERSIAN (FARSI)**.
+        
+        CRITICAL CONSTRAINT: **MAXIMUM 10 NODES TOTAL**.
+        Because of this limit, you must **CHUNK** the content effectively.
+        - Do not create a node for every small detail.
+        - Group related concepts into one "Core Node".
+        - Each node should represent a significant chunk of knowledge.
         
         ${detailInstruction}
         
@@ -291,7 +299,7 @@ export async function generateLearningPlan(
         }
 
         CONTENT TO ANALYZE:
-        ${content.substring(0, 30000)}
+        ${content.substring(0, 500000)}
         `;
         
         const stream = await ai.models.generateContentStream({
@@ -431,7 +439,7 @@ export async function generateNodeContent(
         }
         
         SOURCE MATERIAL:
-        ${fullContent.substring(0, 15000)}
+        ${fullContent.substring(0, 50000)}
         `;
 
         const response = await ai.models.generateContent({
@@ -557,7 +565,7 @@ export async function generateQuiz(topic: string, content: string, images: any[]
        "concept": "The specific concept being tested"
     }
     
-    CONTENT: ${content.substring(0, 10000)}
+    CONTENT: ${content.substring(0, 20000)}
     `;
     
     const stream = await ai.models.generateContentStream({
@@ -654,7 +662,7 @@ export async function generateChatResponse(
     TOPIC: ${nodeTitle || "General"}
     
     CONTEXT FROM LESSON:
-    ${content.substring(0, 2000)}
+    ${content.substring(0, 5000)}
     
     USER MESSAGE: "${message}"
     

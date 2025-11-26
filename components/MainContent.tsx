@@ -1,10 +1,9 @@
 
-
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAppActions } from '../hooks/useAppActions';
 import { AppStatus, LearningResource } from '../types';
-import { FileText, Wand, FileQuestion, Shuffle, Compass, Upload, ArrowRight, ArrowLeft, Sparkles, Target, MessageSquare, XCircle, FileAudio, Youtube, Link, Globe, Music, Trash, CheckCircle, Info, Edit, Save, SlidersHorizontal } from './icons';
+import { FileText, Wand, FileQuestion, Shuffle, Compass, Upload, ArrowRight, ArrowLeft, Sparkles, Target, MessageSquare, XCircle, FileAudio, Youtube, Link, Globe, Music, Trash, CheckCircle, Info, Edit, Save, SlidersHorizontal, Layers } from './icons';
 import BoxLoader from './ui/box-loader';
 import MindMap from './MindMap';
 import NodeView from './NodeView';
@@ -535,6 +534,26 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
         }
     };
 
+    const renderMindMapToggle = () => {
+        const toggleMode = () => {
+            const newMode = state.mindMapViewMode === 'advanced' ? 'minimal' : 'advanced';
+            dispatch({ type: 'SET_MINDMAP_VIEW_MODE', payload: newMode });
+        };
+
+        return (
+            <button
+                onClick={toggleMode}
+                className="absolute top-20 md:top-4 left-4 z-[100] bg-card/90 backdrop-blur-md border border-border rounded-full px-3 py-1.5 flex items-center gap-2 shadow-sm hover:shadow-md transition-all"
+                title="تغییر حالت نمایش نقشه (ساده/پیشرفته)"
+            >
+                <Layers className="w-4 h-4 text-primary" />
+                <span className="text-xs font-bold text-foreground hidden sm:inline">
+                    {state.mindMapViewMode === 'advanced' ? 'نمای پیشرفته' : 'نمای ساده'}
+                </span>
+            </button>
+        );
+    };
+
     return (
         <div className="flex-grow relative z-10 overflow-y-auto scroll-smooth">
             {reviewResource && renderReviewModal()}
@@ -714,6 +733,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
             {state.status === AppStatus.PLAN_REVIEW && (
                  <div className="flex flex-col h-full">
                     <div className="flex-grow relative">
+                        {renderMindMapToggle()}
                         <MindMap 
                             nodes={state.mindMap} 
                             progress={{}} 
@@ -723,6 +743,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                             theme={state.theme}
                             activeNodeId={null}
                             showSuggestedPath={true}
+                            viewMode={state.mindMapViewMode}
                         />
                          <div className="absolute bottom-20 md:bottom-8 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-md px-4">
                              <div className="bg-card/90 backdrop-blur border border-border p-4 rounded-xl shadow-2xl text-center">
@@ -759,6 +780,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
             {(state.status === AppStatus.LEARNING || state.status === AppStatus.VIEWING_NODE || state.status === AppStatus.TAKING_QUIZ || state.status === AppStatus.QUIZ_REVIEW) && (
                 <div className="flex flex-col h-full relative">
                     <div className="absolute inset-0 z-0">
+                        {state.status === AppStatus.LEARNING && renderMindMapToggle()}
                         <MindMap 
                             nodes={state.mindMap} 
                             progress={Object.keys(state.userProgress).reduce((acc, key) => ({...acc, [key]: state.userProgress[key].status}), {} as {[key: string]: 'completed' | 'failed' | 'in_progress'})} 
@@ -770,6 +792,7 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
                             showSuggestedPath={true}
                             isSelectionMode={state.isPodcastMode}
                             selectedNodeIds={state.podcastConfig?.selectedNodeIds}
+                            viewMode={state.mindMapViewMode}
                         />
                          {state.status === AppStatus.LEARNING && (
                             <div className="absolute top-4 right-4 z-30 bg-card/80 backdrop-blur p-3 rounded-lg border border-border shadow-sm max-w-[200px] hidden md:block">

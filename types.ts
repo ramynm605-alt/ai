@@ -276,6 +276,7 @@ export interface MindMapNode {
     sourceImages: { mimeType: string, data: string }[];
     preferences: LearningPreferences;
     mindMap: MindMapNode[];
+    mindMapViewMode: 'advanced' | 'minimal'; // NEW: View mode for Mind Map
     suggestedPath: string[] | null;
     preAssessment: Quiz | null;
     preAssessmentAnswers: Record<string, UserAnswer> | null;

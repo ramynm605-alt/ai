@@ -29,6 +29,7 @@ const initialState: AppState = {
     learningGoal: '',
   },
   mindMap: [],
+  mindMapViewMode: 'advanced',
   suggestedPath: null,
   preAssessment: null,
   preAssessmentAnswers: null,
@@ -111,7 +112,8 @@ function appReducer(state: AppState, action: any): AppState {
   switch (action.type) {
     case 'SET_THEME':
       return { ...state, theme: action.payload };
-    // ... existing cases ...
+    case 'SET_MINDMAP_VIEW_MODE':
+        return { ...state, mindMapViewMode: action.payload };
     case 'ADD_RESOURCE':
        return { ...state, resources: [...state.resources, action.payload] };
     case 'REMOVE_RESOURCE':

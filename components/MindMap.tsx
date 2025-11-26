@@ -14,6 +14,7 @@ interface MindMapProps {
     showSuggestedPath: boolean;
     isSelectionMode?: boolean;
     selectedNodeIds?: string[];
+    viewMode?: 'advanced' | 'minimal'; // Add View Mode Prop
 }
 
 const MindMapNodeItem = React.memo(({ 
@@ -35,7 +36,7 @@ const MindMapNodeItem = React.memo(({
     isVisible, 
     isPortrait, 
     onSelect, 
-    onTakeQuiz 
+    viewMode
 }: {
     node: MindMapNodeType & { x: number, y: number };
     index: number;
@@ -55,7 +56,7 @@ const MindMapNodeItem = React.memo(({
     isVisible: boolean;
     isPortrait: boolean;
     onSelect: (id: string) => void;
-    onTakeQuiz: (id: string) => void;
+    viewMode: 'advanced' | 'minimal';
 }) => {
     const handleNodeClick = (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -86,6 +87,42 @@ const MindMapNodeItem = React.memo(({
             : 'opacity-60 grayscale hover:opacity-100 hover:grayscale-0 hover:scale-105' 
         : '';
 
+    // --- MINIMAL MODE UI ---
+    if (viewMode === 'minimal') {
+        const minimalStatusColor = status === 'completed' ? 'bg-emerald-500 border-emerald-500' : 
+                                   status === 'failed' ? 'bg-rose-500 border-rose-500' : 
+                                   isActive ? 'bg-primary border-primary' : 
+                                   'bg-card border-border hover:border-primary/50';
+        
+        const minimalTextColor = (status === 'completed' || status === 'failed' || isActive) ? 'text-white' : 'text-foreground';
+
+        return (
+            <div
+                className={`mindmap-node group ${isVisible ? 'mindmap-node-visible' : ''} absolute cursor-pointer select-none`}
+                style={baseStyle}
+                onClick={handleNodeClick}
+            >
+                <div className={`
+                    absolute inset-0 rounded-full flex items-center justify-center text-center px-4 py-2 transition-all duration-300 border
+                    ${minimalStatusColor}
+                    ${isLocked && !isSelectionMode ? 'opacity-50 bg-secondary text-muted-foreground border-transparent' : 'shadow-sm hover:shadow-md hover:scale-105'}
+                    ${selectionClass}
+                `}>
+                    <span className={`text-xs font-bold truncate w-full ${minimalTextColor}`}>
+                        {node.title}
+                    </span>
+                    {status === 'completed' && <div className="absolute -top-1 -right-1 w-3 h-3 bg-white rounded-full border-2 border-emerald-500" />}
+                </div>
+                 {isSuggestedAndIncomplete && suggestedIndex !== -1 && !isSelectionMode && (
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-[10px] font-bold text-primary bg-primary/10 px-2 rounded-full">
+                        #{suggestedIndex + 1}
+                    </div>
+                 )}
+            </div>
+        );
+    }
+
+    // --- ADVANCED MODE UI (Classic) ---
     if (isIntro) {
         return (
             <div
@@ -213,7 +250,8 @@ const MindMap: React.FC<MindMapProps> = ({
     activeNodeId, 
     showSuggestedPath,
     isSelectionMode = false,
-    selectedNodeIds = []
+    selectedNodeIds = [],
+    viewMode = 'advanced' // Default view mode
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
@@ -251,11 +289,22 @@ const MindMap: React.FC<MindMapProps> = ({
 
         const isMobile = containerSize.width < 768;
         
-        // Layout Config
-        const NODE_WIDTH = isMobile ? 140 : 200;
-        const NODE_HEIGHT = isMobile ? 80 : 100;
-        const HORIZONTAL_GAP = isMobile ? 30 : 60; 
-        const VERTICAL_GAP = isMobile ? 80 : 120; 
+        // Layout Config - Dynamic based on View Mode
+        let NODE_WIDTH, NODE_HEIGHT, HORIZONTAL_GAP, VERTICAL_GAP;
+
+        if (viewMode === 'minimal') {
+            // Compact layout for minimal mode
+            NODE_WIDTH = isMobile ? 100 : 140;
+            NODE_HEIGHT = isMobile ? 40 : 50;
+            HORIZONTAL_GAP = isMobile ? 15 : 30; 
+            VERTICAL_GAP = isMobile ? 50 : 70;
+        } else {
+            // Standard Advanced layout
+            NODE_WIDTH = isMobile ? 140 : 200;
+            NODE_HEIGHT = isMobile ? 80 : 100;
+            HORIZONTAL_GAP = isMobile ? 30 : 60; 
+            VERTICAL_GAP = isMobile ? 80 : 120; 
+        }
 
         type AugmentedNode = Omit<MindMapNodeType, 'children'> & { 
             x: number; 
@@ -392,9 +441,9 @@ const MindMap: React.FC<MindMapProps> = ({
                 const parent = linesMap.get(node.parentId)!;
                 lines.push({
                     x1: parent.x,
-                    y1: parent.y + NODE_HEIGHT,
+                    y1: parent.y + (viewMode === 'minimal' ? NODE_HEIGHT / 2 : NODE_HEIGHT), // Start from center in minimal
                     x2: node.x,
-                    y2: node.y,
+                    y2: node.y - (viewMode === 'minimal' ? NODE_HEIGHT / 2 : 0), // End at center in minimal
                     parentId: parent.id,
                     childId: node.id,
                     type: 'normal'
@@ -405,15 +454,12 @@ const MindMap: React.FC<MindMapProps> = ({
         // Conclusion Lines (Connect all leaves)
         if (conclusionNode) {
             const leaves = positionedNodesList.filter(n => n !== conclusionNode && n.children.length === 0);
-            // Limit connections to prevent clutter - maybe only last level leaves or major branches?
-            // For now, connect reasonable leaves.
             leaves.forEach(leaf => {
-                // Logic: Connect leaf if it's at the bottom-most level of its branch
                 lines.push({
                     x1: leaf.x,
-                    y1: leaf.y + NODE_HEIGHT,
+                    y1: leaf.y + (viewMode === 'minimal' ? NODE_HEIGHT / 2 : NODE_HEIGHT),
                     x2: conclusionNode!.x,
-                    y2: conclusionNode!.y,
+                    y2: conclusionNode!.y - (viewMode === 'minimal' ? NODE_HEIGHT / 2 : 0),
                     parentId: leaf.id,
                     childId: conclusionNode!.id,
                     type: 'conclusion'
@@ -431,11 +477,11 @@ const MindMap: React.FC<MindMapProps> = ({
             nodeHeight: NODE_HEIGHT 
         };
 
-    }, [nodes, containerSize]);
+    }, [nodes, containerSize, viewMode]); // Added viewMode to dependencies
 
     useEffect(() => {
         hasCenteredRef.current = false;
-    }, [isPortrait, nodes.length]);
+    }, [isPortrait, nodes.length, viewMode]);
 
     useLayoutEffect(() => {
         if (positionedNodes.length > 0 && containerRef.current && !hasCenteredRef.current && width > 0) {
@@ -488,7 +534,8 @@ const MindMap: React.FC<MindMapProps> = ({
 
                          // Bezier Curve Calculation
                          // M x1 y1 C x1 (y1+dy) x2 (y2-dy) x2 y2
-                         const dy = (line.y2 - line.y1) * 0.5;
+                         // For minimal mode, use simpler straight lines or less intense curves
+                         const dy = viewMode === 'minimal' ? (line.y2 - line.y1) * 0.2 : (line.y2 - line.y1) * 0.5;
                          const path = `M${line.x1},${line.y1} C${line.x1},${line.y1 + dy} ${line.x2},${line.y2 - dy} ${line.x2},${line.y2}`;
                          
                          return (
@@ -497,11 +544,11 @@ const MindMap: React.FC<MindMapProps> = ({
                                     d={path}
                                     fill="none"
                                     stroke={isConclusionLine ? "rgb(var(--success))" : "rgb(var(--border))"}
-                                    strokeWidth={isActive || isSelectionInvolved ? 2.5 : 1.5}
+                                    strokeWidth={viewMode === 'minimal' ? 1.5 : (isActive || isSelectionInvolved ? 2.5 : 1.5)}
                                     strokeOpacity={isActive || isSelectionInvolved ? 1 : (isConclusionLine ? 0.2 : 0.4)}
                                     className={`mindmap-line ${isVisible ? 'opacity-100' : 'opacity-0'}`}
                                     style={{ transitionDelay: `${i * 5}ms` }}
-                                    markerEnd={isConclusionLine ? "url(#arrow-conclusion)" : (isActive ? "url(#arrow-active)" : "url(#arrow)")}
+                                    markerEnd={viewMode === 'minimal' ? undefined : (isConclusionLine ? "url(#arrow-conclusion)" : (isActive ? "url(#arrow-active)" : "url(#arrow)"))}
                                 />
                                 {(isActive || (isSuggested && !isSelectionMode)) && !isConclusionLine && (
                                     <path
@@ -550,7 +597,7 @@ const MindMap: React.FC<MindMapProps> = ({
                             isVisible={isVisible}
                             isPortrait={isPortrait}
                             onSelect={onSelectNode}
-                            onTakeQuiz={onTakeQuiz}
+                            viewMode={viewMode}
                         />
                     );
                 })}
