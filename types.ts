@@ -79,6 +79,7 @@ export interface MindMapNode {
     knowledgeLevel: 'beginner' | 'intermediate' | 'expert';
     learningFocus: 'theoretical' | 'practical' | 'analogies';
     tone: 'academic' | 'conversational' | 'concise' | 'explanatory' | 'strict';
+    detailLevel: 'simple' | 'advanced'; // New: Controls mind map density
     addExplanatoryNodes: boolean;
     customInstructions: string;
     learningGoal: string;

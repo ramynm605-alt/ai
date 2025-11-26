@@ -23,6 +23,7 @@ const initialState: AppState = {
     knowledgeLevel: 'intermediate',
     learningFocus: 'practical',
     tone: 'conversational',
+    detailLevel: 'advanced', // Default to advanced
     addExplanatoryNodes: false,
     customInstructions: '',
     learningGoal: '',

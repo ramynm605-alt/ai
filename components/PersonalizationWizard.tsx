@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { LearningPreferences } from '../types';
-import { BrainCircuit, SlidersHorizontal, Target, Wand, ArrowRight, CheckCircle, MessageSquare } from './icons';
+import { BrainCircuit, SlidersHorizontal, Target, Wand, ArrowRight, CheckCircle, MessageSquare, Layers } from './icons';
 
 interface PersonalizationWizardProps {
     onSubmit: (preferences: LearningPreferences) => void;
@@ -123,6 +123,42 @@ const PersonalizationWizard: React.FC<PersonalizationWizardProps> = ({ onSubmit,
                                     </button>
                                 ))}
                             </div>
+                        </div>
+                    )}
+
+                    {step === 2 && (
+                        <div className="space-y-6 fade-in">
+                            {/* Detail Level Selector */}
+                            <h3 className="text-xl font-bold flex items-center gap-2">
+                                <Layers className="w-5 h-5 text-primary" />
+                                ساختار نقشه ذهنی
+                            </h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <button 
+                                    onClick={() => updatePref('detailLevel', 'simple')}
+                                    className={`p-4 rounded-xl border-2 text-right transition-all flex flex-col gap-2 ${prefs.detailLevel === 'simple' ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-border hover:border-primary/50'}`}
+                                >
+                                    <div className="font-bold text-lg">ساده و کلی</div>
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
+                                        فقط سرفصل‌های اصلی و مهم. مناسب برای مرور سریع یا دریافت دید کلی.
+                                    </p>
+                                    <div className="w-full h-1 bg-secondary mt-2 rounded-full overflow-hidden">
+                                        <div className="w-1/3 h-full bg-primary/50"></div>
+                                    </div>
+                                </button>
+                                <button 
+                                    onClick={() => updatePref('detailLevel', 'advanced')}
+                                    className={`p-4 rounded-xl border-2 text-right transition-all flex flex-col gap-2 ${prefs.detailLevel === 'advanced' ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-border hover:border-primary/50'}`}
+                                >
+                                    <div className="font-bold text-lg">پیشرفته و دقیق</div>
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
+                                        جزئیات بالا، زیرشاخه‌های متعدد و عمیق. مناسب برای تسلط کامل.
+                                    </p>
+                                    <div className="w-full h-1 bg-secondary mt-2 rounded-full overflow-hidden">
+                                        <div className="w-full h-full bg-primary"></div>
+                                    </div>
+                                </button>
+                            </div>
 
                             <h3 className="text-xl font-bold flex items-center gap-2 mt-8">
                                 <MessageSquare className="w-5 h-5 text-primary" />
@@ -151,7 +187,7 @@ const PersonalizationWizard: React.FC<PersonalizationWizardProps> = ({ onSubmit,
                         </div>
                     )}
 
-                    {step === 2 && (
+                    {step === 3 && (
                         <div className="space-y-6 fade-in">
                              <h3 className="text-xl font-bold flex items-center gap-2">
                                 <Target className="w-5 h-5 text-primary" />
@@ -202,26 +238,6 @@ const PersonalizationWizard: React.FC<PersonalizationWizardProps> = ({ onSubmit,
                                     <span className="text-muted-foreground text-xs">اگر مفاهیم پایه‌ای نیاز باشد، به صورت خودکار اضافه شود.</span>
                                 </label>
                             </div>
-                        </div>
-                    )}
-
-                    {step === 3 && (
-                        <div className="space-y-6 fade-in text-center py-8">
-                            <div className="w-20 h-20 bg-success/10 text-success rounded-full flex items-center justify-center mx-auto mb-4">
-                                <CheckCircle className="w-10 h-10" />
-                            </div>
-                            <h3 className="text-2xl font-bold">همه چیز آماده است!</h3>
-                            <p className="text-muted-foreground max-w-md mx-auto">
-                                هوش مصنوعی اکنون با در نظر گرفتن سطح 
-                                <span className="font-bold text-primary mx-1">
-                                    {prefs.knowledgeLevel === 'beginner' ? 'مبتدی' : prefs.knowledgeLevel === 'intermediate' ? 'متوسط' : 'پیشرفته'}
-                                </span>
-                                و تمرکز بر 
-                                <span className="font-bold text-primary mx-1">
-                                    {prefs.learningFocus === 'theoretical' ? 'تئوری' : prefs.learningFocus === 'practical' ? 'کاربرد' : 'تشبیه'}
-                                </span>
-                                محتوای شما را تحلیل خواهد کرد.
-                            </p>
                         </div>
                     )}
                 </div>
