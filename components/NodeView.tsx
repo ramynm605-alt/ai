@@ -191,6 +191,9 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
 
     const isEmpty = !content.introduction && !content.theory && !content.example && !isStreaming;
 
+    // Check if we have enough content to show navigation, even if conclusion is missing
+    const hasContent = content.theory || content.introduction || content.example;
+
     return (
         <div className="min-h-screen bg-background/95" ref={viewRef} onMouseUp={handleSelection} onTouchEnd={handleTouchEnd}>
              {selectionPopup && (
@@ -373,7 +376,8 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                     </div>
                 )}
                 
-                {activeTab === 'content' && !isStreaming && content.conclusion && (
+                {/* Footer Actions - Show if content exists, even if conclusion is missing */}
+                {activeTab === 'content' && !isStreaming && hasContent && (
                     <div className="w-full mt-8 md:mt-12 p-4 md:p-6 bg-card/50 border border-border/50 rounded-2xl animate-slide-up" style={{ animationDelay: '600ms' }}>
                         
                         {/* Mobile Action Buttons - Ensure visibility */}

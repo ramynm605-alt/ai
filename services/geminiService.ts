@@ -44,7 +44,9 @@ const mathExtension = {
             return katex.renderToString(token.text, {
                 displayMode: token.displayMode,
                 throwOnError: false,
-                output: 'html'
+                output: 'html',
+                strict: false, // Suppress warnings for Persian characters
+                trust: true
             });
         } catch (e) {
             return token.text;
@@ -425,7 +427,7 @@ export async function generateNodeContent(
         TASK:
         Generate rich, interactive educational content in **PERSIAN**.
         Use **Markdown** extensively (bolding keywords, lists, code blocks).
-        Use **LaTeX** for math ($...$ or $$...$$).
+        Use **LaTeX** for math ($...$ or $$...$$) ONLY for mathematical formulas. Do not use it for Persian text.
         
         JSON OUTPUT STRUCTURE:
         {
@@ -445,7 +447,10 @@ export async function generateNodeContent(
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash", // Using Flash
             contents: { parts: [{ text: prompt }] },
-            config: { responseMimeType: "application/json" }
+            config: { 
+                responseMimeType: "application/json",
+                maxOutputTokens: 8192 // Ensure full response
+            }
         });
         
         const content = JSON.parse(cleanJsonString(response.text || '{}'));
