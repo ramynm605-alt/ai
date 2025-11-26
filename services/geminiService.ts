@@ -55,25 +55,29 @@ const mathExtension = {
 // @ts-ignore - marked typing issue with custom extensions
 marked.use({ extensions: [mathExtension] });
 
-// Helper function for retrying with exponential backoff
+// --- Helper Functions ---
+
 async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
     try {
         return await fn();
     } catch (error: any) {
-        if (retries > 0 && error.message && error.message.includes('503')) {
-            console.warn(`API call failed with 503, retrying in ${delay}ms... (${retries} retries left)`);
+        if (retries > 0 && (error.status === 503 || error.message?.includes('503') || error.message?.includes('overloaded'))) {
+            console.warn(`API call failed, retrying in ${delay}ms... (${retries} retries left)`);
             await new Promise(res => setTimeout(res, delay));
             return withRetry(fn, retries - 1, delay * 2); 
         }
-        console.error("API call failed after multiple retries or with a non-retriable error:", error);
+        console.error("API call failed after retries:", error);
         throw error; 
     }
 }
 
-// Helper to clean JSON string
 function cleanJsonString(str: string): string {
     let cleaned = str.trim();
+    // Remove markdown code blocks
     cleaned = cleaned.replace(/^```[a-z]*\s*/i, '').replace(/\s*```$/, '');
+    // Remove standard comments
+    cleaned = cleaned.replace(/\/\/.*$/gm, ''); 
+    // Fix common JSON trailng comma errors loosely
     cleaned = cleaned.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
 
     const firstOpen = cleaned.indexOf('{');
@@ -111,7 +115,7 @@ function flattenMindMap(node: any, parentId: string | null = null): MindMapNode[
         title: node.title || node.label || "بدون عنوان",
         parentId: parentId,
         locked: false,
-        difficulty: node.difficulty || 0.5,
+        difficulty: typeof node.difficulty === 'number' ? node.difficulty : 0.5,
         isExplanatory: node.isExplanatory || false,
         sourcePages: node.sourcePages || [],
         type: 'core',
@@ -128,6 +132,660 @@ function flattenMindMap(node: any, parentId: string | null = null): MindMapNode[
     return [currentNode, ...childrenNodes];
 }
 
+// --- Services ---
+
+export async function analyzeResourceContent(
+    title: string,
+    rawText: string | null,
+    media: { mimeType: string, data: string } | null,
+    resourceType: 'file' | 'link' | 'text',
+    metadata?: any
+): Promise<{ extractedText: string; validation: ResourceValidation }> {
+    return withRetry(async () => {
+        let prompt;
+        let parts: any[] = [];
+
+        if (metadata?.isTopic) {
+             const depthInstruction = metadata.depth === 'deep' 
+                ? "Provide a deep, academic analysis with technical details." 
+                : "Provide a general overview suitable for beginners.";
+            const lengthInstruction = metadata.length === 'comprehensive'
+                ? "Write a very detailed and comprehensive article."
+                : metadata.length === 'brief' 
+                    ? "Write a concise summary of key points." 
+                    : "Write a standard length educational article.";
+
+            prompt = `
+            ROLE: Educational Content Generator.
+            TASK: Conduct research and generate a comprehensive educational resource about the topic: "${rawText || title}".
+            LANGUAGE: **PERSIAN (FARSI)**.
+            
+            SETTINGS:
+            - ${depthInstruction}
+            - ${lengthInstruction}
+            
+            INSTRUCTIONS:
+            1. Write a structured article with clear headings (Markdown).
+            2. Include definitions, history (if relevant), key theories, and examples.
+            3. The content must be substantial and educational, as it will be used to generate a learning map.
+            
+            OUTPUT FORMAT (JSON):
+            {
+                "extractedText": "The full generated content in Persian Markdown...",
+                "validation": {
+                    "isValid": true,
+                    "qualityScore": 100,
+                    "issues": [],
+                    "summary": "Description of the generated topic."
+                }
+            }
+            `;
+            parts.push({ text: prompt });
+        } else {
+            prompt = `
+            ROLE: Expert Content Analyst.
+            TASK: Analyze the provided resource titled "${title}".
+            
+            INSTRUCTIONS:
+            1. Extract/Summarize the core educational content. If text is provided, clean it. If it's code, describe it.
+            2. Evaluate the quality and relevance for a learner.
+            3. Identify any potential issues (e.g., incomplete text, very short, unrelated).
+            
+            OUTPUT FORMAT (JSON):
+            {
+                "extractedText": "The cleaned, structured full content...",
+                "validation": {
+                    "isValid": boolean,
+                    "qualityScore": number (0-100),
+                    "issues": ["Issue 1 in Persian", ...],
+                    "summary": "A concise summary of what this resource covers in PERSIAN."
+                }
+            }
+            `;
+            parts.push({ text: prompt });
+            if (rawText) parts.push({ text: `CONTENT:\n${rawText.substring(0, 20000)}` }); // Limit context
+            if (media) parts.push({ inlineData: media });
+        }
+        
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: { parts },
+            config: { responseMimeType: "application/json" }
+        });
+        
+        const result = JSON.parse(cleanJsonString(response.text || '{}'));
+        
+        return {
+            extractedText: result.extractedText || rawText || "",
+            validation: result.validation || { isValid: true, qualityScore: 80, issues: [], summary: "پردازش شد" }
+        };
+    });
+}
+
+export async function generateLearningPlan(
+    content: string, 
+    pageContents: string[] | null, 
+    images: any[], 
+    preferences: LearningPreferences, 
+    onMindMapGenerated: any, 
+    onQuestionStream: any
+): Promise<Quiz> { 
+    return withRetry(async () => {
+        const detailInstruction = preferences.detailLevel === 'advanced'
+            ? "STRUCTURE: Deep, nested hierarchy (3-4 levels). Break down complex topics into granular sub-concepts. Total nodes: 15-25."
+            : "STRUCTURE: Simple, flat hierarchy (2 levels). Focus on main pillars only. Total nodes: 8-12.";
+
+        const prompt = `
+        You are a World-Class Curriculum Architect (Curriculum Designer).
+        
+        CONTEXT:
+        User Knowledge Level: ${preferences.knowledgeLevel}
+        Learning Focus: ${preferences.learningFocus}
+        Tone: ${preferences.tone}
+        Goal: ${preferences.learningGoal || "General Mastery"}
+        
+        TASK:
+        Create a comprehensive, structured Learning Mind Map based on the provided content.
+        The output must be in **PERSIAN (FARSI)**.
+        
+        ${detailInstruction}
+        
+        REQUIREMENTS:
+        1. **Root Node**: Main Topic.
+        2. **Children**: Ordered logically from prerequisites to advanced concepts.
+        3. **Attributes**:
+           - 'learningObjective': Specific goal (e.g., "Explain the role of ATP").
+           - 'targetSkill': Bloom's taxonomy level (e.g., Remember, Understand, Analyze).
+           - 'difficulty': 0.1 (Easy) to 1.0 (Hard).
+        4. **Questions**: Generate 5 pre-assessment questions to gauge initial knowledge.
+        
+        STREAMING FORMAT:
+        1. Emit [MIND_MAP_START] followed by the JSON object of the mind map, then [MIND_MAP_END].
+        2. Emit [QUESTION_START] followed by a Question JSON, then [QUESTION_END] (repeat 5 times).
+
+        MIND MAP JSON SCHEMA:
+        {
+          "title": "Main Topic",
+          "suggestedPath": ["id1", "id2"...], // Logical order IDs
+          "mindMap": [
+            { 
+              "id": "unique_id",
+              "title": "Title in Persian", 
+              "difficulty": 0.3,
+              "learningObjective": "Objective in Persian",
+              "targetSkill": "Analysis",
+              "children": [ ... ]
+            }
+          ]
+        }
+
+        QUESTION JSON SCHEMA:
+        {
+           "id": "q1",
+           "question": "Question text in Persian",
+           "type": "multiple-choice",
+           "options": ["Opt 1", "Opt 2", "Opt 3", "Opt 4"],
+           "correctAnswerIndex": 0,
+           "difficulty": "متوسط",
+           "points": 10
+        }
+
+        CONTENT TO ANALYZE:
+        ${content.substring(0, 30000)}
+        `;
+        
+        const stream = await ai.models.generateContentStream({
+            model: "gemini-2.5-pro",
+            contents: { parts: [{ text: prompt }] }, 
+        });
+
+        let buffer = '';
+        const questions: QuizQuestion[] = [];
+        let mindMapGenerated = false;
+        
+        for await (const chunk of stream) {
+            buffer += chunk.text;
+            
+            // Extract Mind Map
+            if (!mindMapGenerated) {
+                const s = buffer.indexOf('[MIND_MAP_START]');
+                const e = buffer.indexOf('[MIND_MAP_END]', s);
+                if (s !== -1 && e !== -1) {
+                    const jsonStr = cleanJsonString(buffer.substring(s + 16, e));
+                    try {
+                        const json = JSON.parse(jsonStr);
+                        let rootData = json.mindMap || json;
+                        
+                        // Normalize root
+                        if (Array.isArray(rootData)) {
+                            rootData = {
+                                title: "نقشه یادگیری",
+                                children: rootData
+                            };
+                        }
+
+                        let mindMap = flattenMindMap(rootData); 
+                        if (mindMap.length > 0) mindMap[0].parentId = null;
+                        
+                        // Generate default path if missing
+                        const path = json.suggestedPath || mindMap.map(n => n.id);
+                        
+                        onMindMapGenerated(mindMap, path);
+                        mindMapGenerated = true;
+                        buffer = buffer.substring(e + 14);
+                    } catch (e) {
+                        console.error("MindMap Parsing Error", e);
+                    }
+                }
+            }
+            
+            // Extract Questions
+            let s, e;
+            while ((s = buffer.indexOf('[QUESTION_START]')) !== -1 && (e = buffer.indexOf('[QUESTION_END]', s)) !== -1) {
+                const jsonStr = cleanJsonString(buffer.substring(s + 16, e));
+                try {
+                    const q = JSON.parse(jsonStr);
+                    if (!q.id) q.id = Math.random().toString();
+                    questions.push(q);
+                    onQuestionStream(q);
+                    buffer = buffer.substring(e + 14);
+                } catch (err) {
+                    buffer = buffer.substring(e + 14);
+                }
+            }
+        }
+        return { questions };
+    });
+}
+
+export async function analyzePreAssessment(questions: any, userAnswers: any, sourceContent: string): Promise<PreAssessmentAnalysis> {
+    const prompt = `
+    ROLE: Educational Data Analyst.
+    TASK: Analyze pre-assessment results to adapt the learning path.
+    LANGUAGE: **PERSIAN (FARSI)**.
+    
+    INPUT:
+    Questions: ${JSON.stringify(questions)}
+    User Answers: ${JSON.stringify(userAnswers)}
+    
+    OUTPUT JSON:
+    {
+        "overallAnalysis": "Detailed narrative analysis of the user's current knowledge state, identifying specific gaps.",
+        "strengths": ["List of concepts the user knows well"],
+        "weaknesses": ["List of concepts the user struggles with"],
+        "recommendedLevel": "مبتدی" | "متوسط" | "پیشرفته",
+        "weaknessTags": ["Short Tag 1", "Short Tag 2"],
+        "strengthTags": ["Short Tag 1", "Short Tag 2"],
+        "conceptScores": { "Concept Name": score_0_to_100, ... }
+    }`;
+    
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: { parts: [{ text: prompt }] },
+        config: { responseMimeType: "application/json" }
+    });
+    return JSON.parse(cleanJsonString(response.text || '{}'));
+}
+
+export async function generateNodeContent(
+    nodeTitle: string, 
+    fullContent: string, 
+    images: any[], 
+    preferences: any, 
+    strengths: string[], 
+    weaknesses: string[], 
+    isIntroNode: boolean, 
+    nodeType: any, 
+    onStreamUpdate: any
+): Promise<NodeContent> {
+    return withRetry(async () => {
+        const contextInstructions = isIntroNode 
+            ? "This is the Introduction node. Provide a high-level roadmap, motivate the learner, and explain WHY this topic matters."
+            : "This is a specific concept node. Go deep into the mechanics, proofs, or details.";
+
+        const prompt = `
+        ROLE: Master Teacher / Textbook Author.
+        TOPIC: "${nodeTitle}"
+        TONE: ${preferences.tone}
+        CONTEXT: ${contextInstructions}
+        
+        USER PROFILE:
+        - Strengths: ${strengths.join(', ')}
+        - Weaknesses: ${weaknesses.join(', ')} (Address these carefully if relevant)
+        - Style: ${preferences.learningFocus}
+        
+        TASK:
+        Generate rich, interactive educational content in **PERSIAN**.
+        Use **Markdown** extensively (bolding keywords, lists, code blocks).
+        Use **LaTeX** for math ($...$ or $$...$$).
+        
+        JSON OUTPUT STRUCTURE:
+        {
+            "introduction": "Hook the reader. Define the concept simply.",
+            "theory": "The core explanation. Use analogies if requested. Be rigorous but clear. Address 'How' and 'Why'.",
+            "example": "A concrete, real-world scenario or solved problem step-by-step.",
+            "connection": "How this connects to previous/next topics or broader field.",
+            "conclusion": "Summary + Key Takeaways (bullet points).",
+            "suggestedQuestions": ["Thought-provoking question 1", "Question 2"],
+            "interactiveTask": "A specific small task/question for the user to answer in the text box (e.g. 'Explain X in your own words' or 'Solve this mini-problem')."
+        }
+        
+        SOURCE MATERIAL:
+        ${fullContent.substring(0, 15000)}
+        `;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-pro", // Use Pro for high quality content generation
+            contents: { parts: [{ text: prompt }] },
+            config: { responseMimeType: "application/json" }
+        });
+        
+        const content = JSON.parse(cleanJsonString(response.text || '{}'));
+        onStreamUpdate(content);
+        return content;
+    });
+}
+
+export async function evaluateNodeInteraction(nodeTitle: string, learningObjective: string, task: string, userResponse: string, sourceContent: string): Promise<string> {
+    const prompt = `
+    ROLE: Socratic Tutor.
+    TASK: Evaluate the user's response to a learning task.
+    
+    Topic: ${nodeTitle}
+    Objective: ${learningObjective}
+    Task: ${task}
+    User Response: "${userResponse}"
+    
+    INSTRUCTIONS:
+    1. Analyze the response for correctness and depth.
+    2. If correct, praise specific details and extend the idea slightly.
+    3. If incorrect/incomplete, provide a hint or a counter-example to guide them (do not just give the answer).
+    4. Output in **PERSIAN**. Use Markdown.
+    `;
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash", 
+        contents: { parts: [{ text: prompt }] }
+    });
+    return response.text || "";
+}
+
+export async function evaluateFeynmanExplanation(
+    nodeTitle: string, 
+    nodeContent: string, 
+    userExplanation: string, 
+    audioData: string | null
+): Promise<string> {
+    const prompt = `
+    ROLE: Feynman Technique Evaluator.
+    TASK: The user is trying to explain "${nodeTitle}" simply. Evaluate their explanation.
+    
+    CRITERIA:
+    1. **Simplicity**: Did they avoid jargon?
+    2. **Accuracy**: Is it factually correct?
+    3. **Completeness**: Did they miss key parts?
+    4. **Analogy**: Did they use a good analogy?
+    
+    INPUT:
+    Original Content: ${nodeContent.substring(0, 5000)}
+    User Explanation: ${userExplanation || "(Audio Provided)"}
+    
+    OUTPUT (PERSIAN, Markdown):
+    - Give a score (0-100).
+    - "What you understood well" (Green checkmarks).
+    - "What was fuzzy/wrong" (Warning signs).
+    - "Simplified correction" (How you would explain the missing part).
+    `;
+
+    let parts: any[] = [{ text: prompt }];
+    if (audioData) {
+        parts.push({ inlineData: { mimeType: 'audio/webm', data: audioData } });
+    }
+
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash", // Flash 2.0 is good for multimodal
+        contents: { parts }
+    });
+    return response.text || "";
+}
+
+export async function generateRemedialNode(originalNodeId: string, parentTitle: string, weaknesses: Weakness[], content: string, images: any[]) {
+    const prompt = `
+    TASK: Create a 'Remedial' (Correction) Node for a user who failed "${parentTitle}".
+    FOCUS: Address these specific weaknesses: ${JSON.stringify(weaknesses)}.
+    
+    OUTPUT JSON (MindMapNode format):
+    {
+        "id": "remedial_${Math.random().toString(36).substr(2, 5)}",
+        "title": "Review: [Specific Concept]",
+        "parentId": "${originalNodeId}",
+        "type": "remedial",
+        "difficulty": 0.3,
+        "isExplanatory": true,
+        "learningObjective": "Address specific misconceptions about...",
+        "targetSkill": "Understanding"
+    }
+    `;
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash", 
+        contents: { parts: [{ text: prompt }] }, 
+        config: { responseMimeType: "application/json" }
+    });
+    return JSON.parse(cleanJsonString(response.text || '{}'));
+}
+
+export async function generateQuiz(topic: string, content: string, images: any[], onQuestionStream: any): Promise<Quiz> {
+    const prompt = `
+    TASK: Generate 4 high-quality quiz questions for "${topic}".
+    LANGUAGE: Persian.
+    
+    GUIDELINES:
+    1. Mix difficulty: 1 Easy, 2 Medium, 1 Hard.
+    2. Distractors (wrong answers) must be plausible misconceptions, not random nonsense.
+    3. Vary question types if possible (mostly multiple-choice).
+    
+    STREAM FORMAT:
+    [QUESTION_START] JSON [QUESTION_END]
+    
+    JSON SCHEMA:
+    {
+       "question": "Question text...",
+       "type": "multiple-choice",
+       "options": ["A", "B", "C", "D"],
+       "correctAnswerIndex": 0,
+       "difficulty": "سخت",
+       "points": 20,
+       "concept": "The specific concept being tested"
+    }
+    
+    CONTENT: ${content.substring(0, 10000)}
+    `;
+    
+    const stream = await ai.models.generateContentStream({
+        model: "gemini-2.5-flash", 
+        contents: { parts: [{ text: prompt }] }
+    });
+    
+    let buffer = "";
+    const questions: QuizQuestion[] = [];
+    for await (const chunk of stream) {
+        buffer += chunk.text;
+        let s, e;
+        while ((s = buffer.indexOf('[QUESTION_START]')) !== -1 && (e = buffer.indexOf('[QUESTION_END]', s)) !== -1) {
+            const jsonStr = cleanJsonString(buffer.substring(s + 16, e));
+            try {
+                const q = JSON.parse(jsonStr);
+                if (!q.id) q.id = Math.random().toString();
+                questions.push(q);
+                onQuestionStream(q);
+                buffer = buffer.substring(e + 14);
+            } catch (e) { buffer = buffer.substring(e + 14); }
+        }
+    }
+    return { questions };
+}
+
+export async function gradeAndAnalyzeQuiz(questions: any[], userAnswers: any, content: string, images: any[]) {
+    const prompt = `
+    TASK: Grade the user's quiz and provide detailed feedback.
+    LANGUAGE: Persian.
+    
+    INPUT:
+    Questions: ${JSON.stringify(questions)}
+    User Answers: ${JSON.stringify(userAnswers)}
+    
+    OUTPUT JSON Array:
+    [
+      {
+        "questionId": "id",
+        "isCorrect": boolean,
+        "score": number (assign partial credit if applicable for short answers),
+        "analysis": "Explain WHY the answer is correct/incorrect. If incorrect, explain the misconception behind their choice."
+      }
+    ]
+    `;
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash", 
+        contents: { parts: [{ text: prompt }] }, 
+        config: { responseMimeType: "application/json" }
+    });
+    return JSON.parse(cleanJsonString(response.text || '[]'));
+}
+
+export async function generateDeepAnalysis(title: string, content: string) {
+    const prompt = `
+    ROLE: Deep Learning Specialist.
+    TASK: Provide an "Advanced Insight" / "Deep Dive" into "${title}".
+    AUDIENCE: A student who has just mastered the basics and wants to go further.
+    
+    CONTENT REQUIREMENTS (Persian, Markdown):
+    1. **Hidden Connections**: Connect this topic to unrelated fields (e.g. Biology -> Engineering).
+    2. **Paradoxes/Nuances**: Is there a counter-intuitive aspect?
+    3. **Future Implications**: Where is this field going?
+    4. **Mental Model**: Provide a unique visualization or mental model to remember this forever.
+    `;
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-pro", 
+        contents: { parts: [{ text: prompt }] }
+    });
+    return response.text || "";
+}
+
+export async function generateChatResponse(
+    history: ChatMessage[], 
+    message: string, 
+    nodeTitle: string | null, 
+    content: string, 
+    isDebateMode: boolean, 
+    weaknesses: Weakness[], 
+    chatPersona: ChatPersona, 
+    availableNodes: string[]
+) {
+    const personaInstructions = {
+        'supportive_coach': "You are a friendly, encouraging coach. Use emojis. Celebrate small wins. Guide gently.",
+        'strict_professor': "You are a rigorous academic professor. Demand precision. No emojis. Focus on definitions and logic.",
+        'socratic_tutor': "You NEVER give the answer. You ONLY ask guiding questions to lead the user to the truth.",
+        'devil_advocate': "You disagree with everything the user says (politely but firmly) to test their arguments. Challenge assumptions.",
+        'ruthless_critic': "You find logical fallacies and weak points in the user's understanding. Be direct and critical."
+    };
+
+    const prompt = `
+    ROLE: ${personaInstructions[chatPersona] || personaInstructions['supportive_coach']}
+    MODE: ${isDebateMode ? "DEBATE/CHALLENGE (Push back on ideas)" : "ASSISTANCE (Help understand)"}
+    TOPIC: ${nodeTitle || "General"}
+    
+    CONTEXT FROM LESSON:
+    ${content.substring(0, 2000)}
+    
+    USER MESSAGE: "${message}"
+    
+    INSTRUCTIONS:
+    1. Reply in **PERSIAN**.
+    2. Keep it concise (under 150 words unless explaining a complex theory).
+    3. If you reference another topic from this list: [${availableNodes.slice(0, 20).join(', ')}], wrap it like [[Topic Name]] to create a link.
+    `;
+    
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash", 
+        contents: { parts: [{ text: prompt }] }
+    });
+    return response.text || "";
+}
+
+export async function generateProactiveChatInitiation(nodeTitle: string, nodeContent: string, isDebateMode: boolean, weaknesses: any): Promise<string> {
+    const prompt = `
+    TASK: Initiate a conversation with the user about "${nodeTitle}".
+    MODE: ${isDebateMode ? 'Controversial/Challenge' : 'Check-in'}.
+    
+    If Debate Mode:
+    - Start with a controversial statement or a tricky question about the topic.
+    
+    If Check-in Mode:
+    - Ask if they understood the main concept or need a specific example.
+    
+    Language: Persian. Short and engaging.
+    `;
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash", 
+        contents: { parts: [{ text: prompt }] }
+    });
+    return response.text || "";
+}
+
+export async function generateCoachQuestion(nodeTitle: string, nodeContent: string): Promise<string> {
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash", 
+        contents: { parts: [{ text: `Ask a single, deep, Socratic question about "${nodeTitle}" to test understanding. Persian. Short.` }] }
+    });
+    return response.text || "";
+}
+
+export async function generatePodcastScript(contents: any[], mode: 'monologue' | 'dialogue'): Promise<string> {
+    return withRetry(async () => {
+        const prompt = `
+        TASK: Write a Podcast Script in **PERSIAN** based on the provided educational content.
+        MODE: ${mode}
+        
+        CHARACTERS (if dialogue):
+        - Speaker 1 (Host): Enthusiastic, asks questions, clarifies.
+        - Speaker 2 (Expert): Knowledgeable, uses analogies, calm.
+        
+        STRUCTURE:
+        1. Intro: Hook the listener.
+        2. Body: Discuss key points dynamically. Use "Wait, so you mean..." or "Exactly!" to sound natural.
+        3. Conclusion: Summary.
+        
+        FORMAT:
+        Speaker1: Text...
+        Speaker2: Text...
+        
+        CONTENT TO COVER:
+        ${JSON.stringify(contents).substring(0, 20000)}
+        `;
+        
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash", 
+            contents: { parts: [{ text: prompt }] }
+        });
+        return response.text || "";
+    });
+}
+
+export async function generatePodcastAudio(
+    script: string, 
+    speaker1: VoiceName, 
+    speaker2: VoiceName | undefined, 
+    mode: 'monologue' | 'dialogue'
+): Promise<string> {
+    return withRetry(async () => {
+        // Clean script for TTS (Remove Speaker labels for single block if needed, but multi-speaker needs config)
+        // For this implementation, we will use the specialized Gemini TTS model
+        
+        let speechConfig;
+        if (mode === 'dialogue' && speaker2) {
+            speechConfig = {
+                multiSpeakerVoiceConfig: {
+                    speakerVoiceConfigs: [
+                        { speaker: 'Speaker1', voiceConfig: { prebuiltVoiceConfig: { voiceName: speaker1 } } },
+                        { speaker: 'Speaker2', voiceConfig: { prebuiltVoiceConfig: { voiceName: speaker2 } } }
+                    ]
+                }
+            };
+        } else {
+            speechConfig = {
+                voiceConfig: {
+                    prebuiltVoiceConfig: { voiceName: speaker1 }
+                }
+            };
+        }
+
+        // Ensure the script has the Speaker1:/Speaker2: labels if dialogue mode, 
+        // otherwise clean it for monologue.
+        let finalScript = script;
+        if (mode === 'monologue') {
+            finalScript = script.replace(/Speaker\d+:/g, '').trim();
+        }
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash-preview-tts",
+            contents: [{ parts: [{ text: finalScript }] }],
+            config: {
+                responseModalities: [Modality.AUDIO],
+                speechConfig: speechConfig
+            }
+        });
+
+        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (!base64Audio) throw new Error("No audio generated");
+
+        // Convert raw PCM to WAV for browser playback
+        // Gemini TTS returns raw PCM (24kHz, mono usually)
+        const pcmData = base64ToUint8Array(base64Audio);
+        const wavHeader = createWavHeader(pcmData.length, 24000, 1, 16);
+        const wavBlob = new Blob([wavHeader, pcmData], { type: 'audio/wav' });
+        return URL.createObjectURL(wavBlob);
+    });
+}
+
 function base64ToUint8Array(base64: string): Uint8Array {
     const binaryString = atob(base64);
     const len = binaryString.length;
@@ -136,15 +794,6 @@ function base64ToUint8Array(base64: string): Uint8Array {
         bytes[i] = binaryString.charCodeAt(i);
     }
     return bytes;
-}
-
-function uint8ArrayToBase64(bytes: Uint8Array): string {
-    let binary = '';
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-        binary += String.fromCharCode(bytes[i]);
-    }
-    return btoa(binary);
 }
 
 function writeString(view: DataView, offset: number, string: string) {
@@ -172,386 +821,99 @@ function createWavHeader(dataLength: number, sampleRate: number = 24000, numChan
     return new Uint8Array(header);
 }
 
-const getPreferenceInstructions = (preferences: LearningPreferences): string => {
-    return `Level: ${preferences.knowledgeLevel}, Tone: ${preferences.tone}, Focus: ${preferences.learningFocus}.`;
-};
-
-export async function analyzeResourceContent(
-    title: string,
-    rawText: string | null,
-    media: { mimeType: string, data: string } | null,
-    resourceType: 'file' | 'link' | 'text',
-    metadata?: any
-): Promise<{ extractedText: string; validation: ResourceValidation }> {
-    return withRetry(async () => {
-        // Ensure prompt requests Persian output for summary
-        let prompt = `Analyze: ${title}. Output JSON with 'extractedText' (full content) and 'validation' object. 
-        IMPORTANT: 'validation.summary' MUST BE IN PERSIAN (FARSI).
-        'validation.issues' MUST BE IN PERSIAN (FARSI).
-        `;
-        let parts: any[] = [{ text: prompt }];
-        if (rawText) parts.push({ text: rawText.substring(0, 2000) });
-        
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: { parts },
-            config: { responseMimeType: "application/json" }
-        });
-        const result = JSON.parse(cleanJsonString(response.text || '{}'));
-        
-        return {
-            extractedText: result.extractedText || rawText || "",
-            validation: result.validation || { isValid: true, qualityScore: 80, issues: [], summary: "پردازش شد" }
-        };
-    });
-}
-
-export async function generateLearningPlan(content: string, pageContents: string[] | null, images: any[], preferences: LearningPreferences, onMindMapGenerated: any, onQuestionStream: any): Promise<Quiz> { 
-    return withRetry(async () => {
-        const preferenceInstructions = getPreferenceInstructions(preferences);
-        const pageContentForPrompt = pageContents ? pageContents.join('\n') : content;
-        
-        // Logic for Simple vs Advanced Mode
-        const detailLevel = preferences.detailLevel || 'advanced';
-        const detailInstruction = detailLevel === 'advanced'
-            ? "Create a HIGHLY DETAILED map. Break down topics into small, granular sub-concepts. Depth: 3-4 levels. Node count: 12-15. Include specific details in node titles."
-            : "Create a SIMPLE, HIGH-LEVEL overview. Focus only on main pillars and core concepts. Depth: 2 levels. Node count: 6-8. Keep titles concise.";
-
-        const prompt = `
-        You are an expert Curriculum Architect.
-        Goal: Create a Mind Map for the provided content in **PERSIAN (FARSI)**.
-
-        CRITICAL INSTRUCTIONS:
-        1. **OUTPUT LANGUAGE**: ALL node titles, learning objectives, and questions MUST BE IN PERSIAN.
-        2. **DETAIL LEVEL**: ${detailInstruction}
-        3. **STRUCTURE**: Use nested objects with a 'children' array.
-        4. **Root Node**: Start with a single Root Node representing the main title.
-        
-        Output Format:
-        1. [MIND_MAP_START] JSON [MIND_MAP_END]
-        2. [QUESTION_START] JSON [QUESTION_END] (x5 questions)
-
-        MIND MAP JSON SCHEMA:
-        {
-          "title": "عنوان موضوع اصلی",
-          "children": [
-            { 
-              "title": "فصل اول: ...", 
-              "difficulty": 0.3,
-              "learningObjective": "هدف آموزشی این بخش به فارسی",
-              "targetSkill": "Analysis",
-              "children": [ 
-                 { "title": "مفهوم الف", "difficulty": 0.4, "children": [] }
-              ]
-            }
-          ]
-        }
-
-        QUESTION JSON SCHEMA (MUST BE PERSIAN):
-        {
-           "question": "متن سوال به فارسی",
-           "type": "multiple-choice",
-           "options": ["گزینه ۱", "گزینه ۲", "گزینه ۳", "گزینه ۴"],
-           "correctAnswerIndex": 0,
-           "difficulty": "متوسط",
-           "points": 10
-        }
-
-        Context: ${preferenceInstructions}
-        Content: ${pageContentForPrompt.substring(0, 40000)}
-        `;
-        
-        const stream = await ai.models.generateContentStream({
-            model: "gemini-2.5-pro",
-            contents: { parts: [{ text: prompt }] }, 
-        });
-
-        let buffer = '';
-        const questions: QuizQuestion[] = [];
-        let mindMapGenerated = false;
-        
-        for await (const chunk of stream) {
-            buffer += chunk.text;
-            if (!mindMapGenerated) {
-                const s = buffer.indexOf('[MIND_MAP_START]');
-                const e = buffer.indexOf('[MIND_MAP_END]', s);
-                if (s !== -1 && e !== -1) {
-                    const jsonStr = cleanJsonString(buffer.substring(s + 16, e));
-                    try {
-                        const json = JSON.parse(jsonStr);
-                        let rootData = json.mindMap || json;
-                        
-                        if (Array.isArray(rootData)) {
-                            if (rootData.length > 0 && !rootData[0].children) {
-                                const rootTitle = content.split('\n')[0].substring(0, 50) || "موضوع اصلی";
-                                rootData = {
-                                    title: rootTitle,
-                                    children: rootData.map((item: any) => ({
-                                        title: item.title || item.label || "N/A",
-                                        children: item.children || []
-                                    }))
-                                };
-                            } else {
-                                rootData = {
-                                    title: "نقشه یادگیری جامع",
-                                    children: rootData
-                                };
-                            }
-                        } else if (!rootData.children && !rootData.title) {
-                             rootData = { title: "نقشه یادگیری", children: [] };
-                        }
-
-                        let mindMap = flattenMindMap(rootData); 
-                        if (mindMap.length > 0) mindMap[0].parentId = null;
-                        
-                        onMindMapGenerated(mindMap, json.suggestedPath || []);
-                        mindMapGenerated = true;
-                        buffer = buffer.substring(e + 14);
-                    } catch (e) {
-                        console.error("Error parsing mind map JSON", e);
-                    }
-                }
-            }
-            
-             let s, e;
-            while ((s = buffer.indexOf('[QUESTION_START]')) !== -1 && (e = buffer.indexOf('[QUESTION_END]', s)) !== -1) {
-                const jsonStr = cleanJsonString(buffer.substring(s + 16, e));
-                try {
-                    const q = JSON.parse(jsonStr);
-                    if (!q.id) q.id = Math.random().toString();
-                    questions.push(q);
-                    onQuestionStream(q);
-                    buffer = buffer.substring(e + 14);
-                } catch (e) {
-                    buffer = buffer.substring(e + 14);
-                }
-            }
-        }
-        return { questions };
-    });
-}
-
-export async function analyzePreAssessment(questions: any, userAnswers: any, sourceContent: string): Promise<PreAssessmentAnalysis> {
-    // Force Persian Output
-    const prompt = `Analyze Pre-assessment results.
-    Questions: ${JSON.stringify(questions)}
-    User Answers: ${JSON.stringify(userAnswers)}
-    
-    OUTPUT INSTRUCTIONS:
-    1. All analysis text MUST be in PERSIAN (FARSI).
-    2. 'recommendedLevel' must be one of: 'مبتدی', 'متوسط', 'پیشرفته'.
-    3. Tags must be in Persian.
-    
-    Output JSON: {
-        "overallAnalysis": "تحلیل کلی عملکرد...",
-        "strengths": ["نقطه قوت ۱", ...],
-        "weaknesses": ["نقطه ضعف ۱", ...],
-        "recommendedLevel": "متوسط",
-        "weaknessTags": ["تگ ضعف"],
-        "strengthTags": ["تگ قوت"],
-        "conceptScores": { "Concept A": 80, "Concept B": 40 }
-    }`;
-    
-    const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: { parts: [{ text: prompt }] },
-        config: { responseMimeType: "application/json" }
-    });
-    return JSON.parse(cleanJsonString(response.text || '{}'));
-}
-
-export async function generateNodeContent(nodeTitle: string, fullContent: string, images: any[], preferences: any, strengths: any, weaknesses: any, isIntroNode: boolean, nodeType: any, onStreamUpdate: any): Promise<NodeContent> {
-    // Force Persian Output
-    const prompt = `
-    Generate educational content for the node: "${nodeTitle}".
-    Language: **PERSIAN (FARSI)**.
-    Context: ${fullContent.substring(0, 5000)}...
-    Tone: ${preferences.tone}
-    
-    Output JSON Structure (All values in Persian):
-    {
-        "introduction": "مقدمه جذاب...",
-        "theory": "توضیحات تئوری کامل با استفاده از LaTeX برای فرمول‌ها...",
-        "example": "مثال واقعی...",
-        "connection": "ارتباط با سایر مفاهیم...",
-        "conclusion": "جمع‌بندی...",
-        "suggestedQuestions": ["سوال پیشنهادی ۱", ...],
-        "interactiveTask": "یک چالش کوتاه تعاملی برای کاربر..."
-    }
-    `;
-    const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: { parts: [{ text: prompt }] },
-        config: { responseMimeType: "application/json" }
-    });
-    const content = JSON.parse(cleanJsonString(response.text || '{}'));
-    onStreamUpdate(content);
-    return content;
-}
-
-export async function evaluateNodeInteraction(nodeTitle: string, learningObjective: string, task: string, userResponse: string, sourceContent: string): Promise<string> {
-    const prompt = `Evaluate user response for the task regarding "${nodeTitle}".
-    Task: ${task}
-    User Response: ${userResponse}
-    
-    Provide constructive feedback in **PERSIAN (FARSI)**. Use Markdown formatting.`;
-    const response = await ai.models.generateContent({model: "gemini-2.5-flash", contents: { parts: [{ text: prompt }] }});
-    return response.text || "";
-}
-
-export async function evaluateFeynmanExplanation(nodeTitle: string, nodeContent: string, userExplanation: string, audioData: string | null): Promise<string> {
-    const parts: any[] = [{ text: `Evaluate this explanation of "${nodeTitle}" based on the Feynman Technique.
-    Identify gaps in understanding. Provide simple, clear feedback in **PERSIAN (FARSI)**.` }];
-    
-    if (audioData) parts.push({ inlineData: { mimeType: 'audio/webm', data: audioData } });
-    else parts.push({ text: `User Explanation: ${userExplanation}` });
-    
-    const response = await ai.models.generateContent({model: "gemini-2.5-flash", contents: { parts }});
-    return response.text || "";
-}
-
-export async function generateRemedialNode(originalNodeId: string, parentTitle: string, weaknesses: Weakness[], content: string, images: any[]) {
-    const prompt = `Create a remedial learning node for "${parentTitle}" specifically addressing these weaknesses: ${JSON.stringify(weaknesses)}.
-    Output JSON in **PERSIAN**.
-    Format: MindMapNode structure (id, title, difficulty, type='remedial'). Title should be like "مرور نکته X".`;
-    const response = await ai.models.generateContent({model: "gemini-2.5-flash", contents: { parts: [{ text: prompt }] }, config: { responseMimeType: "application/json" }});
-    return JSON.parse(cleanJsonString(response.text || '{}'));
-}
-
-export async function generateQuiz(topic: string, content: string, images: any[], onQuestionStream: any): Promise<Quiz> {
-    const prompt = `Generate 4 multiple-choice questions for "${topic}".
-    Language: **PERSIAN (FARSI)**.
-    Stream format: [QUESTION_START] JSON [QUESTION_END].
-    
-    JSON Schema:
-    {
-       "question": "متن سوال...",
-       "type": "multiple-choice",
-       "options": ["گزینه ۱", ...],
-       "correctAnswerIndex": 0,
-       "difficulty": "متوسط",
-       "points": 10
-    }`;
-    const stream = await ai.models.generateContentStream({model: "gemini-2.5-flash", contents: { parts: [{ text: prompt }] }});
-    let buffer = "";
-    const questions: QuizQuestion[] = [];
-    for await (const chunk of stream) {
-        buffer += chunk.text;
-        let s, e;
-        while ((s = buffer.indexOf('[QUESTION_START]')) !== -1 && (e = buffer.indexOf('[QUESTION_END]', s)) !== -1) {
-            const jsonStr = cleanJsonString(buffer.substring(s + 16, e));
-            try {
-                const q = JSON.parse(jsonStr);
-                if (!q.id) q.id = Math.random().toString();
-                questions.push(q);
-                onQuestionStream(q);
-                buffer = buffer.substring(e + 14);
-            } catch (e) { buffer = buffer.substring(e + 14); }
-        }
-    }
-    return { questions };
-}
-
-export async function gradeAndAnalyzeQuiz(questions: any[], userAnswers: any, content: string, images: any[]) {
-    const prompt = `Grade this quiz.
-    Questions: ${JSON.stringify(questions)}
-    Answers: ${JSON.stringify(userAnswers)}
-    
-    Output JSON array of objects: { "questionId": "...", "isCorrect": boolean, "score": number, "analysis": "Analysis in PERSIAN..." }`;
-    const response = await ai.models.generateContent({model: "gemini-2.5-flash", contents: { parts: [{ text: prompt }] }, config: { responseMimeType: "application/json" }});
-    return JSON.parse(cleanJsonString(response.text || '[]'));
-}
-
-export async function generateDeepAnalysis(title: string, content: string) {
-    const response = await ai.models.generateContent({model: "gemini-2.5-flash", contents: { parts: [{ text: `Provide a deep, expert-level analysis of "${title}" in **PERSIAN**. uncover hidden connections and advanced insights.` }] }});
-    return response.text || "";
-}
-
-export async function generateChatResponse(history: any, message: string, nodeTitle: any, content: string, isDebateMode: boolean, weaknesses: any, chatPersona: any, availableNodes: any) {
-    const prompt = `
-    You are a smart tutor. Current Persona: ${chatPersona}.
-    User Message: "${message}"
-    Topic: ${nodeTitle || "General"}
-    Debate Mode: ${isDebateMode}
-    
-    Instructions:
-    1. Reply in **PERSIAN (FARSI)**.
-    2. If mentioning other topics, wrap them in [[Title]].
-    3. Be helpful and concise.
-    `;
-    const response = await ai.models.generateContent({model: "gemini-2.5-flash", contents: { parts: [{ text: prompt }] }});
-    return response.text || "";
-}
-
-export async function generateProactiveChatInitiation(nodeTitle: string, nodeContent: string, isDebateMode: boolean, weaknesses: any): Promise<string> {
-    const prompt = `Initiate a conversation/debate about "${nodeTitle}". 
-    Mode: ${isDebateMode ? 'Controversial Debate' : 'Friendly Check-in'}.
-    Language: **PERSIAN**.`;
-    const response = await ai.models.generateContent({model: "gemini-2.5-flash", contents: { parts: [{ text: prompt }] }});
-    return response.text || "";
-}
-
-export async function generateCoachQuestion(nodeTitle: string, nodeContent: string): Promise<string> {
-    const response = await ai.models.generateContent({model: "gemini-2.5-flash", contents: { parts: [{ text: `Ask a thought-provoking Socratic question about "${nodeTitle}" in **PERSIAN**.` }] }});
-    return response.text || "";
-}
-
-export async function generatePodcastScript(contents: any, mode: 'monologue' | 'dialogue'): Promise<string> {
-    const prompt = `Write a podcast script in **PERSIAN (FARSI)**.
-    Mode: ${mode}.
-    Content: ${JSON.stringify(contents)}.
-    Make it engaging, natural, and educational.`;
-    const response = await ai.models.generateContent({model: "gemini-2.5-flash", contents: { parts: [{ text: prompt }] }});
-    return response.text || "";
-}
-
-export async function generatePodcastAudio(script: string, speaker1: VoiceName, speaker2: VoiceName | undefined, mode: 'monologue' | 'dialogue'): Promise<string> {
-    // Mock audio for simplicity
-    return ""; 
-}
-
 export async function generateFlashcards(nodeTitle: string, content: string): Promise<Omit<Flashcard, 'id' | 'nodeId' | 'interval' | 'repetition' | 'easeFactor' | 'nextReviewDate'>[]> {
-    const prompt = `Generate 3-5 Anki-style flashcards for "${nodeTitle}".
-    Language: **PERSIAN**.
-    Output JSON: [{ "front": "Question...", "back": "Answer..." }]`;
-    const response = await ai.models.generateContent({model: "gemini-2.5-flash", contents: { parts: [{ text: prompt }] }, config: { responseMimeType: "application/json" }});
+    const prompt = `
+    TASK: Create 5 Anki-style flashcards for "${nodeTitle}".
+    LANGUAGE: Persian.
+    
+    GUIDELINES:
+    - Front: A clear question or term.
+    - Back: Concise answer or definition.
+    - Focus on key facts, definitions, and relationships.
+    
+    OUTPUT JSON:
+    [
+      { "front": "Question...", "back": "Answer..." }
+    ]
+    `;
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash", 
+        contents: { parts: [{ text: prompt }, { text: content.substring(0, 5000) }] }, 
+        config: { responseMimeType: "application/json" }
+    });
     return JSON.parse(cleanJsonString(response.text || '[]'));
 }
 
 export async function generatePracticeResponse(topic: string, problem: string, questionType: 'multiple-choice' | 'descriptive' = 'descriptive', difficulty: 'easy' | 'medium' | 'hard' = 'medium'): Promise<string> {
-    const prompt = `Generate a practice problem or solve the user's problem.
-    Topic: ${topic}
-    User Problem: ${problem}
-    Type: ${questionType}
-    Difficulty: ${difficulty}
+    const prompt = `
+    TASK: ${topic ? `Generate a ${difficulty} practice problem about "${topic}"` : `Solve this problem: "${problem}"`}.
+    TYPE: ${questionType}.
+    LANGUAGE: Persian.
     
-    Output in **PERSIAN**. If generating a question, provide the answer key at the end.`;
-    const response = await ai.models.generateContent({model: "gemini-2.5-flash", contents: { parts: [{ text: prompt }] }});
+    OUTPUT FORMAT:
+    - Problem Statement
+    - (If solving) Step-by-step Solution using Markdown/LaTeX.
+    - (If generating) The problem, then a hidden/spoiler Answer Key at the bottom.
+    `;
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash", 
+        contents: { parts: [{ text: prompt }] }
+    });
     return response.text || "";
 }
 
 export async function generateDailyChallenge(): Promise<string> {
-    const response = await ai.models.generateContent({model: "gemini-2.5-flash", contents: { parts: [{ text: `Generate a short, fun daily learning challenge or fact in **PERSIAN**.` }] }});
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash", 
+        contents: { parts: [{ text: `Generate a fascinating "Did you know?" fact or a mini-logic puzzle in Persian. Keep it short and fun.` }] }
+    });
     return response.text || "";
 }
 
 export async function generateScenario(nodeTitle: string, content: string): Promise<Scenario> {
-    const prompt = `Create a Role-play Scenario for "${nodeTitle}".
-    Language: **PERSIAN**.
-    Output JSON:
+    const prompt = `
+    TASK: Create a Role-Play Scenario to test understanding of "${nodeTitle}".
+    LANGUAGE: Persian.
+    
+    JSON SCHEMA:
     {
-      "role": "Your Role (e.g. Manager)",
-      "context": "The situation...",
-      "options": [{ "id": "1", "text": "Option 1..." }, ...]
-    }`;
-    const response = await ai.models.generateContent({model: "gemini-2.5-flash", contents: { parts: [{ text: prompt }] }, config: { responseMimeType: "application/json" }});
+      "role": "The user's role (e.g. CEO, Doctor)",
+      "context": "The situation description (Conflict, Problem, Mystery)",
+      "options": [
+        { "id": "A", "text": "Decision A" },
+        { "id": "B", "text": "Decision B" },
+        { "id": "C", "text": "Decision C" }
+      ]
+    }
+    
+    CONTENT: ${content.substring(0, 5000)}
+    `;
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash", 
+        contents: { parts: [{ text: prompt }] }, 
+        config: { responseMimeType: "application/json" }
+    });
     return JSON.parse(cleanJsonString(response.text || '{}'));
 }
 
 export async function evaluateScenarioDecision(scenario: Scenario, decisionId: string, content: string): Promise<ScenarioOutcome> {
-    const prompt = `Evaluate decision ${decisionId} for scenario.
-    Language: **PERSIAN**.
-    Output JSON: { "narrative": "What happens next...", "analysis": "Why...", "consequenceLevel": "positive"|"negative"|"neutral" }`;
-    const response = await ai.models.generateContent({model: "gemini-2.5-flash", contents: { parts: [{ text: prompt }] }, config: { responseMimeType: "application/json" }});
+    const prompt = `
+    TASK: Evaluate the outcome of decision "${decisionId}" in the scenario.
+    SCENARIO: ${scenario.context}
+    ROLE: ${scenario.role}
+    LANGUAGE: Persian.
+    
+    OUTPUT JSON:
+    {
+      "narrative": "What happens next? (Story format)",
+      "analysis": "Why did this happen? Link back to the educational theory.",
+      "consequenceLevel": "positive" | "neutral" | "negative"
+    }
+    `;
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash", 
+        contents: { parts: [{ text: prompt }] }, 
+        config: { responseMimeType: "application/json" }
+    });
     return JSON.parse(cleanJsonString(response.text || '{}'));
 }
