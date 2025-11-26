@@ -235,13 +235,13 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                      )}
 
                     <div className="flex items-center gap-2 md:gap-3 shrink-0">
-                        {/* Action Buttons Group */}
+                        {/* Desktop Action Buttons Group */}
                         {activeTab === 'content' && !isStreaming && !isIntroNode && (
-                            <div className="flex gap-2">
+                            <div className="hidden sm:flex gap-2">
                                 {onGenerateFlashcards && (
                                     <button 
                                         onClick={onGenerateFlashcards}
-                                        className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 transition-colors border border-yellow-500/20"
+                                        className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 transition-colors border border-yellow-500/20"
                                         title="ساخت فلش‌کارت مرور"
                                     >
                                         <ClipboardList className="w-4 h-4" />
@@ -251,7 +251,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                                 {onStartScenario && (
                                     <button 
                                         onClick={onStartScenario}
-                                        className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-gradient-to-r from-indigo-500 to-purple-500 text-white hover:shadow-lg hover:shadow-indigo-500/30 transition-all border border-white/10 animate-pulse-slow"
+                                        className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-gradient-to-r from-indigo-500 to-purple-500 text-white hover:shadow-lg hover:shadow-indigo-500/30 transition-all border border-white/10 animate-pulse-slow"
                                         title="شبیه‌سازی موقعیت"
                                     >
                                         <Gamepad className="w-4 h-4" />
@@ -376,7 +376,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                 {activeTab === 'content' && !isStreaming && content.conclusion && (
                     <div className="w-full mt-8 md:mt-12 p-4 md:p-6 bg-card/50 border border-border/50 rounded-2xl animate-slide-up" style={{ animationDelay: '600ms' }}>
                         
-                        {/* Mobile Action Buttons */}
+                        {/* Mobile Action Buttons - Ensure visibility */}
                         {!isIntroNode && (
                             <div className="sm:hidden grid grid-cols-1 gap-3 mb-4">
                                 {onGenerateFlashcards && (

@@ -100,17 +100,6 @@ const QuizReview: React.FC<QuizReviewProps> = ({ results, onFinish, attempts = 0
                 ) : (
                     <div>
                         <p className="mt-2 text-red-600">به نظر می‌رسد برخی مفاهیم هنوز برایتان جدید هستند. پیشنهاد می‌کنم نکات بالا را مرور کنید.</p>
-                        
-                        {onGenerateRemedial && (
-                             <button 
-                                onClick={onGenerateRemedial}
-                                className="mt-4 px-5 py-3 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700 transition-all shadow-lg shadow-purple-500/30 flex items-center justify-center gap-2 mx-auto active:scale-95"
-                            >
-                                <Sparkles className="w-5 h-5" />
-                                <span>درخواست درس تقویتی هوشمند</span>
-                            </button>
-                        )}
-
                         {attempts >= 3 && onForceUnlock && (
                             <div className="mt-4 p-4 border border-yellow-500/50 bg-yellow-500/10 rounded-lg">
                                 <p className="text-sm text-yellow-600 mb-3">شما ۳ بار تلاش کرده‌اید. اگر فکر می‌کنید مشکل از سوالات است، می‌توانید به صورت دستی عبور کنید.</p>
@@ -123,6 +112,17 @@ const QuizReview: React.FC<QuizReviewProps> = ({ results, onFinish, attempts = 0
                             </div>
                         )}
                     </div>
+                )}
+
+                {/* Remedial Lesson Button - Available if score < 100 */}
+                {onGenerateRemedial && percentage < 100 && (
+                     <button 
+                        onClick={onGenerateRemedial}
+                        className="mt-6 px-5 py-3 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700 transition-all shadow-lg shadow-purple-500/30 flex items-center justify-center gap-2 mx-auto active:scale-95"
+                    >
+                        <Sparkles className="w-5 h-5" />
+                        <span>{passed ? "تقویت و تعمیق یادگیری (درس تکمیلی)" : "درخواست درس تقویتی هوشمند"}</span>
+                    </button>
                 )}
             </div>
 

@@ -546,15 +546,16 @@ export async function generateQuiz(topic: string, content: string, images: any[]
     TASK: Generate 4 high-quality quiz questions for "${topic}".
     LANGUAGE: Persian.
     
-    GUIDELINES:
-    1. Mix difficulty: 1 Easy, 2 Medium, 1 Hard.
-    2. Distractors (wrong answers) must be plausible misconceptions, not random nonsense.
-    3. Vary question types if possible (mostly multiple-choice).
+    CRITICAL RULES:
+    1. **Structure**: Generate EXACTLY 3 "multiple-choice" questions and 1 "short-answer" question.
+    2. **Short Answer**: The 4th question MUST be 'short-answer' type to test deep understanding and explanation ability.
+    3. **Distractors**: Wrong answers for multiple-choice must be plausible misconceptions.
+    4. **Difficulty**: Mix of Medium and Hard.
     
     STREAM FORMAT:
     [QUESTION_START] JSON [QUESTION_END]
     
-    JSON SCHEMA:
+    JSON SCHEMA (Multiple Choice):
     {
        "question": "Question text...",
        "type": "multiple-choice",
@@ -562,7 +563,17 @@ export async function generateQuiz(topic: string, content: string, images: any[]
        "correctAnswerIndex": 0,
        "difficulty": "سخت",
        "points": 20,
-       "concept": "The specific concept being tested"
+       "concept": "Concept being tested"
+    }
+
+    JSON SCHEMA (Short Answer):
+    {
+       "question": "Deep, open-ended question requiring explanation...",
+       "type": "short-answer",
+       "correctAnswer": "Key points that should be in the answer...", 
+       "difficulty": "چالش‌برانگیز",
+       "points": 40,
+       "concept": "Concept being tested"
     }
     
     CONTENT: ${content.substring(0, 20000)}
@@ -601,13 +612,18 @@ export async function gradeAndAnalyzeQuiz(questions: any[], userAnswers: any, co
     Questions: ${JSON.stringify(questions)}
     User Answers: ${JSON.stringify(userAnswers)}
     
+    INSTRUCTIONS:
+    1. For multiple-choice: 0 or full points.
+    2. For short-answer: Analyze the text. Give partial credit (0 to full points) based on key concepts mentioned vs expected answer.
+    3. Provide "analysis" for every question explaining the logic.
+    
     OUTPUT JSON Array:
     [
       {
         "questionId": "id",
-        "isCorrect": boolean,
-        "score": number (assign partial credit if applicable for short answers),
-        "analysis": "Explain WHY the answer is correct/incorrect. If incorrect, explain the misconception behind their choice."
+        "isCorrect": boolean (true if score > 0),
+        "score": number,
+        "analysis": "Detailed feedback..."
       }
     ]
     `;
@@ -882,6 +898,11 @@ export async function generateScenario(nodeTitle: string, content: string): Prom
     const prompt = `
     TASK: Create a Role-Play Scenario to test understanding of "${nodeTitle}".
     LANGUAGE: Persian.
+    
+    RULES:
+    1. The 'context' must describe a challenging real-world situation related to the topic.
+    2. The 'role' must be a specific job or character.
+    3. Provide exactly 3 distinct options.
     
     JSON SCHEMA:
     {
