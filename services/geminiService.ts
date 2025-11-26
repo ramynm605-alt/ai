@@ -114,7 +114,7 @@ function flattenMindMap(node: any, parentId: string | null = null): MindMapNode[
         id: node.id || Math.random().toString(36).substr(2, 9),
         title: node.title || node.label || "بدون عنوان",
         parentId: parentId,
-        locked: false,
+        locked: !!parentId, // Adjusted: nodes with a parent are locked by default
         difficulty: typeof node.difficulty === 'number' ? node.difficulty : 0.5,
         isExplanatory: node.isExplanatory || false,
         sourcePages: node.sourcePages || [],

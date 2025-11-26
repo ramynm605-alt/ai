@@ -1,11 +1,11 @@
 
-
 import React, { useState, useRef, useEffect } from 'react';
 import { MindMapNode, NodeContent, Reward } from '../types';
 import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle, BrainCircuit, Edit, Shuffle, Target, CheckCircle, ArrowLeft, ClipboardList, Mic, Flame, Gamepad, GraduationCap } from './icons';
 import { evaluateNodeInteraction } from '../services/geminiService';
 import WaveLoader from './ui/wave-loader';
 import BoxLoader from './ui/box-loader';
+import { marked } from 'marked';
 
 interface NodeViewProps {
     node: MindMapNode;
@@ -25,6 +25,16 @@ interface NodeViewProps {
     onTriggerDebate?: () => void; // New
     onStartScenario?: () => void; // New
 }
+
+const parseMarkdown = (text: string | undefined | null) => {
+    if (!text) return '';
+    try {
+        return marked.parse(text) as string;
+    } catch (e) {
+        console.error("Markdown parsing error", e);
+        return text || '';
+    }
+};
 
 const HeroLoader: React.FC<{ text?: string }> = ({ text = "در حال نگارش درس..." }) => (
     <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
@@ -50,7 +60,7 @@ const Section: React.FC<{ title: string; content: string; delay: number }> = ({ 
             <div className="w-1.5 h-6 md:h-8 bg-gradient-to-b from-primary to-indigo-500 rounded-full"></div>
             {title}
         </h3>
-        <div className="node-content-section markdown-content leading-loose text-base md:text-lg text-card-foreground/90 select-text" dangerouslySetInnerHTML={{ __html: content }} />
+        <div className="node-content-section markdown-content leading-loose text-base md:text-lg text-card-foreground/90 select-text" dangerouslySetInnerHTML={{ __html: parseMarkdown(content) }} />
     </div>
 );
 
@@ -290,7 +300,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                 {activeTab === 'content' ? (
                     isIntroNode ? (
                         !content.introduction && isStreaming ? <HeroLoader text="در حال آماده‌سازی نقشه راه..." /> : (
-                             <div className="node-content-section markdown-content leading-loose text-base md:text-lg text-card-foreground/90 animate-slide-up p-4 md:p-6 border border-border/50 rounded-3xl bg-card/30 shadow-sm select-text" dangerouslySetInnerHTML={{ __html: content.introduction || '' }} />
+                             <div className="node-content-section markdown-content leading-loose text-base md:text-lg text-card-foreground/90 animate-slide-up p-4 md:p-6 border border-border/50 rounded-3xl bg-card/30 shadow-sm select-text" dangerouslySetInnerHTML={{ __html: parseMarkdown(content.introduction) }} />
                         )
                     ) : (
                         <div className="space-y-8 md:space-y-12">
@@ -343,7 +353,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                                                          <CheckCircle className="w-5 h-5" />
                                                          <span>بازخورد هوشمند مربی</span>
                                                      </div>
-                                                     <div className="markdown-content leading-loose text-card-foreground" dangerouslySetInnerHTML={{ __html: taskFeedback }} />
+                                                     <div className="markdown-content leading-loose text-card-foreground" dangerouslySetInnerHTML={{ __html: parseMarkdown(taskFeedback) }} />
                                                      <button onClick={() => setTaskFeedback(null)} className="mt-4 text-sm text-primary hover:underline">تلاش مجدد / ویرایش پاسخ</button>
                                                  </div>
                                              )}
@@ -359,7 +369,7 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                     )
                 ) : (
                     <div className="bg-purple-50/50 dark:bg-purple-900/10 p-6 md:p-8 rounded-3xl border border-purple-100 dark:border-purple-800 animate-slide-up shadow-xl">
-                         <div className="node-content-section markdown-content leading-loose text-base md:text-lg text-card-foreground/90" dangerouslySetInnerHTML={{ __html: unlockedReward?.content || '' }} />
+                         <div className="node-content-section markdown-content leading-loose text-base md:text-lg text-card-foreground/90" dangerouslySetInnerHTML={{ __html: parseMarkdown(unlockedReward?.content) }} />
                     </div>
                 )}
                 

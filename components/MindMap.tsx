@@ -108,7 +108,7 @@ const MindMapNodeItem = React.memo(({
                     ${isLocked && !isSelectionMode ? 'opacity-50 bg-secondary text-muted-foreground border-transparent' : 'shadow-sm hover:shadow-md hover:scale-105'}
                     ${selectionClass}
                 `}>
-                    <span className={`text-xs font-bold truncate w-full ${minimalTextColor}`}>
+                    <span className={`text-xs font-extrabold truncate w-full ${minimalTextColor}`}>
                         {node.title}
                     </span>
                     {status === 'completed' && <div className="absolute -top-1 -right-1 w-3 h-3 bg-white rounded-full border-2 border-emerald-500" />}
@@ -140,7 +140,7 @@ const MindMapNodeItem = React.memo(({
                     <div className="w-8 h-8 mb-2 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                         <Flag className="w-4 h-4" />
                     </div>
-                    <h3 className={`font-bold text-foreground leading-snug line-clamp-2 ${isPortrait ? 'text-xs' : 'text-sm'}`}>{node.title}</h3>
+                    <h3 className={`font-extrabold text-foreground leading-snug line-clamp-2 ${isPortrait ? 'text-xs' : 'text-sm'}`}>{node.title}</h3>
                     {!isPortrait && <span className="mt-1 text-[9px] text-muted-foreground font-medium px-2 py-0.5 rounded-full bg-secondary">نقطه شروع</span>}
                 </div>
                 {status === 'completed' && (
@@ -169,7 +169,7 @@ const MindMapNodeItem = React.memo(({
                     <div className={`w-8 h-8 mb-2 rounded-full flex items-center justify-center ${status === 'completed' ? 'bg-amber-100 text-amber-600' : 'bg-emerald-500/10 text-emerald-600'}`}>
                         {status === 'completed' ? <Trophy className="w-4 h-4" /> : <Target className="w-4 h-4" />}
                     </div>
-                    <h3 className={`font-bold text-foreground leading-snug line-clamp-2 ${isPortrait ? 'text-xs' : 'text-sm'}`}>{node.title}</h3>
+                    <h3 className={`font-extrabold text-foreground leading-snug line-clamp-2 ${isPortrait ? 'text-xs' : 'text-sm'}`}>{node.title}</h3>
                 </div>
             </div>
         );
@@ -204,7 +204,7 @@ const MindMapNodeItem = React.memo(({
 
                     <h3 
                         className={`
-                            font-bold leading-relaxed text-foreground/90 w-full
+                            font-extrabold leading-relaxed text-foreground/90 w-full
                             ${isPortrait ? 'text-xs line-clamp-3' : 'text-sm line-clamp-3'}
                             ${isLocked && !isSelectionMode ? 'text-muted-foreground' : ''}
                         `} 

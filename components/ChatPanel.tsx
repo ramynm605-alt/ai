@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatMessage, ChatPersona } from '../types';
 import { XCircle, Maximize, Minimize, ArrowRight, BrainCircuit, Flame, Settings, CheckCircle } from './icons';
+import { marked } from 'marked';
 
 interface ChatPanelProps {
     history: ChatMessage[];
@@ -61,18 +62,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
 
         const handleLinkClick = (e: MouseEvent) => {
             const target = e.target as HTMLElement;
-            
-            // Check if user clicked a text node inside specific formatting
-            // Since the service returns [[Title]], we need to render it specially.
-            // However, since we use 'marked', we need a post-process logic in the renderer OR 
-            // we rely on the service returning valid Markdown links or button-like structures.
-            
-            // Current Strategy: The service wraps titles in [[...]]. 
-            // We need a regex replacement in the render to turn [[...]] into a clickable span.
-            // But for now, let's check if the service output raw text.
-            
-            // Assuming the service returns standard text with [[Title]].
-            // We will handle the transformation in the render loop below.
             
             if (target.classList.contains('node-ref-link')) {
                 const title = target.getAttribute('data-node-title');
@@ -138,13 +127,21 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         : 'bottom-0 w-full h-[85dvh] rounded-t-2xl border-x md:h-[600px] md:w-[400px] md:bottom-6 md:right-6 md:rounded-2xl md:border-t'
     }`;
 
-    // Function to transform [[Title]] into clickable spans
-    const processMessageContent = (html: string) => {
-        // Regex to find [[...]]
-        // Note: Since 'marked' runs first, [[...]] usually survives unless it looks like a link.
-        return html.replace(/\[\[(.*?)\]\]/g, (match, title) => {
-            return `<span class="node-ref-link text-primary font-bold cursor-pointer hover:underline bg-primary/10 px-1 rounded" data-node-title="${title}">${title}</span>`;
-        });
+    // Function to parse markdown AND transform [[Title]] into clickable spans
+    const processMessageContent = (text: string) => {
+        try {
+            // 1. Parse Markdown first to convert **bold**, etc. to HTML
+            const html = marked.parse(text) as string;
+            
+            // 2. Then replace custom [[Title]] syntax in the resulting HTML
+            // Note: marked might escape [[, so we handle that. Usually it stays as text.
+            return html.replace(/\[\[(.*?)\]\]/g, (match, title) => {
+                return `<span class="node-ref-link text-primary font-bold cursor-pointer hover:underline bg-primary/10 px-1 rounded" data-node-title="${title}">${title}</span>`;
+            });
+        } catch (e) {
+            console.error("Markdown chat error", e);
+            return text;
+        }
     };
 
     return (
@@ -323,7 +320,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
                     <button
                         onClick={handleSend}
                         disabled={!input.trim() || isThinking}
-                        className={`absolute right-2 flex items-center justify-center w-8 h-8 transition-colors rounded-full disabled:text-muted-foreground hover:bg-opacity-10 disabled:bg-transparent ${isDebateMode ? 'text-orange-500 hover:bg-orange-500' : 'text-primary hover:bg-primary'}`}
+                        className={`absolute right-2 flex items-center justify-center w-8 h-8 transition-colors rounded-full disabled:text-muted-foreground hover:bg-opacity-1 disabled:bg-transparent ${isDebateMode ? 'text-orange-500 hover:bg-orange-500' : 'text-primary hover:bg-primary'}`}
                     >
                         <ArrowRight className="w-5 h-5 transform -rotate-180" />
                     </button>
