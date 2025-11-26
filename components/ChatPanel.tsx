@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatMessage, ChatPersona } from '../types';
-import { XCircle, Maximize, Minimize, ArrowRight, BrainCircuit, Flame, Settings, CheckCircle } from './icons';
+import { XCircle, Maximize, Minimize, ArrowRight, BrainCircuit, Flame, Settings, CheckCircle, Shield } from './icons';
 import { marked } from 'marked';
 
 interface ChatPanelProps {
@@ -324,6 +324,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
                     >
                         <ArrowRight className="w-5 h-5 transform -rotate-180" />
                     </button>
+                </div>
+                <div className="flex justify-center mt-2">
+                    <div className="flex items-center gap-1 text-[9px] text-muted-foreground opacity-60">
+                        <Shield className="w-3 h-3" />
+                        <span>هوش مصنوعی ممکن است اشتباه کند. اطلاعات را بررسی کنید.</span>
+                    </div>
                 </div>
             </div>
         </div>

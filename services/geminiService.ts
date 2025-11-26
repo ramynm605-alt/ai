@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type, Modality } from "@google/genai";
+import { GoogleGenAI, Type, Modality, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, GradingResult, PreAssessmentAnalysis, ChatMessage, Weakness, ChatPersona, VoiceName, ResourceValidation, Flashcard, Scenario, ScenarioOutcome } from '../types';
 import { marked } from 'marked';
 import katex from 'katex';
@@ -9,6 +9,15 @@ if (!API_KEY) {
     throw new Error("API_KEY environment variable not set");
 }
 const ai = new GoogleGenAI({ apiKey: API_KEY });
+
+// --- SAFETY SETTINGS ---
+// Enforce strict safety protocols to ensure ethical AI usage
+const SAFETY_SETTINGS = [
+    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE },
+    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE },
+    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE },
+    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE }
+];
 
 // --- LaTeX/KaTeX Extension for Marked ---
 const mathExtension = {
@@ -214,7 +223,10 @@ export async function analyzeResourceContent(
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash", // Using Flash for speed and efficiency
             contents: { parts },
-            config: { responseMimeType: "application/json" }
+            config: { 
+                responseMimeType: "application/json",
+                safetySettings: SAFETY_SETTINGS
+            }
         });
         
         const result = JSON.parse(cleanJsonString(response.text || '{}'));
@@ -307,6 +319,9 @@ export async function generateLearningPlan(
         const stream = await ai.models.generateContentStream({
             model: "gemini-2.5-flash", // Using Flash
             contents: { parts: [{ text: prompt }] }, 
+            config: {
+                safetySettings: SAFETY_SETTINGS
+            }
         });
 
         let buffer = '';
@@ -392,7 +407,10 @@ export async function analyzePreAssessment(questions: any, userAnswers: any, sou
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: { parts: [{ text: prompt }] },
-        config: { responseMimeType: "application/json" }
+        config: { 
+            responseMimeType: "application/json",
+            safetySettings: SAFETY_SETTINGS
+        }
     });
     return JSON.parse(cleanJsonString(response.text || '{}'));
 }
@@ -449,7 +467,8 @@ export async function generateNodeContent(
             contents: { parts: [{ text: prompt }] },
             config: { 
                 responseMimeType: "application/json",
-                maxOutputTokens: 8192 // Ensure full response
+                maxOutputTokens: 8192, // Ensure full response
+                safetySettings: SAFETY_SETTINGS
             }
         });
         
@@ -477,7 +496,8 @@ export async function evaluateNodeInteraction(nodeTitle: string, learningObjecti
     `;
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash", 
-        contents: { parts: [{ text: prompt }] }
+        contents: { parts: [{ text: prompt }] },
+        config: { safetySettings: SAFETY_SETTINGS }
     });
     return response.text || "";
 }
@@ -516,7 +536,8 @@ export async function evaluateFeynmanExplanation(
 
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash", // Flash 2.0 is good for multimodal
-        contents: { parts }
+        contents: { parts },
+        config: { safetySettings: SAFETY_SETTINGS }
     });
     return response.text || "";
 }
@@ -541,7 +562,10 @@ export async function generateRemedialNode(originalNodeId: string, parentTitle: 
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash", 
         contents: { parts: [{ text: prompt }] }, 
-        config: { responseMimeType: "application/json" }
+        config: { 
+            responseMimeType: "application/json",
+            safetySettings: SAFETY_SETTINGS
+        }
     });
     return JSON.parse(cleanJsonString(response.text || '{}'));
 }
@@ -586,7 +610,8 @@ export async function generateQuiz(topic: string, content: string, images: any[]
     
     const stream = await ai.models.generateContentStream({
         model: "gemini-2.5-flash", 
-        contents: { parts: [{ text: prompt }] }
+        contents: { parts: [{ text: prompt }] },
+        config: { safetySettings: SAFETY_SETTINGS }
     });
     
     let buffer = "";
@@ -635,7 +660,10 @@ export async function gradeAndAnalyzeQuiz(questions: any[], userAnswers: any, co
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash", 
         contents: { parts: [{ text: prompt }] }, 
-        config: { responseMimeType: "application/json" }
+        config: { 
+            responseMimeType: "application/json",
+            safetySettings: SAFETY_SETTINGS
+        }
     });
     return JSON.parse(cleanJsonString(response.text || '[]'));
 }
@@ -654,7 +682,8 @@ export async function generateDeepAnalysis(title: string, content: string) {
     `;
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash", // Using Flash
-        contents: { parts: [{ text: prompt }] }
+        contents: { parts: [{ text: prompt }] },
+        config: { safetySettings: SAFETY_SETTINGS }
     });
     return response.text || "";
 }
@@ -695,7 +724,8 @@ export async function generateChatResponse(
     
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash", 
-        contents: { parts: [{ text: prompt }] }
+        contents: { parts: [{ text: prompt }] },
+        config: { safetySettings: SAFETY_SETTINGS }
     });
     return response.text || "";
 }
@@ -715,7 +745,8 @@ export async function generateProactiveChatInitiation(nodeTitle: string, nodeCon
     `;
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash", 
-        contents: { parts: [{ text: prompt }] }
+        contents: { parts: [{ text: prompt }] },
+        config: { safetySettings: SAFETY_SETTINGS }
     });
     return response.text || "";
 }
@@ -723,7 +754,8 @@ export async function generateProactiveChatInitiation(nodeTitle: string, nodeCon
 export async function generateCoachQuestion(nodeTitle: string, nodeContent: string): Promise<string> {
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash", 
-        contents: { parts: [{ text: `Ask a single, deep, Socratic question about "${nodeTitle}" to test understanding. Persian. Short.` }] }
+        contents: { parts: [{ text: `Ask a single, deep, Socratic question about "${nodeTitle}" to test understanding. Persian. Short.` }] },
+        config: { safetySettings: SAFETY_SETTINGS }
     });
     return response.text || "";
 }
@@ -753,7 +785,8 @@ export async function generatePodcastScript(contents: any[], mode: 'monologue' |
         
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash", 
-            contents: { parts: [{ text: prompt }] }
+            contents: { parts: [{ text: prompt }] },
+            config: { safetySettings: SAFETY_SETTINGS }
         });
         return response.text || "";
     });
@@ -799,7 +832,8 @@ export async function generatePodcastAudio(
             contents: [{ parts: [{ text: finalScript }] }],
             config: {
                 responseModalities: [Modality.AUDIO],
-                speechConfig: speechConfig
+                speechConfig: speechConfig,
+                safetySettings: SAFETY_SETTINGS
             }
         });
 
@@ -868,7 +902,10 @@ export async function generateFlashcards(nodeTitle: string, content: string): Pr
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash", 
         contents: { parts: [{ text: prompt }, { text: content.substring(0, 5000) }] }, 
-        config: { responseMimeType: "application/json" }
+        config: { 
+            responseMimeType: "application/json",
+            safetySettings: SAFETY_SETTINGS
+        }
     });
     return JSON.parse(cleanJsonString(response.text || '[]'));
 }
@@ -886,7 +923,8 @@ export async function generatePracticeResponse(topic: string, problem: string, q
     `;
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash", 
-        contents: { parts: [{ text: prompt }] }
+        contents: { parts: [{ text: prompt }] },
+        config: { safetySettings: SAFETY_SETTINGS }
     });
     return response.text || "";
 }
@@ -894,7 +932,8 @@ export async function generatePracticeResponse(topic: string, problem: string, q
 export async function generateDailyChallenge(): Promise<string> {
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash", 
-        contents: { parts: [{ text: `Generate a fascinating "Did you know?" fact or a mini-logic puzzle in Persian. Keep it short and fun.` }] }
+        contents: { parts: [{ text: `Generate a fascinating "Did you know?" fact or a mini-logic puzzle in Persian. Keep it short and fun.` }] },
+        config: { safetySettings: SAFETY_SETTINGS }
     });
     return response.text || "";
 }
@@ -925,7 +964,10 @@ export async function generateScenario(nodeTitle: string, content: string): Prom
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash", 
         contents: { parts: [{ text: prompt }] }, 
-        config: { responseMimeType: "application/json" }
+        config: { 
+            responseMimeType: "application/json",
+            safetySettings: SAFETY_SETTINGS
+        }
     });
     return JSON.parse(cleanJsonString(response.text || '{}'));
 }
@@ -947,7 +989,10 @@ export async function evaluateScenarioDecision(scenario: Scenario, decisionId: s
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash", 
         contents: { parts: [{ text: prompt }] }, 
-        config: { responseMimeType: "application/json" }
+        config: { 
+            responseMimeType: "application/json",
+            safetySettings: SAFETY_SETTINGS
+        }
     });
     return JSON.parse(cleanJsonString(response.text || '{}'));
 }

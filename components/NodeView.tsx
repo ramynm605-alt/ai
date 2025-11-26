@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { MindMapNode, NodeContent, Reward } from '../types';
-import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle, BrainCircuit, Edit, Shuffle, Target, CheckCircle, ArrowLeft, ClipboardList, Mic, Flame, Gamepad, GraduationCap } from './icons';
+import { ArrowRight, MessageSquare, Sparkles, Diamond, XCircle, BrainCircuit, Edit, Shuffle, Target, CheckCircle, ArrowLeft, ClipboardList, Mic, Flame, Gamepad, GraduationCap, Shield, Flag } from './icons';
 import { evaluateNodeInteraction } from '../services/geminiService';
 import WaveLoader from './ui/wave-loader';
 import BoxLoader from './ui/box-loader';
@@ -97,7 +97,6 @@ const CoachBubble: React.FC<{ type: 'feynman' | 'debate', onClick: () => void, o
 
 const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz, onNavigate, prevNode, nextNode, onExplainRequest, isIntroNode, onCompleteIntro, unlockedReward, isStreaming, onGenerateFlashcards, onTriggerFeynman, onTriggerDebate, onStartScenario }) => {
     const [selectionPopup, setSelectionPopup] = useState<{ x: number; y: number; text: string } | null>(null);
-    const [reminderPopup, setReminderPopup] = useState<{ x: number; y: number; content: string } | null>(null);
     const [activeTab, setActiveTab] = useState<'content' | 'reward'>('content');
     
     // Interactive Coach State
@@ -109,6 +108,9 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
     const [taskInput, setTaskInput] = useState('');
     const [taskFeedback, setTaskFeedback] = useState<string | null>(null);
     const [isEvaluatingTask, setIsEvaluatingTask] = useState(false);
+
+    // Reporting State
+    const [reported, setReported] = useState(false);
 
     // Trigger Coach Notification Timer
     useEffect(() => {
@@ -161,7 +163,6 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
             try {
                 const range = selection.getRangeAt(0);
                 const rect = range.getBoundingClientRect();
-                setReminderPopup(null); 
                 let x = rect.left + rect.width / 2;
                 let y = rect.top - 10;
                 if (x < 50) x = 50;
@@ -183,11 +184,17 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
     useEffect(() => {
         const handleClickOutside = () => {
             if (selectionPopup) setSelectionPopup(null);
-            if (reminderPopup) setReminderPopup(null);
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [selectionPopup, reminderPopup]);
+    }, [selectionPopup]);
+
+    const handleReport = () => {
+        // In a real app, this would send data to backend
+        console.log("Content Flagged:", node.title);
+        setReported(true);
+        setTimeout(() => setReported(false), 3000);
+    };
 
     const isEmpty = !content.introduction && !content.theory && !content.example && !isStreaming;
 
@@ -376,50 +383,68 @@ const NodeView: React.FC<NodeViewProps> = ({ node, content, onBack, onStartQuiz,
                     </div>
                 )}
                 
-                {/* Footer Actions - Show if content exists, even if conclusion is missing */}
+                {/* Footer Actions & Safety Disclaimer */}
                 {activeTab === 'content' && !isStreaming && hasContent && (
-                    <div className="w-full mt-8 md:mt-12 p-4 md:p-6 bg-card/50 border border-border/50 rounded-2xl animate-slide-up" style={{ animationDelay: '600ms' }}>
+                    <div className="space-y-4 mt-8 md:mt-12 animate-slide-up" style={{ animationDelay: '600ms' }}>
                         
-                        {/* Mobile Action Buttons - Ensure visibility */}
-                        {!isIntroNode && (
-                            <div className="sm:hidden grid grid-cols-1 gap-3 mb-4">
-                                {onGenerateFlashcards && (
-                                    <button 
-                                        onClick={onGenerateFlashcards}
-                                        className="w-full flex items-center justify-center gap-2 py-3 text-yellow-600 bg-yellow-500/10 border border-yellow-500/20 rounded-xl font-bold"
-                                    >
-                                        <ClipboardList className="w-5 h-5" />
-                                        <span>افزودن کارت مرور</span>
+                        <div className="w-full p-4 md:p-6 bg-card/50 border border-border/50 rounded-2xl">
+                            {/* Mobile Action Buttons - Ensure visibility */}
+                            {!isIntroNode && (
+                                <div className="sm:hidden grid grid-cols-1 gap-3 mb-4">
+                                    {onGenerateFlashcards && (
+                                        <button 
+                                            onClick={onGenerateFlashcards}
+                                            className="w-full flex items-center justify-center gap-2 py-3 text-yellow-600 bg-yellow-500/10 border border-yellow-500/20 rounded-xl font-bold"
+                                        >
+                                            <ClipboardList className="w-5 h-5" />
+                                            <span>افزودن کارت مرور</span>
+                                        </button>
+                                    )}
+                                    {onStartScenario && (
+                                        <button 
+                                            onClick={onStartScenario}
+                                            className="w-full flex items-center justify-center gap-2 py-3 text-white bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl font-bold shadow-lg hover:shadow-purple-500/30 active:scale-95 transition-all"
+                                        >
+                                            <Gamepad className="w-5 h-5" />
+                                            <span>شبیه‌سازی سناریو</span>
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+
+                            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 md:gap-4">
+                                {isIntroNode ? (
+                                        <button onClick={() => onCompleteIntro ? onCompleteIntro() : onBack()} className="w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 font-bold text-white text-lg transition-all duration-300 rounded-2xl bg-gradient-to-r from-primary to-indigo-600 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-95">
+                                        <span>شروع یادگیری و مشاهده نقشه راه</span>
+                                        <GraduationCap className="w-6 h-6" />
                                     </button>
-                                )}
-                                {onStartScenario && (
-                                    <button 
-                                        onClick={onStartScenario}
-                                        className="w-full flex items-center justify-center gap-2 py-3 text-white bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl font-bold shadow-lg hover:shadow-purple-500/30 active:scale-95 transition-all"
-                                    >
-                                        <Gamepad className="w-5 h-5" />
-                                        <span>شبیه‌سازی سناریو</span>
-                                    </button>
+                                ) : (
+                                    <>
+                                        <button onClick={() => prevNode && onNavigate(prevNode.id)} disabled={!prevNode} className="w-full sm:w-auto px-6 py-3 font-semibold transition-all duration-200 rounded-xl text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50">درس قبلی</button>
+                                        <button onClick={onStartQuiz} className="w-full sm:w-auto flex-grow max-w-md px-8 py-4 font-bold text-lg text-white transition-all duration-300 rounded-2xl bg-gradient-to-r from-primary to-indigo-600 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2">
+                                            <span>آماده‌ام، برویم برای آزمون!</span>
+                                            <ArrowRight className="w-5 h-5 transform rotate-180" />
+                                        </button>
+                                        <button onClick={() => nextNode && onNavigate(nextNode.id)} disabled={!nextNode || nextNode.locked} className="w-full sm:w-auto px-6 py-3 font-semibold transition-all duration-200 rounded-xl text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50">درس بعدی</button>
+                                    </>
                                 )}
                             </div>
-                        )}
+                        </div>
 
-                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 md:gap-4">
-                            {isIntroNode ? (
-                                    <button onClick={() => onCompleteIntro ? onCompleteIntro() : onBack()} className="w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 font-bold text-white text-lg transition-all duration-300 rounded-2xl bg-gradient-to-r from-primary to-indigo-600 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-95">
-                                    <span>شروع یادگیری و مشاهده نقشه راه</span>
-                                    <GraduationCap className="w-6 h-6" />
-                                </button>
-                            ) : (
-                                <>
-                                    <button onClick={() => prevNode && onNavigate(prevNode.id)} disabled={!prevNode} className="w-full sm:w-auto px-6 py-3 font-semibold transition-all duration-200 rounded-xl text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50">درس قبلی</button>
-                                    <button onClick={onStartQuiz} className="w-full sm:w-auto flex-grow max-w-md px-8 py-4 font-bold text-lg text-white transition-all duration-300 rounded-2xl bg-gradient-to-r from-primary to-indigo-600 hover:shadow-xl hover:shadow-primary/25 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2">
-                                        <span>آماده‌ام، برویم برای آزمون!</span>
-                                        <ArrowRight className="w-5 h-5 transform rotate-180" />
-                                    </button>
-                                    <button onClick={() => nextNode && onNavigate(nextNode.id)} disabled={!nextNode || nextNode.locked} className="w-full sm:w-auto px-6 py-3 font-semibold transition-all duration-200 rounded-xl text-secondary-foreground bg-secondary hover:bg-accent disabled:opacity-50">درس بعدی</button>
-                                </>
-                            )}
+                        {/* Safety Disclaimer & Flagging */}
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-4 text-[10px] text-muted-foreground/60">
+                            <div className="flex items-center gap-1 text-center sm:text-right">
+                                <Shield className="w-3 h-3" />
+                                <p>هوش مصنوعی ممکن است اشتباه کند. لطفاً اطلاعات حساس را بررسی کنید.</p>
+                            </div>
+                            <button 
+                                onClick={handleReport}
+                                className={`flex items-center gap-1 hover:text-destructive transition-colors ${reported ? 'text-success' : ''}`}
+                                disabled={reported}
+                            >
+                                {reported ? <CheckCircle className="w-3 h-3" /> : <Flag className="w-3 h-3" />}
+                                <span>{reported ? 'گزارش شد' : 'گزارش محتوای نامناسب'}</span>
+                            </button>
                         </div>
                     </div>
                 )}
