@@ -210,7 +210,7 @@ export async function analyzeResourceContent(
         }
         
         const response = await ai.models.generateContent({
-            model: "gemini-3-pro-preview", // UPGRADED MODEL FOR BETTER ACCURACY
+            model: "gemini-2.5-flash", // Using Flash for speed and efficiency
             contents: { parts },
             config: { responseMimeType: "application/json" }
         });
@@ -303,7 +303,7 @@ export async function generateLearningPlan(
         `;
         
         const stream = await ai.models.generateContentStream({
-            model: "gemini-2.5-pro",
+            model: "gemini-2.5-flash", // Using Flash
             contents: { parts: [{ text: prompt }] }, 
         });
 
@@ -443,7 +443,7 @@ export async function generateNodeContent(
         `;
 
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-pro", // Use Pro for high quality content generation
+            model: "gemini-2.5-flash", // Using Flash
             contents: { parts: [{ text: prompt }] },
             config: { responseMimeType: "application/json" }
         });
@@ -632,7 +632,7 @@ export async function generateDeepAnalysis(title: string, content: string) {
     4. **Mental Model**: Provide a unique visualization or mental model to remember this forever.
     `;
     const response = await ai.models.generateContent({
-        model: "gemini-2.5-pro", 
+        model: "gemini-2.5-flash", // Using Flash
         contents: { parts: [{ text: prompt }] }
     });
     return response.text || "";
@@ -774,7 +774,7 @@ export async function generatePodcastAudio(
         }
 
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash-preview-tts",
+            model: "gemini-2.5-flash-preview-tts", // Special model for TTS
             contents: [{ parts: [{ text: finalScript }] }],
             config: {
                 responseModalities: [Modality.AUDIO],
