@@ -267,6 +267,22 @@ export interface MindMapNode {
       isEvaluating: boolean;
   }
 
+  // --- NEW TYPES FOR HANDOUT MODE ---
+  export interface HandoutConfig {
+      detailLevel: 'summary' | 'standard' | 'comprehensive';
+      style: 'academic' | 'casual' | 'bullet-points';
+      includeExamples: boolean;
+      includeQuiz: boolean;
+  }
+
+  export interface HandoutState {
+      isOpen: boolean; // Is the viewer open?
+      isConfiguring: boolean; // Is the wizard open?
+      isGenerating: boolean;
+      config: HandoutConfig | null;
+      content: string | null; // Markdown content
+  }
+
   export interface AppState {
     theme: 'light' | 'balanced' | 'dark';
     status: AppStatus;
@@ -319,6 +335,8 @@ export interface MindMapNode {
     feynmanState: FeynmanState | null;
     // Scenario Simulator State
     scenarioState: ScenarioState | null;
+    // Handout State
+    handoutState: HandoutState;
   }
 
   export interface SavableState {

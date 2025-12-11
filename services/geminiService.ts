@@ -1,6 +1,5 @@
-
 import { GoogleGenAI, Type, Modality, HarmCategory, HarmBlockThreshold } from "@google/genai";
-import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, GradingResult, PreAssessmentAnalysis, ChatMessage, Weakness, ChatPersona, VoiceName, ResourceValidation, Flashcard, Scenario, ScenarioOutcome } from '../types';
+import { MindMapNode, Quiz, LearningPreferences, NodeContent, QuizQuestion, UserAnswer, QuizResult, GradingResult, PreAssessmentAnalysis, ChatMessage, Weakness, ChatPersona, VoiceName, ResourceValidation, Flashcard, Scenario, ScenarioOutcome, HandoutConfig } from '../types';
 import { marked } from 'marked';
 import katex from 'katex';
 
@@ -179,17 +178,6 @@ export async function analyzeResourceContent(
             1. Write a structured article with clear headings (Markdown).
             2. Include definitions, history (if relevant), key theories, and examples.
             3. The content must be substantial and educational, as it will be used to generate a learning map.
-            
-            OUTPUT FORMAT (JSON):
-            {
-                "extractedText": "The full generated content in Persian Markdown...",
-                "validation": {
-                    "isValid": true,
-                    "qualityScore": 100,
-                    "issues": [],
-                    "summary": "Description of the generated topic."
-                }
-            }
             `;
             parts.push({ text: prompt });
         } else {
@@ -202,18 +190,7 @@ export async function analyzeResourceContent(
             2. If the text is messy (e.g. PDF OCR errors), clean it up but keep the original meaning.
             3. Organize the output using Markdown headings (#, ##, ###) to show hierarchy.
             4. Ensure technical terms are preserved.
-            5. If the content is very short/irrelevant, mark 'isValid' as false.
-            
-            OUTPUT FORMAT (JSON):
-            {
-                "extractedText": "The structured, detailed content in Persian (or original language if code)...",
-                "validation": {
-                    "isValid": boolean,
-                    "qualityScore": number (0-100),
-                    "issues": ["Specific issue in Persian (e.g. 'متن ناخوانا')", ...],
-                    "summary": "A professional summary of the content coverage in PERSIAN."
-                }
-            }
+            5. If the content is very short/irrelevant, set validation.isValid to false.
             `;
             parts.push({ text: prompt });
             if (rawText) parts.push({ text: `CONTENT START:\n${rawText.substring(0, 300000)}\nCONTENT END` }); // Increased context limit for chunking
@@ -225,6 +202,26 @@ export async function analyzeResourceContent(
             contents: { parts },
             config: { 
                 responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        extractedText: { type: Type.STRING },
+                        validation: {
+                            type: Type.OBJECT,
+                            properties: {
+                                isValid: { type: Type.BOOLEAN },
+                                qualityScore: { type: Type.INTEGER },
+                                issues: { 
+                                    type: Type.ARRAY,
+                                    items: { type: Type.STRING }
+                                },
+                                summary: { type: Type.STRING }
+                            },
+                            required: ["isValid", "qualityScore", "issues", "summary"]
+                        }
+                    },
+                    required: ["extractedText", "validation"]
+                },
                 safetySettings: SAFETY_SETTINGS
             }
         });
@@ -447,17 +444,6 @@ export async function generateNodeContent(
         Use **Markdown** extensively (bolding keywords, lists, code blocks).
         Use **LaTeX** for math ($...$ or $$...$$) ONLY for mathematical formulas. Do not use it for Persian text.
         
-        JSON OUTPUT STRUCTURE:
-        {
-            "introduction": "Hook the reader. Define the concept simply.",
-            "theory": "The core explanation. Use analogies if requested. Be rigorous but clear. Address 'How' and 'Why'.",
-            "example": "A concrete, real-world scenario or solved problem step-by-step.",
-            "connection": "How this connects to previous/next topics or broader field.",
-            "conclusion": "Summary + Key Takeaways (bullet points).",
-            "suggestedQuestions": ["Thought-provoking question 1", "Question 2"],
-            "interactiveTask": "A specific small task/question for the user to answer in the text box (e.g. 'Explain X in your own words' or 'Solve this mini-problem')."
-        }
-        
         SOURCE MATERIAL:
         ${fullContent.substring(0, 50000)}
         `;
@@ -467,6 +453,22 @@ export async function generateNodeContent(
             contents: { parts: [{ text: prompt }] },
             config: { 
                 responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        introduction: { type: Type.STRING },
+                        theory: { type: Type.STRING },
+                        example: { type: Type.STRING },
+                        connection: { type: Type.STRING },
+                        conclusion: { type: Type.STRING },
+                        suggestedQuestions: { 
+                            type: Type.ARRAY,
+                            items: { type: Type.STRING }
+                        },
+                        interactiveTask: { type: Type.STRING }
+                    },
+                    required: ["introduction", "theory", "example", "connection", "conclusion", "suggestedQuestions"]
+                },
                 maxOutputTokens: 8192, // Ensure full response
                 safetySettings: SAFETY_SETTINGS
             }
@@ -995,4 +997,57 @@ export async function evaluateScenarioDecision(scenario: Scenario, decisionId: s
         }
     });
     return JSON.parse(cleanJsonString(response.text || '{}'));
+}
+
+export async function generateCompleteHandout(content: string, config: HandoutConfig): Promise<string> {
+    return withRetry(async () => {
+        const detailInstructions = {
+            'summary': "Create a concise revision sheet focusing on key points and definitions only.",
+            'standard': "Create a standard textbook chapter with explanations and some examples.",
+            'comprehensive': "Create a deep, comprehensive masterclass document with extensive details, proofs, and deep dives."
+        };
+
+        const styleInstructions = {
+            'academic': "Use formal academic language.",
+            'casual': "Use a friendly, conversational tone like a blog post.",
+            'bullet-points': "Use a structured outline format with bullet points for readability."
+        };
+
+        const prompt = `
+        ROLE: Expert Educational Writer.
+        TASK: Write a complete, high-quality **HANDOUT / BOOKLET** (جزوه آموزشی کامل) in **PERSIAN**.
+        
+        CONFIGURATION:
+        - Detail Level: ${detailInstructions[config.detailLevel]}
+        - Tone/Style: ${styleInstructions[config.style]}
+        - Examples: ${config.includeExamples ? "MUST include relevant examples for every major concept." : "Minimal examples."}
+        - Quiz: ${config.includeQuiz ? "Add a short quiz at the end." : "No quiz."}
+        
+        STRUCTURE:
+        1. **Title & Introduction**: Overview of the topic.
+        2. **Table of Contents** (auto-generated list).
+        3. **Core Chapters**: Logical breakdown of the content. Use H2 (##) for chapters and H3 (###) for sections.
+        4. **Key Takeaways**: Summary box.
+        5. ${config.includeQuiz ? "**Review Quiz**: 3 questions with answers." : ""}
+        
+        FORMATTING:
+        - Use Markdown.
+        - Use bolding for key terms.
+        - Use blockquotes (> text) for important notes.
+        
+        SOURCE CONTENT:
+        ${content.substring(0, 300000)}
+        `;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash", 
+            contents: { parts: [{ text: prompt }] },
+            config: { 
+                maxOutputTokens: 8192,
+                safetySettings: SAFETY_SETTINGS
+            }
+        });
+        
+        return response.text || "خطا در تولید جزوه.";
+    });
 }

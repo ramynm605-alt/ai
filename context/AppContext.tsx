@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { AppState, AppStatus, ChatMessage, MindMapNode, NodeProgress, PodcastConfig, PodcastState, Quiz, QuizResult, Reward, SavedSession, UserBehavior, UserProfile, Weakness, LearningPreferences, PreAssessmentAnalysis, NodeContent, UserAnswer, FeynmanState, Flashcard, FlashcardGrade, ScenarioState } from '../types';
+import { AppState, AppStatus, ChatMessage, MindMapNode, NodeProgress, PodcastConfig, PodcastState, Quiz, QuizResult, Reward, SavedSession, UserBehavior, UserProfile, Weakness, LearningPreferences, PreAssessmentAnalysis, NodeContent, UserAnswer, FeynmanState, Flashcard, FlashcardGrade, ScenarioState, HandoutState } from '../types';
 
 // --- Default Behavior & Initial State ---
 const DEFAULT_BEHAVIOR: UserBehavior = {
@@ -74,6 +74,13 @@ const initialState: AppState = {
   },
   feynmanState: null,
   scenarioState: null,
+  handoutState: {
+      isOpen: false,
+      isConfiguring: false,
+      isGenerating: false,
+      config: null,
+      content: null
+  }
 };
 
 // --- Helper: SM-2 Algorithm for SRS ---
@@ -401,7 +408,14 @@ function appReducer(state: AppState, action: any): AppState {
             currentSessionId: action.sessionId, 
             status: nextStatus,
             loadingMessage: null,
-            error: null
+            error: null,
+            handoutState: { // Reset handout state on load
+                isOpen: false,
+                isConfiguring: false,
+                isGenerating: false,
+                config: null,
+                content: null
+            }
         };
     }
     case 'CHECK_DAILY_STATUS': {
@@ -535,6 +549,16 @@ function appReducer(state: AppState, action: any): AppState {
         };
     case 'CLOSE_SCENARIO':
         return { ...state, status: AppStatus.VIEWING_NODE, scenarioState: null };
+
+    // --- HANDOUT ACTIONS ---
+    case 'OPEN_HANDOUT_CONFIG':
+        return { ...state, handoutState: { ...state.handoutState, isConfiguring: true, isOpen: false } };
+    case 'START_HANDOUT_GENERATION':
+        return { ...state, handoutState: { ...state.handoutState, isConfiguring: false, isGenerating: true, config: action.payload } };
+    case 'HANDOUT_GENERATED':
+        return { ...state, handoutState: { ...state.handoutState, isGenerating: false, content: action.payload, isOpen: true } };
+    case 'CLOSE_HANDOUT':
+        return { ...state, handoutState: { ...state.handoutState, isOpen: false, isConfiguring: false, content: null } };
 
     // --- SRS Actions ---
     case 'ADD_FLASHCARDS': {

@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAppActions } from '../hooks/useAppActions';
 import { AppStatus, LearningResource } from '../types';
-import { FileText, Wand, FileQuestion, Shuffle, Compass, Upload, ArrowRight, ArrowLeft, Sparkles, Target, MessageSquare, XCircle, FileAudio, Youtube, Link, Globe, Music, Trash, CheckCircle, Info, Edit, Save, SlidersHorizontal, Layers } from './icons';
+import { FileText, Wand, FileQuestion, Shuffle, Compass, Upload, ArrowRight, ArrowLeft, Sparkles, Target, MessageSquare, XCircle, FileAudio, Youtube, Link, Globe, Music, Trash, CheckCircle, Info, Edit, Save, SlidersHorizontal, Layers, BookOpen } from './icons';
 import BoxLoader from './ui/box-loader';
 import MindMap from './MindMap';
 import NodeView from './NodeView';
@@ -11,6 +11,9 @@ import QuizView from './QuizView';
 import QuizReview from './QuizReview';
 import PreAssessmentReview from './PreAssessmentReview';
 import PersonalizationWizard from './PersonalizationWizard';
+import HandoutWizard from './HandoutWizard';
+import HandoutViewer from './HandoutViewer';
+import WaveLoader from './ui/wave-loader';
 
 const RANDOM_TOPICS = [
     "مبانی اقتصاد رفتاری",
@@ -541,22 +544,55 @@ const MainContent: React.FC<MainContentProps> = ({ actions }) => {
         };
 
         return (
-            <button
-                onClick={toggleMode}
-                className="absolute top-20 md:top-4 left-4 z-[100] bg-card/90 backdrop-blur-md border border-border rounded-full px-3 py-1.5 flex items-center gap-2 shadow-sm hover:shadow-md transition-all"
-                title="تغییر حالت نمایش نقشه (ساده/پیشرفته)"
-            >
-                <Layers className="w-4 h-4 text-primary" />
-                <span className="text-xs font-bold text-foreground hidden sm:inline">
-                    {state.mindMapViewMode === 'advanced' ? 'نمای پیشرفته' : 'نمای ساده'}
-                </span>
-            </button>
+            <div className="absolute top-20 md:top-4 left-4 z-[100] flex gap-2">
+                <button
+                    onClick={toggleMode}
+                    className="bg-card/90 backdrop-blur-md border border-border rounded-full px-3 py-1.5 flex items-center gap-2 shadow-sm hover:shadow-md transition-all"
+                    title="تغییر حالت نمایش نقشه (ساده/پیشرفته)"
+                >
+                    <Layers className="w-4 h-4 text-primary" />
+                    <span className="text-xs font-bold text-foreground hidden sm:inline">
+                        {state.mindMapViewMode === 'advanced' ? 'نمای پیشرفته' : 'نمای ساده'}
+                    </span>
+                </button>
+                <button
+                    onClick={() => dispatch({ type: 'OPEN_HANDOUT_CONFIG' })}
+                    className="bg-card/90 backdrop-blur-md border border-border rounded-full px-3 py-1.5 flex items-center gap-2 shadow-sm hover:shadow-md transition-all"
+                    title="دریافت جزوه کامل"
+                >
+                    <BookOpen className="w-4 h-4 text-primary" />
+                    <span className="text-xs font-bold text-foreground hidden sm:inline">دریافت جزوه</span>
+                </button>
+            </div>
         );
     };
 
     return (
         <div className="flex-grow relative z-10 overflow-y-auto scroll-smooth">
             {reviewResource && renderReviewModal()}
+            
+            {state.handoutState.isConfiguring && (
+                <HandoutWizard 
+                    onGenerate={actions.startHandoutGeneration} 
+                    onClose={() => dispatch({ type: 'CLOSE_HANDOUT' })} 
+                />
+            )}
+
+            {state.handoutState.isOpen && state.handoutState.content && (
+                <HandoutViewer 
+                    content={state.handoutState.content} 
+                    onClose={() => dispatch({ type: 'CLOSE_HANDOUT' })} 
+                />
+            )}
+
+            {state.handoutState.isGenerating && (
+                <div className="fixed inset-0 z-[500] flex items-center justify-center bg-background/90 backdrop-blur-sm animate-fade-in">
+                    <div className="text-center space-y-4">
+                        <WaveLoader color="rgb(var(--primary))" />
+                        <p className="text-lg font-bold text-foreground animate-pulse">در حال نگارش جزوه اختصاصی شما...</p>
+                    </div>
+                </div>
+            )}
             
             {state.status === AppStatus.IDLE && (
                 <div className="max-w-5xl mx-auto mt-6 md:mt-12 p-4 md:p-6 pb-32">

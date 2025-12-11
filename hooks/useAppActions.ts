@@ -1,9 +1,9 @@
 
 import React, { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { AppStatus, ChatMessage, PodcastConfig, PodcastState, QuizResult, Reward, SavableState, SavedSession, UserAnswer, UserBehavior, UserProfile, Weakness, LearningPreferences, LearningResource, Flashcard, FlashcardGrade, NodeProgress, Scenario } from '../types';
+import { AppStatus, ChatMessage, PodcastConfig, PodcastState, QuizResult, Reward, SavableState, SavedSession, UserAnswer, UserBehavior, UserProfile, Weakness, LearningPreferences, LearningResource, Flashcard, FlashcardGrade, NodeProgress, Scenario, HandoutConfig } from '../types';
 import { FirebaseService } from '../services/firebaseService';
-import { generateChatResponse, generateDailyChallenge, generateDeepAnalysis, generateLearningPlan, generateNodeContent, generatePodcastAudio, generatePodcastScript, generateProactiveChatInitiation, generateQuiz, generateRemedialNode, gradeAndAnalyzeQuiz, analyzePreAssessment, analyzeResourceContent, evaluateFeynmanExplanation, generateFlashcards, generateCoachQuestion, generateScenario, evaluateScenarioDecision } from '../services/geminiService';
+import { generateChatResponse, generateDailyChallenge, generateDeepAnalysis, generateLearningPlan, generateNodeContent, generatePodcastAudio, generatePodcastScript, generateProactiveChatInitiation, generateQuiz, generateRemedialNode, gradeAndAnalyzeQuiz, analyzePreAssessment, analyzeResourceContent, evaluateFeynmanExplanation, generateFlashcards, generateCoachQuestion, generateScenario, evaluateScenarioDecision, generateCompleteHandout } from '../services/geminiService';
 
 declare var pdfjsLib: any;
 
@@ -545,6 +545,20 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         }
     };
 
+    // --- Handout Actions ---
+    const startHandoutGeneration = useCallback(async (config: HandoutConfig) => {
+        dispatch({ type: 'START_HANDOUT_GENERATION', payload: config });
+        try {
+            const handoutContent = await generateCompleteHandout(state.sourceContent, config);
+            dispatch({ type: 'HANDOUT_GENERATED', payload: handoutContent });
+            showNotification("جزوه شما با موفقیت تولید شد!", 'success');
+        } catch (error) {
+            console.error("Handout Generation Error", error);
+            showNotification("خطا در تولید جزوه.", 'error');
+            dispatch({ type: 'CLOSE_HANDOUT' });
+        }
+    }, [state.sourceContent, dispatch, showNotification]);
+
     const handleNodeSelect = useCallback((nodeId: string) => {
          if (state.isPodcastMode) {
              dispatch({ type: 'TOGGLE_PODCAST_NODE_SELECTION', payload: nodeId });
@@ -970,6 +984,7 @@ export const useAppActions = (showNotification: (msg: string, type?: 'success' |
         startScenario,
         handleScenarioDecision,
         checkDailyStatus,
-        generateDailyContent
+        generateDailyContent,
+        startHandoutGeneration
     };
 };
